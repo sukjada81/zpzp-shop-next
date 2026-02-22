@@ -20,6 +20,11 @@ export default function AppShellClient({
         return pathname?.includes(`/${tenant}/login`) ?? false;
     }, [pathname, tenant]);
 
+    const isOrderPage = useMemo(() => {
+        if (!pathname) return false;
+        return pathname.startsWith(`/${tenant}/order`);
+    }, [pathname, tenant]);
+
     const title = useMemo(() => {
         if (!pathname) return "오늘의 공구";
 
@@ -31,7 +36,7 @@ export default function AppShellClient({
         if (p.startsWith("/home")) return "오늘의 공구";
         if (p.startsWith("/goods")) return "상품";
         if (p.startsWith("/orders")) return "주문내역";
-        if (p.startsWith("/order")) return "주문서";
+        if (p.startsWith("/order")) return "주문/결제"; // ✅ 주문서에서는 이 타이틀 고정
         if (p.startsWith("/cart")) return "장바구니";
 
         return "오늘의 공구";
@@ -43,16 +48,23 @@ export default function AppShellClient({
                 <MobileHeader
                     tenant={tenant}
                     title={title}
-                    onMenuAction={() => setDrawerOpen(true)}
+                    mode={isOrderPage ? "order" : "default"}
+                    onMenuAction={() => {
+                        if (isOrderPage) router.back(); // ✅ 주문서: 뒤로가기
+                        else setDrawerOpen(true); // ✅ 그 외: 드로어
+                    }}
                     onCartAction={() => router.push(`/${tenant}/cart`)}
                 />
             )}
 
-            <SideDrawer
-                tenant={tenant}
-                open={drawerOpen}
-                onCloseAction={() => setDrawerOpen(false)}
-            />
+            {/* ✅ 주문서에서는 드로어 자체를 안 띄움(불필요/오작동 방지) */}
+            {!isOrderPage && (
+                <SideDrawer
+                    tenant={tenant}
+                    open={drawerOpen}
+                    onCloseAction={() => setDrawerOpen(false)}
+                />
+            )}
 
             <div className="pb-10">{children}</div>
         </div>

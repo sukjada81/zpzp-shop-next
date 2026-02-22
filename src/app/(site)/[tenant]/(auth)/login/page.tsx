@@ -1,27 +1,32 @@
 "use client";
 
-export default function LoginPage({
-                                      params,
-                                  }: {
-    params: { tenant: string };
-}) {
-    const { tenant } = params;
+export default function LoginPage({ params }: { params: { tenant?: string } }) {
+    // params.tenant가 undefined인 케이스 방지
+    const tenantFromParams = params?.tenant;
+
+    const tenantFromPath =
+        typeof window !== "undefined"
+            ? window.location.pathname.split("/").filter(Boolean)[0] // /{tenant}/login 가정
+            : "";
+
+    const tenant = tenantFromParams || tenantFromPath || "";
+
+    // ✅ middleware가 붙여준 returnTo를 사용 (없으면 /home)
+    const returnTo =
+        typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("returnTo") || "/home"
+            : "/home";
 
     return (
         <main className="min-h-dvh flex flex-col items-center justify-center px-6">
             <div className="w-full max-w-[420px] flex flex-col items-center">
-
-                {/* 브랜드 영역 */}
                 <div className="mb-6 text-center">
-                    <div className="text-xl font-extrabold tracking-wide">
-                        매장 로그인
-                    </div>
+                    <div className="text-xl font-extrabold tracking-wide">매장 로그인</div>
                     <div className="mt-2 text-sm text-slate-500">
                         카카오 계정으로 간편하게 시작하세요.
                     </div>
                 </div>
 
-                {/* 안내 박스 */}
                 <div className="w-full rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="text-sm text-slate-700 leading-6">
                         <div>• 필수 · 선택 모두 동의해야</div>
@@ -29,12 +34,16 @@ export default function LoginPage({
                     </div>
                 </div>
 
-                {/* 카카오 로그인 버튼 */}
                 <button
                     type="button"
                     className="mt-5 w-full rounded-xl bg-[var(--kakao)] py-4 font-bold text-black shadow-sm active:scale-[0.99]"
                     onClick={() => {
-                        window.location.href = "/api/auth/kakao/login";
+                        const qs =
+                            `tenant=${encodeURIComponent(tenant)}` +
+                            `&returnTo=${encodeURIComponent(returnTo)}` +
+                            `&auto=1`;
+
+                        window.location.href = `/api/auth/kakao/login?${qs}`;
                     }}
                 >
                     카카오로 시작하기
