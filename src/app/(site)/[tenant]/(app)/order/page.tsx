@@ -1,19 +1,16 @@
-// src/app/(site)/[tenant]/(app)/order/page.tsx
 "use client";
 
 import OrderClient, { type OrderItem } from "@/components/order/OrderClient";
-import { useCart } from "@/lib/cart/CartProvider";
+import { useCart, type CartItem } from "@/lib/cart/CartProvider";
+import { useParams } from "next/navigation";
 
-type PageProps = {
-    params: { tenant: string };
-};
-
-export default function OrderPage({ params }: PageProps) {
-    const { tenant } = params;
-
+export default function OrderPage() {
+    const { tenant } = useParams<{ tenant: string }>();
     const { items } = useCart();
 
-    const initialItems: OrderItem[] = items.map((it: any) => ({
+    if (!tenant) return null;
+
+    const initialItems: OrderItem[] = items.map((it: CartItem) => ({
         id: it.productId,
         title: it.name,
         price: it.price,
