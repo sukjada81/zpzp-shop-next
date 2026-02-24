@@ -1,0 +1,88 @@
+// src/components/admin/AdminSidebar.tsx
+"use client";
+
+import { usePathname } from "next/navigation";
+
+const items = [
+    { label: "대시보드", href: "/admin/dashboard", icon: "📊" },
+    { label: "지점 관리", href: "/admin/tenants", icon: "🏬" },
+    { label: "상품", href: "/admin/page.tsx", icon: "🧾" },
+    { label: "주문", href: "/admin/orders", icon: "📦" },
+    { label: "포인트", href: "/admin/points", icon: "🪙" },
+];
+
+export default function AdminSidebar({
+                                         open,
+                                         onClose,
+                                     }: {
+    open: boolean;
+    onClose: () => void;
+}) {
+    const pathname = usePathname();
+
+    return (
+        <>
+            {/* mobile overlay */}
+            <div
+                className={[
+                    "fixed inset-0 z-40 bg-black/30 transition-opacity lg:hidden",
+                    open ? "opacity-100" : "pointer-events-none opacity-0",
+                ].join(" ")}
+                onClick={onClose}
+            />
+
+            <aside
+                className={[
+                    "fixed left-0 top-[60px] z-50 h-[calc(100dvh-60px)] w-[290px] p-3 transition-transform lg:static lg:top-0 lg:z-auto lg:h-auto lg:w-auto lg:translate-x-0",
+                    open ? "translate-x-0" : "-translate-x-full",
+                ].join(" ")}
+            >
+                <div className="dad-card p-4">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <div className="text-xs font-semibold text-[var(--dad-muted)]">관리 범위</div>
+                            <div className="mt-1 text-sm font-extrabold text-[var(--dad-ink)]">전체 지점</div>
+                        </div>
+                        <span className="dad-chip">ALL</span>
+                    </div>
+
+                    <div className="mt-4 space-y-1">
+                        {items.map((it) => {
+                            const active = pathname === it.href || pathname.startsWith(it.href + "/");
+                            return (
+                                <a
+                                    key={it.href}
+                                    href={it.href}
+                                    className={[
+                                        "flex items-center justify-between rounded-2xl px-3 py-2 text-sm font-extrabold transition",
+                                        active
+                                            ? "bg-[var(--dad-ink)] text-white"
+                                            : "text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]",
+                                    ].join(" ")}
+                                >
+                  <span className="flex items-center gap-2">
+                    <span>{it.icon}</span>
+                      {it.label}
+                  </span>
+                                    <span className={active ? "opacity-80" : "opacity-30"}>›</span>
+                                </a>
+                            );
+                        })}
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-[var(--dad-border)] bg-white/70 p-3">
+                        <div className="text-xs font-semibold text-[var(--dad-muted)]">Quick</div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <a className="dad-btn dad-btn-ghost px-3 py-2 text-xs text-center" href="/admin/tenants">
+                                지점
+                            </a>
+                            <a className="dad-btn dad-btn-primary px-3 py-2 text-xs text-center" href="/admin/dashboard">
+                                현황
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </>
+    );
+}
