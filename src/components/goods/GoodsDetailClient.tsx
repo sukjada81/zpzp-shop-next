@@ -1,4 +1,3 @@
-// src/components/goods/GoodsDetailClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -36,7 +35,14 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const router = useRouter();
     const cart = useCart() as any;
 
+    // ✅ images가 0개여도 안전하게
+    const safeImages = useMemo(() => {
+        if (Array.isArray(data.images) && data.images.length > 0) return data.images;
+        return [{ key: "", label: "이미지 없음" }];
+    }, [data.images]);
+
     const [imgIdx, setImgIdx] = useState(0);
+    const canCarousel = safeImages.length > 1;
 
     // 옵션별 수량
     const [qty, setQty] = useState<Record<string, number>>(() =>
@@ -63,15 +69,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             .filter(Boolean) as SelectedLine[];
     }, [qty, data.options, data.price]);
 
-    const subtotal = useMemo(
-        () => selectedLines.reduce((sum, l) => sum + l.lineTotal, 0),
-        [selectedLines],
-    );
+    const subtotal = useMemo(() => selectedLines.reduce((sum, l) => sum + l.lineTotal, 0), [selectedLines]);
 
-    const totalCount = useMemo(
-        () => selectedLines.reduce((a, b) => a + b.quantity, 0),
-        [selectedLines],
-    );
+    const totalCount = useMemo(() => selectedLines.reduce((a, b) => a + b.quantity, 0), [selectedLines]);
 
     const canOrder = totalCount > 0;
 
@@ -80,7 +80,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const shipping = canOrder ? SHIPPING_FEE : 0;
     const grandTotal = subtotal + shipping;
 
-    const imgLabel = data.images?.[imgIdx]?.label?.trim();
+    const imgLabel = safeImages?.[imgIdx]?.label?.trim();
     const [sheetOpen, setSheetOpen] = useState(false);
 
     function addLinesToCart() {
@@ -142,7 +142,17 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             <div className="px-4 pt-3">
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="relative bg-slate-100">
-                        <div className="aspect-[4/3]" />
+                        {/* 이미지 영역 */}
+                        {safeImages[imgIdx]?.key ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={safeImages[imgIdx].key}
+                                alt={data.title}
+                                className="h-auto w-full object-cover"
+                            />
+                        ) : (
+                            <div className="aspect-[4/3]" />
+                        )}
 
                         {/* 배지 */}
                         <div className="absolute left-3 top-3 flex gap-2">
@@ -168,24 +178,26 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                         ) : null}
 
                         {/* 캐러셀 버튼 */}
-                        <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setImgIdx((v) => (v - 1 + data.images.length) % data.images.length)}
-                                className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
-                                aria-label="이전 이미지"
-                            >
-                                ‹
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setImgIdx((v) => (v + 1) % data.images.length)}
-                                className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
-                                aria-label="다음 이미지"
-                            >
-                                ›
-                            </button>
-                        </div>
+                        {canCarousel ? (
+                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setImgIdx((v) => (v - 1 + safeImages.length) % safeImages.length)}
+                                    className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
+                                    aria-label="이전 이미지"
+                                >
+                                    ‹
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setImgIdx((v) => (v + 1) % safeImages.length)}
+                                    className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
+                                    aria-label="다음 이미지"
+                                >
+                                    ›
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="px-4 py-4">
@@ -333,10 +345,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </div>
             ) : null}
 
-            {/* ✅ 바텀시트: 상단에 "선택 n개/합계" 고정 + 하단 버튼 2개(간격 좁게) */}
+            {/* ✅ 바텀시트 */}
             {sheetOpen ? (
                 <>
-                    {/* overlay */}
                     <button
                         type="button"
                         aria-label="닫기"
@@ -344,21 +355,16 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                         onClick={() => setSheetOpen(false)}
                     />
 
-                    {/* sheet */}
                     <div className="fixed bottom-0 left-0 right-0 z-[81]">
                         <div className="mx-auto max-w-[520px] rounded-t-3xl bg-white shadow-2xl overflow-hidden">
-                            {/* 핸들 */}
                             <div className="flex justify-center pt-3">
                                 <div className="h-1.5 w-10 rounded-full bg-slate-200" />
                             </div>
 
-                            {/* ✅ 시트 상단 고정 헤더(쿠팡 느낌) */}
                             <div className="sticky top-0 z-10 bg-white px-4 pb-3 pt-3">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <div className="line-clamp-1 text-[14px] font-extrabold text-slate-900">
-                                            {data.title}
-                                        </div>
+                                        <div className="line-clamp-1 text-[14px] font-extrabold text-slate-900">{data.title}</div>
                                         <div className="mt-1 text-[12px] font-semibold text-slate-500">
                                             선택 {totalCount}개 / 합계 {grandTotal.toLocaleString()}원
                                         </div>
@@ -373,7 +379,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                     </button>
                                 </div>
 
-                                {/* ✅ 수량 0일 때 안내문(고정영역에 노출) */}
                                 {!canOrder ? (
                                     <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
                                         옵션 수량을 선택해 주세요.
@@ -382,7 +387,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             </div>
 
                             <div className="flex max-h-[75vh] flex-col">
-                                {/* 본문(스크롤) */}
                                 <div className="flex-1 overflow-auto px-4 pb-4">
                                     <div className="rounded-2xl border border-slate-200 bg-white p-3">
                                         <div className="text-[12px] font-extrabold text-slate-900">선택 옵션</div>
@@ -406,9 +410,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                       품절
                                     </span>
                                                                     ) : null}
-                                                                    <div className="line-clamp-1 text-[12px] font-semibold text-slate-700">
-                                                                        {l.optionName}
-                                                                    </div>
+                                                                    <div className="line-clamp-1 text-[12px] font-semibold text-slate-700">{l.optionName}</div>
                                                                 </div>
 
                                                                 <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
@@ -431,9 +433,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                                         –
                                                                     </button>
 
-                                                                    <div className="w-8 text-center text-[13px] font-extrabold tabular-nums text-slate-900">
-                                                                        {l.quantity}
-                                                                    </div>
+                                                                    <div className="w-8 text-center text-[13px] font-extrabold tabular-nums text-slate-900">{l.quantity}</div>
 
                                                                     <button
                                                                         type="button"
@@ -466,18 +466,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
                                     <div className="mt-3 flex items-center justify-between px-1">
                                         <div className="text-[13px] font-extrabold text-slate-900">총 상품금액</div>
-                                        <div className="text-[16px] font-extrabold text-slate-900 tabular-nums">
-                                            {grandTotal.toLocaleString()}원
-                                        </div>
+                                        <div className="text-[16px] font-extrabold text-slate-900 tabular-nums">{grandTotal.toLocaleString()}원</div>
                                     </div>
                                 </div>
 
-                                {/* ✅ footer(고정): 간격 좁게(gap-1) + 버튼 높이 동일 */}
                                 <div className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur">
-                                    <div
-                                        className="px-4 py-3"
-                                        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 10px)" }}
-                                    >
+                                    <div className="px-4 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 10px)" }}>
                                         <div className="flex gap-1.5">
                                             <button
                                                 type="button"
@@ -485,9 +479,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                 onClick={goCart}
                                                 className={[
                                                     "h-12 flex-1 rounded-2xl text-sm font-extrabold active:scale-[0.995]",
-                                                    canOrder
-                                                        ? "bg-rose-50 text-rose-700"
-                                                        : "bg-slate-100 text-slate-400 cursor-not-allowed",
+                                                    canOrder ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-400 cursor-not-allowed",
                                                 ].join(" ")}
                                             >
                                                 장바구니

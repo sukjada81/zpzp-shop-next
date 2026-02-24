@@ -1,0 +1,35 @@
+services:
+  db:
+    image: mariadb:11.4
+    container_name: gonggu-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_DATABASE: gonggu
+      MARIADB_USER: app
+      MARIADB_PASSWORD: apppass
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - gonggu_mariadb_data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max_connections=300
+
+  # (선택) DB GUI
+  adminer:
+    image: adminer:4
+    container_name: gonggu-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Asia/Seoul
+    depends_on:
+      - db
+
+volumes:
+  gonggu_mariadb_data:

@@ -84,12 +84,15 @@ export default function SideDrawer({
 
     const isLoggedIn = !!session?.loggedIn;
 
+    // ✅ 메뉴가 사라지는 케이스 방지: items는 항상 고정 배열을 반환
     const items: DrawerItemDef[] = useMemo(
         () => [
             { href: `/${tenant}/home`, label: "오늘의 공구", Icon: IconToday },
             { href: `/${tenant}/orders`, label: "주문내역", Icon: IconReceipt },
             { href: `/${tenant}/points`, label: "내 포인트", Icon: IconCoin, disabled: false },
             { href: `/${tenant}/settings`, label: "설정", Icon: IconSettings, disabled: false },
+            // ✅ 방식 A: 지점 변경은 전역 페이지
+            { href: `/select-tenant`, label: "지점 변경", Icon: IconStore, disabled: false },
         ],
         [tenant]
     );
@@ -104,6 +107,9 @@ export default function SideDrawer({
         const t = tenant && tenant !== "undefined" ? tenant : "";
         window.location.href = `/api/auth/logout?tenant=${encodeURIComponent(t)}`;
     }
+
+    const tenantLabel = tenant && tenant !== "undefined" ? tenant : "-";
+    const headerSubText = subLabel?.trim() ? subLabel : `현재 지점 /${tenantLabel}`;
 
     return (
         <>
@@ -149,9 +155,8 @@ export default function SideDrawer({
                                 <div className="text-[14px] font-extrabold text-slate-900">메뉴</div>
                             )}
 
-                            {subLabel?.trim() ? (
-                                <div className="mt-2 text-[12px] text-slate-500 truncate">{subLabel}</div>
-                            ) : null}
+                            {/* ✅ 현재 지점 항상 노출 */}
+                            <div className="mt-2 text-[12px] text-slate-500 truncate">{headerSubText}</div>
                         </div>
 
                         <button
@@ -164,11 +169,10 @@ export default function SideDrawer({
                         </button>
                     </div>
 
-                    {/* ✅ clean auth block */}
+                    {/* auth block */}
                     <div className="mt-4">
                         {isLoggedIn ? (
                             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                                {/* top row: avatar + name */}
                                 <div className="flex items-center gap-3">
                                     <div
                                         className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-200 bg-slate-50"
@@ -187,7 +191,6 @@ export default function SideDrawer({
                                     </div>
                                 </div>
 
-                                {/* quick actions: icon-only */}
                                 <div className="mt-3 flex items-center gap-2">
                                     <QuickIconLink
                                         href={`/${tenant}/settings`}
@@ -320,17 +323,11 @@ function DrawerItem({
         <Link
             href={href}
             onClick={onClickAction}
-            className={[
-                base,
-                active ? "bg-slate-50 text-slate-900" : "text-slate-700 hover:bg-slate-50",
-            ].join(" ")}
+            className={[base, active ? "bg-slate-50 text-slate-900" : "text-slate-700 hover:bg-slate-50"].join(" ")}
         >
       <span className={[iconWrapBase, "border-slate-200 bg-white"].join(" ")}>
         <Icon
-            className={[
-                "h-[18px] w-[18px]",
-                active ? "text-[color:var(--brand)]" : "text-slate-500",
-            ].join(" ")}
+            className={["h-[18px] w-[18px]", active ? "text-[color:var(--brand)]" : "text-slate-500"].join(" ")}
         />
       </span>
             <span className="flex-1">{label}</span>
@@ -438,6 +435,16 @@ function IconLogout({ className }: { className?: string }) {
             <path d="M10 17l5-5-5-5" />
             <path d="M15 12H3" />
             <path d="M19 3h2v18h-2" />
+        </Svg>
+    );
+}
+
+function IconStore({ className }: { className?: string }) {
+    return (
+        <Svg className={className}>
+            <path d="M3 9l1-5h16l1 5" />
+            <path d="M5 9v11h14V9" />
+            <path d="M9 20v-6h6v6" />
         </Svg>
     );
 }
