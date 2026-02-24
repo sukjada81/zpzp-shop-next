@@ -112,7 +112,7 @@ type ProductDetailResponse = {
 };
 
 export async function publicProductRoutes(app: FastifyInstance) {
-    // GET /:tenant/v1/public/products
+    // GET /:tenant/v1/public/page.tsx
     app.get<{ Querystring: ProductsQuery }>(
         "/v1/public/products",
         async (req, reply) => {
@@ -173,7 +173,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
         },
     );
 
-    // GET /:tenant/v1/public/products/:id
+    // GET /:tenant/v1/public/page.tsx/:id
     app.get<{ Params: { id: string } }>(
         "/v1/public/products/:id",
         async (req, reply) => {

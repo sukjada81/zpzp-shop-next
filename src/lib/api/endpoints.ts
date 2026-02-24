@@ -1,5 +1,5 @@
 export function apiProxy(path: string) {
-    // path 예: "a/v1/public/products"
+    // path 예: "a/v1/public/page.tsx"
     const p = path.replace(/^\//, "");
     return `/api/proxy/${p}`;
 }

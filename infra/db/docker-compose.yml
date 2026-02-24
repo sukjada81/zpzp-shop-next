@@ -10,7 +10,7 @@ services:
       MARIADB_PASSWORD: apppass
       TZ: Asia/Seoul
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - gonggu_mariadb_data:/var/lib/mysql
       - ./init:/docker-entrypoint-initdb.d:ro

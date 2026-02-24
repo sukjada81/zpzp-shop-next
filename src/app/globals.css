@@ -99,3 +99,57 @@ a {
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+
+
+/* ===== Admin Theme (DISCOUNT ALL DAY tone) ===== */
+:root{
+  --dad-ink: #28252A;
+  --dad-orange: #F08148;
+  --dad-cream: #FFF1E0;
+  --dad-paper: #FFFFFF;
+  --dad-muted: #6B6670;
+  --dad-border: rgba(40, 37, 42, 0.12);
+  --dad-shadow: 0 10px 25px rgba(40, 37, 42, 0.08);
+}
+
+.dad-admin{
+  background: linear-gradient(180deg, var(--dad-cream) 0%, #fff 40%, #fff 100%);
+  color: var(--dad-ink);
+}
+
+.dad-card{
+  background: var(--dad-paper);
+  border: 1px solid var(--dad-border);
+  border-radius: 18px;
+  box-shadow: var(--dad-shadow);
+}
+
+.dad-chip{
+  border: 1px solid var(--dad-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dad-ink);
+  background: rgba(255,255,255,0.7);
+}
+
+.dad-btn{
+  border-radius: 14px;
+  font-weight: 800;
+}
+.dad-btn-primary{
+  background: var(--dad-orange);
+  color: white;
+}
+.dad-btn-primary:hover{
+  filter: brightness(0.97);
+}
+.dad-btn-ghost{
+  background: rgba(255,255,255,0.75);
+  border: 1px solid var(--dad-border);
+}
+.dad-btn-ghost:hover{
+  background: rgba(255,255,255,0.95);
+}

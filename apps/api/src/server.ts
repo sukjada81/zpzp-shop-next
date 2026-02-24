@@ -4,6 +4,7 @@ import { prismaPlugin } from "./plugins/prisma.js";
 import { tenantPlugin } from "./plugins/tenant.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
 import { publicProductRoutes } from "./modules/public/products.routes.js";
+import { adminRoutes } from "./modules/admin/admin.routes";
 
 const app = Fastify({ logger: true });
 
@@ -13,11 +14,16 @@ await tenantPlugin(app);
 // tenant 없이도 되는 라우트
 await healthRoutes(app);
 
+// ✅ 통합 관리자 라우트 (tenant prefix 없음)
+await adminRoutes(app);
+
 // ✅ tenant prefix 아래에 public API들을 등록
-// 이제 /a/v1/public/products 형태가 정상 라우트가 됨
-app.register(async (tenantScoped) => {
-    await publicProductRoutes(tenantScoped);
-}, { prefix: "/:tenant" });
+app.register(
+    async (tenantScoped) => {
+        await publicProductRoutes(tenantScoped);
+    },
+    { prefix: "/:tenant" }
+);
 
 const port = Number(process.env.PORT ?? 4000);
 

@@ -30,7 +30,7 @@ function appendSetCookieHeaders(res: NextResponse, upstream: Response) {
 
 function buildTargetUrl(pathParts: string[], req: NextRequest) {
     // /api/proxy/[...path]
-    // 예) /api/proxy/a/v1/public/products -> http://localhost:4000/a/v1/public/products
+    // 예) /api/proxy/a/v1/public/page.tsx -> http://localhost:4000/a/v1/public/products
     const path = pathParts.join("/");
     const url = new URL(`${API_BASE.replace(/\/$/, "")}/${path}`);
     url.search = req.nextUrl.search; // query 전달
