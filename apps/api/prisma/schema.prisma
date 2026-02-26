@@ -73,6 +73,8 @@ model Product {
   maxQty       Int?            @map("max_qty") @db.UnsignedInt
   saleStartAt  DateTime?       @map("sale_start_at")
   saleEndAt    DateTime?       @map("sale_end_at")
+  sortOrder    Int             @default(0) @map("sort_order")
+  deletedAt    DateTime?       @map("deleted_at")
   createdBy    BigInt          @map("created_by") @db.UnsignedBigInt
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
