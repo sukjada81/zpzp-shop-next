@@ -1,52 +1,88 @@
+// apps/api/src/plugins/tenant.ts
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 declare module "fastify" {
     interface FastifyRequest {
-        tenantId?: bigint;
-        tenantSlug?: string;
+        tenantSlug?: string | null;
+        tenantId?: bigint | null;
     }
 }
 
-function extractSubdomain(host: string) {
-    const h = host.split(":")[0].toLowerCase();
-    if (h === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
-    const parts = h.split(".");
-    if (parts.length < 3) return null;
-    return parts[0]; // a.example.com -> a
+function normalizeTenant(raw: unknown) {
+    const t = String(raw ?? "").trim().toLowerCase();
+    if (!t || t === "undefined" || t === "null") return "";
+    return t;
 }
 
-function extractSlugFromPath(url: string) {
-    const path = url.split("?")[0];
-    const seg = path.split("/").filter(Boolean)[0];
-    return seg ? seg.toLowerCase() : null;
+function getHostOnly(req: FastifyRequest) {
+    const host = (req.headers["host"] ?? "").toString();
+    return host.split(":")[0]; // remove port
+}
+
+function isIp(host: string) {
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 }
 
 export async function tenantPlugin(app: FastifyInstance) {
-    const mode = process.env.TENANT_RESOLVE_MODE ?? "host-first";
+    app.addHook("preValidation", async (request, reply) => {
+        const url = request.raw.url ?? request.url ?? "";
 
-    app.addHook("preHandler", async (req: FastifyRequest) => {
-        const host = (req.headers["host"] ?? "").toString();
-        const url = req.url;
-
-        // ✅ 1) 라우트 prefix "/:tenant"에서 tenant 파라미터 우선 사용
-        const params: any = req.params;
-        const fromParam = typeof params?.tenant === "string" ? params.tenant.toLowerCase() : null;
-
-        let slug: string | null = fromParam;
-
-        // ✅ 2) fallback: host/path 방식(나중에 운영/특수 라우트용)
-        if (!slug) {
-            if (mode === "host-first") slug = extractSubdomain(host) ?? extractSlugFromPath(url);
-            else if (mode === "path-only") slug = extractSlugFromPath(url);
-            else slug = extractSubdomain(host) ?? extractSlugFromPath(url);
+        // ✅ tenant 없이 동작해야 하는 라우트는 스킵
+        if (url.startsWith("/admin") || url.startsWith("/health")) {
+            request.tenantSlug = null;
+            request.tenantId = null;
+            return;
         }
 
-        if (!slug) return;
+        const mode = process.env.TENANT_RESOLVE_MODE ?? "host-first";
 
-        const tenant = await app.prisma.tenant.findUnique({ where: { slug } });
-        if (!tenant) return;
+        let slug = "";
 
-        req.tenantId = tenant.id;
-        req.tenantSlug = tenant.slug;
+        // ✅ 1) host 기반 (운영: subdomain)
+        if (mode === "host-first" || mode === "host") {
+            const hostOnly = getHostOnly(request);
+
+            // localhost / IP 접속이면 subdomain tenant 해석 불가
+            if (hostOnly && hostOnly !== "localhost" && !isIp(hostOnly)) {
+                const parts = hostOnly.split(".");
+                // ex) a.example.com => a
+                if (parts.length >= 3) slug = normalizeTenant(parts[0]);
+            }
+        }
+
+        // ✅ 2) path param fallback: /:tenant/...
+        if (!slug) {
+            const params = (request.params ?? {}) as Record<string, unknown>;
+            slug = normalizeTenant(params["tenant"]);
+        }
+
+        if (!slug) {
+            request.tenantSlug = null;
+            request.tenantId = null;
+            // requireTenant에서 TENANT_NOT_RESOLVED 처리
+            return;
+        }
+
+        // ✅ DB에서 tenantId 조회 (Prisma 사용)
+        try {
+            const t = await app.prisma.tenant.findUnique({
+                where: { slug },
+                select: { id: true, slug: true },
+            });
+
+            if (!t) {
+                request.tenantSlug = null;
+                request.tenantId = null;
+                return;
+            }
+
+            request.tenantSlug = t.slug; // 정규화된 slug
+            request.tenantId = t.id;
+        } catch (e) {
+            // DB 문제면 500으로
+            request.tenantSlug = null;
+            request.tenantId = null;
+            reply.code(500).send({ ok: false, error: "TENANT_RESOLVE_FAILED" });
+        }
     });
 }

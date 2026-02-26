@@ -1,3 +1,4 @@
+// src/components/home/HomeBannerCarousel.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,9 +10,8 @@ type Slide = {
     tag?: string;
     title: string;
     sub: string;
-    strongLeft?: string;  // 예: "90% OFF"
-    strongRight?: string; // 예: "25,000원"
-    bg?: string;          // tailwind gradient class
+    strongLeft?: string;
+    strongRight?: string;
 };
 
 export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
@@ -25,7 +25,6 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
                 sub: "OCEAN THE HILL",
                 strongLeft: "90% OFF",
                 strongRight: "25,000원",
-                bg: "bg-gradient-to-r from-emerald-50 to-slate-50",
             },
             {
                 id: "s2",
@@ -35,7 +34,6 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
                 sub: "가입 후 이벤트 참여하고 혜택을 받아보세요.",
                 strongLeft: "혜택",
                 strongRight: "10,000원",
-                bg: "bg-gradient-to-r from-slate-50 to-emerald-50",
             },
             {
                 id: "s3",
@@ -45,7 +43,6 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
                 sub: "빠르게 픽업 가능한 상품을 확인하세요.",
                 strongLeft: "바로",
                 strongRight: "픽업",
-                bg: "bg-gradient-to-r from-emerald-50 to-white",
             },
         ],
         [tenant]
@@ -64,46 +61,45 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
 
     return (
         <div className="mt-2">
-            <div className="relative overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-                <Link href={s.href} className={`block ${s.bg ?? "bg-white"}`}>
+            <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border)] shadow-sm bg-[color:var(--surface)]">
+                {/* ✅ 브랜드 톤앤매너: 그라데이션 제거, 깔끔한 솔리드/소프트 배경 */}
+                <Link
+                    href={s.href}
+                    className="block"
+                    style={{
+                        background: "var(--accent-soft)",
+                    }}
+                >
                     <div className="px-4 py-4">
-                        {/* top line: tag + tenant brand */}
+                        {/* top line: tag only (tenant/DAICLO 제거) */}
                         <div className="flex items-start justify-between gap-3">
-              <span className="inline-flex items-center rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white">
+              <span
+                  className="inline-flex items-center rounded-full px-3 py-1 text-xs font-extrabold text-white"
+                  style={{ background: "var(--accent)" }}
+              >
                 {s.tag ?? "자세히 보기"}
               </span>
-
-                            <div className="text-right">
-                                <div className="text-[11px] font-semibold text-slate-400">
-                                    {tenant}
-                                </div>
-                                <div className="text-[11px] font-semibold text-slate-500">
-                                    DAICLO
-                                </div>
-                            </div>
+                            {/* 오른쪽 정보 제거 */}
+                            <div />
                         </div>
 
                         {/* copy */}
                         <div className="mt-2">
-                            <div className="text-base font-extrabold text-slate-900 leading-snug">
+                            <div className="text-base font-extrabold text-[color:var(--fg)] leading-snug">
                                 {s.title}
                             </div>
-                            <div className="mt-1 text-xs text-slate-500">{s.sub}</div>
+                            <div className="mt-1 text-xs text-[color:var(--muted)]">{s.sub}</div>
                         </div>
 
                         {/* price line */}
                         {(s.strongLeft || s.strongRight) && (
                             <div className="mt-2 flex items-center gap-2 text-sm">
                                 {s.strongLeft ? (
-                                    <span className="font-extrabold text-emerald-700">
-                    {s.strongLeft}
-                  </span>
+                                    <span className="font-extrabold text-[color:var(--brand)]">{s.strongLeft}</span>
                                 ) : null}
-                                <span className="text-slate-300">|</span>
+                                <span className="text-[color:var(--muted)]/40">|</span>
                                 {s.strongRight ? (
-                                    <span className="font-extrabold text-slate-900">
-                    {s.strongRight}
-                  </span>
+                                    <span className="font-extrabold text-[color:var(--fg)]">{s.strongRight}</span>
                                 ) : null}
                             </div>
                         )}
@@ -119,7 +115,7 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
                             onClick={() => setIdx(i)}
                             aria-label={`slide ${i + 1}`}
                             className={`h-2 w-2 rounded-full ${
-                                i === idx ? "bg-slate-900" : "bg-slate-300"
+                                i === idx ? "bg-[color:var(--brand)]" : "bg-[color:var(--muted)]/40"
                             }`}
                         />
                     ))}

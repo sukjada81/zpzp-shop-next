@@ -8,6 +8,7 @@ export type GoodsDetailData = {
     id: string;
     title: string;
     price: number;
+    description?: string | null;
     badges?: { left?: string; right?: string };
     meta?: { timeLeft?: string; pickup?: string };
     images: { key: string; label?: string }[];
@@ -30,12 +31,28 @@ type SelectedLine = {
     soldout: boolean;
 };
 
+function cn(...xs: Array<string | false | null | undefined>) {
+    return xs.filter(Boolean).join(" ");
+}
+
+function parseDescription(desc?: string | null) {
+    const raw = String(desc ?? "").trim();
+    if (!raw) return { lines: [] as string[] };
+
+    const lines = raw
+        .replace(/\r\n/g, "\n")
+        .split("\n")
+        .map((l) => l.trimEnd())
+        .filter((l) => l.trim().length > 0);
+
+    return { lines };
+}
+
 export default function GoodsDetailClient(props: { tenant: string; data: GoodsDetailData }) {
     const { tenant, data } = props;
     const router = useRouter();
     const cart = useCart() as any;
 
-    // ✅ images가 0개여도 안전하게
     const safeImages = useMemo(() => {
         if (Array.isArray(data.images) && data.images.length > 0) return data.images;
         return [{ key: "", label: "이미지 없음" }];
@@ -44,7 +61,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const [imgIdx, setImgIdx] = useState(0);
     const canCarousel = safeImages.length > 1;
 
-    // 옵션별 수량
     const [qty, setQty] = useState<Record<string, number>>(() =>
         Object.fromEntries(data.options.map((o) => [o.id, 0])),
     );
@@ -70,18 +86,17 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     }, [qty, data.options, data.price]);
 
     const subtotal = useMemo(() => selectedLines.reduce((sum, l) => sum + l.lineTotal, 0), [selectedLines]);
-
     const totalCount = useMemo(() => selectedLines.reduce((a, b) => a + b.quantity, 0), [selectedLines]);
-
     const canOrder = totalCount > 0;
 
-    // ✅ MVP 배송비(표시/계산만): 추후 정책 API로 교체
     const SHIPPING_FEE = 4000;
     const shipping = canOrder ? SHIPPING_FEE : 0;
     const grandTotal = subtotal + shipping;
 
     const imgLabel = safeImages?.[imgIdx]?.label?.trim();
     const [sheetOpen, setSheetOpen] = useState(false);
+
+    const { lines: descLines } = useMemo(() => parseDescription(data.description), [data.description]);
 
     function addLinesToCart() {
         const payloadItems = selectedLines.map((l) => ({
@@ -126,7 +141,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         const opt = optionById.get(optionId);
         const isSoldout = !!opt?.soldout;
 
-        // ✅ 품절 옵션은 + 불가 (완전 비활성)
         if (delta > 0 && isSoldout) return;
 
         setQty((prev) => {
@@ -138,99 +152,153 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     return (
         <main className="mx-auto max-w-[520px] pb-24">
-            {/* 상단 상품 카드 */}
-            <div className="px-4 pt-3">
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <div className="relative bg-slate-100">
-                        {/* 이미지 영역 */}
-                        {safeImages[imgIdx]?.key ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                                src={safeImages[imgIdx].key}
-                                alt={data.title}
-                                className="h-auto w-full object-cover"
-                            />
-                        ) : (
-                            <div className="aspect-[4/3]" />
-                        )}
+            {/* ✅ 상단 카드(이미지/상품명/가격/설명까지 한 덩어리) */}
+            <section className="bg-white">
+                <div className="relative bg-slate-100">
+                    {safeImages[imgIdx]?.key ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={safeImages[imgIdx].key} alt={data.title} className="h-auto w-full object-cover" />
+                    ) : (
+                        <div className="aspect-[4/3]" />
+                    )}
 
-                        {/* 배지 */}
-                        <div className="absolute left-3 top-3 flex gap-2">
-                            {data.badges?.left ? (
-                                <span className="rounded-full bg-[color:var(--brand)] px-2.5 py-1 text-[11px] font-extrabold text-white">
-                  {data.badges.left}
-                </span>
-                            ) : null}
-                            {data.badges?.right ? (
-                                <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-extrabold text-white">
-                  {data.badges.right}
-                </span>
-                            ) : null}
-                        </div>
-
-                        {/* 이미지 라벨 */}
-                        {imgLabel ? (
-                            <div className="absolute bottom-3 left-3">
-                <span className="rounded-md bg-white/90 px-2 py-1 text-[11px] font-extrabold text-slate-900">
-                  {imgLabel}
-                </span>
-                            </div>
+                    {/* 배지 */}
+                    <div className="absolute left-3 top-3 flex gap-2">
+                        {data.badges?.left ? (
+                            <span className="rounded-full bg-[color:var(--brand)] px-2.5 py-1 text-[11px] font-extrabold text-white">
+                {data.badges.left}
+              </span>
                         ) : null}
-
-                        {/* 캐러셀 버튼 */}
-                        {canCarousel ? (
-                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setImgIdx((v) => (v - 1 + safeImages.length) % safeImages.length)}
-                                    className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
-                                    aria-label="이전 이미지"
-                                >
-                                    ‹
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setImgIdx((v) => (v + 1) % safeImages.length)}
-                                    className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
-                                    aria-label="다음 이미지"
-                                >
-                                    ›
-                                </button>
-                            </div>
+                        {data.badges?.right ? (
+                            <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-extrabold text-white">
+                {data.badges.right}
+              </span>
                         ) : null}
                     </div>
 
-                    <div className="px-4 py-4">
-                        <div className="text-[15px] font-extrabold text-slate-900">{data.title}</div>
-
-                        <div className="mt-2 flex items-end justify-between gap-3">
-                            <div className="text-xl font-extrabold text-slate-900">{data.price.toLocaleString()}원</div>
-                            <div className="text-right text-[12px] font-semibold text-slate-500">
-                                {data.meta?.timeLeft ? <div>{data.meta.timeLeft}</div> : null}
-                                {data.meta?.pickup ? <div className="mt-0.5">{data.meta.pickup}</div> : null}
-                            </div>
+                    {imgLabel ? (
+                        <div className="absolute bottom-3 left-3">
+              <span className="rounded-md bg-white/90 px-2 py-1 text-[11px] font-extrabold text-slate-900">
+                {imgLabel}
+              </span>
                         </div>
+                    ) : null}
 
-                        {data.notices?.length ? (
-                            <div className="mt-3 space-y-2">
-                                {data.notices.map((n, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-semibold text-slate-700"
-                                    >
-                                        <span className="mr-2">{n.icon ?? "ℹ️"}</span>
-                                        {n.text}
-                                    </div>
-                                ))}
-                            </div>
-                        ) : null}
-                    </div>
+                    {canCarousel ? (
+                        <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setImgIdx((v) => (v - 1 + safeImages.length) % safeImages.length)}
+                                className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
+                                aria-label="이전 이미지"
+                            >
+                                ‹
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setImgIdx((v) => (v + 1) % safeImages.length)}
+                                className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
+                                aria-label="다음 이미지"
+                            >
+                                ›
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
-            </div>
 
-            {/* 옵션/구성 */}
-            <div className="px-4">
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                {/* ✅ 이미지 아래: 상품명/가격/칩 + 상세설명(같은 박스 안) */}
+                <div className="px-4 pt-4 pb-6">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[20px] font-extrabold leading-snug text-slate-900">{data.title}</div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                                <span className="text-[14px] font-extrabold text-rose-600">₩</span>
+                                <span className="text-[28px] font-extrabold text-slate-900 tabular-nums">
+                  {data.price.toLocaleString()}
+                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {data.meta?.timeLeft ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[12px] font-extrabold text-rose-700">
+                ⏰ {data.meta.timeLeft}
+              </span>
+                        ) : null}
+
+                        {data.meta?.pickup ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-extrabold text-slate-700">
+                🚚 {data.meta.pickup}
+              </span>
+                        ) : null}
+                    </div>
+
+                    {/* (레퍼런스처럼) 안내 문구 */}
+                    <div className="mt-5 text-center text-[12px] font-semibold text-slate-400">
+                        이미지 클릭시 상세보기 가능합니다.
+                    </div>
+
+                    {/* ✅ 여기! "상세 설명" 타이틀/박스 없이, 바로 본문처럼 노출 */}
+                    {descLines.length ? (
+                        <div className="mt-5 space-y-2">
+                            {descLines.map((line, i) => {
+                                const trimmed = line.trim();
+
+                                // 체크/불릿 비슷하게 렌더
+                                if (trimmed.startsWith("✓") || trimmed.startsWith("✔")) {
+                                    return (
+                                        <div key={i} className="flex gap-2 text-[14px] font-semibold leading-relaxed text-slate-800">
+                                            <span className="mt-[2px] text-slate-900">✓</span>
+                                            <span className="whitespace-pre-wrap break-words">
+                        {trimmed.replace(/^([✓✔]\s*)/, "")}
+                      </span>
+                                        </div>
+                                    );
+                                }
+
+                                if (trimmed.startsWith("-")) {
+                                    return (
+                                        <div key={i} className="flex gap-2 text-[14px] font-semibold leading-relaxed text-slate-800">
+                                            <span className="mt-[2px] text-slate-400">•</span>
+                                            <span className="whitespace-pre-wrap break-words">{trimmed.replace(/^-+\s*/, "")}</span>
+                                        </div>
+                                    );
+                                }
+
+                                // 아이콘/이모지로 시작하는 줄도 자연스럽게
+                                return (
+                                    <div key={i} className="whitespace-pre-wrap break-words text-[14px] font-semibold leading-relaxed text-slate-800">
+                                        {line}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : null}
+
+                    {/* 공지(있으면) */}
+                    {data.notices?.length ? (
+                        <div className="mt-5 space-y-2">
+                            {data.notices.map((n, idx) => (
+                                <div
+                                    key={idx}
+                                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700"
+                                >
+                                    <span className="mr-2">{n.icon ?? "ℹ️"}</span>
+                                    {n.text}
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
+            </section>
+
+            {/* ✅ 옵션/구성 */}
+            <section className="px-4 pt-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div className="text-[15px] font-extrabold text-slate-900">구성 선택</div>
                         <span className="rounded-full bg-[color:var(--brand-weak)] px-2 py-1 text-[11px] font-extrabold text-[color:var(--brand)]">
@@ -269,12 +337,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                 type="button"
                                                 disabled={disabled || q <= 0}
                                                 onClick={() => adjustQty(o.id, -1)}
-                                                className={[
+                                                className={cn(
                                                     "grid h-10 w-10 place-items-center rounded-full border text-lg font-black",
                                                     disabled || q <= 0
                                                         ? "border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed"
                                                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-                                                ].join(" ")}
+                                                )}
                                                 aria-label="수량 감소"
                                             >
                                                 –
@@ -286,12 +354,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                 type="button"
                                                 disabled={disabled}
                                                 onClick={() => adjustQty(o.id, +1)}
-                                                className={[
+                                                className={cn(
                                                     "grid h-10 w-10 place-items-center rounded-full border text-lg font-black",
                                                     disabled
                                                         ? "border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed"
                                                         : "border-[color:var(--brand)] bg-[color:var(--brand)] text-white hover:opacity-90",
-                                                ].join(" ")}
+                                                )}
                                                 aria-label="수량 증가"
                                             >
                                                 +
@@ -309,15 +377,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                         })}
                     </div>
                 </div>
-            </div>
+            </section>
 
-            {/* ✅ 상품 상세 하단 "구매하기" → 시트 오픈 */}
+            {/* ✅ 하단 구매하기 바 */}
             {!sheetOpen ? (
                 <div className="fixed bottom-0 left-0 right-0 z-[50] border-t border-slate-200 bg-white/95 backdrop-blur">
-                    <div
-                        className="mx-auto max-w-[520px] px-4 py-3"
-                        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
-                    >
+                    <div className="mx-auto max-w-[520px] px-4 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
@@ -356,7 +421,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     />
 
                     <div className="fixed bottom-0 left-0 right-0 z-[81]">
-                        <div className="mx-auto max-w-[520px] rounded-t-3xl bg-white shadow-2xl overflow-hidden">
+                        <div className="mx-auto max-w-[520px] overflow-hidden rounded-t-3xl bg-white shadow-2xl">
                             <div className="flex justify-center pt-3">
                                 <div className="h-1.5 w-10 rounded-full bg-slate-200" />
                             </div>
@@ -424,25 +489,27 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                                         type="button"
                                                                         onClick={() => adjustQty(l.optionId, -1)}
                                                                         disabled={l.quantity <= 0}
-                                                                        className={[
+                                                                        className={cn(
                                                                             "grid h-8 w-8 place-items-center rounded-full bg-white text-sm font-black shadow-sm",
                                                                             l.quantity <= 0 ? "text-slate-300 cursor-not-allowed" : "text-slate-700",
-                                                                        ].join(" ")}
+                                                                        )}
                                                                         aria-label="수량 감소"
                                                                     >
                                                                         –
                                                                     </button>
 
-                                                                    <div className="w-8 text-center text-[13px] font-extrabold tabular-nums text-slate-900">{l.quantity}</div>
+                                                                    <div className="w-8 text-center text-[13px] font-extrabold tabular-nums text-slate-900">
+                                                                        {l.quantity}
+                                                                    </div>
 
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => adjustQty(l.optionId, +1)}
                                                                         disabled={soldout}
-                                                                        className={[
+                                                                        className={cn(
                                                                             "grid h-8 w-8 place-items-center rounded-full bg-white text-sm font-black shadow-sm",
                                                                             soldout ? "text-slate-300 cursor-not-allowed" : "text-slate-700",
-                                                                        ].join(" ")}
+                                                                        )}
                                                                         aria-label="수량 증가"
                                                                     >
                                                                         +
@@ -466,7 +533,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
                                     <div className="mt-3 flex items-center justify-between px-1">
                                         <div className="text-[13px] font-extrabold text-slate-900">총 상품금액</div>
-                                        <div className="text-[16px] font-extrabold text-slate-900 tabular-nums">{grandTotal.toLocaleString()}원</div>
+                                        <div className="text-[16px] font-extrabold text-slate-900 tabular-nums">
+                                            {grandTotal.toLocaleString()}원
+                                        </div>
                                     </div>
                                 </div>
 
@@ -477,10 +546,10 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                 type="button"
                                                 disabled={!canOrder}
                                                 onClick={goCart}
-                                                className={[
+                                                className={cn(
                                                     "h-12 flex-1 rounded-2xl text-sm font-extrabold active:scale-[0.995]",
                                                     canOrder ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-400 cursor-not-allowed",
-                                                ].join(" ")}
+                                                )}
                                             >
                                                 장바구니
                                             </button>
@@ -489,10 +558,10 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                 type="button"
                                                 disabled={!canOrder}
                                                 onClick={goOrder}
-                                                className={[
+                                                className={cn(
                                                     "h-12 flex-1 rounded-2xl text-sm font-extrabold text-white active:scale-[0.995]",
                                                     canOrder ? "bg-red-500" : "bg-slate-300 cursor-not-allowed",
-                                                ].join(" ")}
+                                                )}
                                             >
                                                 바로 구매
                                             </button>

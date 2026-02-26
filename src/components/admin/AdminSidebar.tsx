@@ -2,23 +2,20 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useAdminUiStore } from "@/lib/admin/adminUiStore";
 
 const items = [
     { label: "대시보드", href: "/admin/dashboard", icon: "📊" },
-    { label: "지점 관리", href: "/admin/tenants", icon: "🏬" },
-    { label: "상품", href: "/admin/page.tsx", icon: "🧾" },
+    { label: "지점 관리", href: "/admin/route.ts", icon: "🏬" },
+    { label: "상품", href: "/admin/products", icon: "🧾" },
     { label: "주문", href: "/admin/orders", icon: "📦" },
     { label: "포인트", href: "/admin/points", icon: "🪙" },
 ];
 
-export default function AdminSidebar({
-                                         open,
-                                         onClose,
-                                     }: {
-    open: boolean;
-    onClose: () => void;
-}) {
+export default function AdminSidebar() {
     const pathname = usePathname();
+    const open = useAdminUiStore((s) => s.sidebarOpen);
+    const closeSidebar = useAdminUiStore((s) => s.closeSidebar);
 
     return (
         <>
@@ -28,7 +25,7 @@ export default function AdminSidebar({
                     "fixed inset-0 z-40 bg-black/30 transition-opacity lg:hidden",
                     open ? "opacity-100" : "pointer-events-none opacity-0",
                 ].join(" ")}
-                onClick={onClose}
+                onClick={closeSidebar}
             />
 
             <aside

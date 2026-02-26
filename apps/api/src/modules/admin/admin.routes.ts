@@ -180,7 +180,7 @@ export async function adminRoutes(app: FastifyInstance) {
     }
 
     // ---------------------------
-    // GET /admin/v1/tenants
+    // GET /admin/v1/route.ts
     // ---------------------------
     app.get(
         "/admin/v1/tenants",

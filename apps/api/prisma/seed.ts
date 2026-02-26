@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-    // tenants upsert
+    // route.ts upsert
     const a = await prisma.tenant.upsert({
         where: { slug: "a" },
         update: { name: "A 지점", primaryDomain: "a.example.com", status: "active" },

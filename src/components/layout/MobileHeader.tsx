@@ -1,7 +1,10 @@
+// src/components/layout/MobileHeader.tsx
 "use client";
 
 import Link from "next/link";
 import Image from "next/image";
+
+const BRAND_NAME = "디스카운트 올데이";
 
 export default function MobileHeader({
                                          title,
@@ -33,7 +36,7 @@ export default function MobileHeader({
             </span>
                     </button>
 
-                    {/* 중앙: 로고/브랜드 (기본) | 텍스트(주문서) */}
+                    {/* 중앙: 기본=로고만(크게) | 주문서=텍스트 */}
                     <div className="flex-1 flex items-center justify-center">
                         {isOrder ? (
                             <div className="text-base font-extrabold tracking-tight text-[color:var(--brand)]">
@@ -42,28 +45,19 @@ export default function MobileHeader({
                         ) : (
                             <Link
                                 href={`/${tenant}/home`}
-                                className="flex items-center gap-2 rounded-full px-2 py-1 transition hover:bg-[color:var(--accent-soft)]"
+                                className="flex items-center justify-center rounded-full px-2 py-1 transition hover:bg-[color:var(--accent-soft)]"
                                 aria-label="홈으로"
                             >
-                                {/* 로고: public/brand/logo.svg 를 넣어주세요 */}
-                                <span className="relative h-8 w-8">
+                                {/* ✅ 로고 크기 업: 32 -> 44 */}
+                                <span className="relative h-31 w-31">
                   <Image
-                      src="/brand/logo.svg"
-                      alt="디스카운트 올데이"
+                      src="/logo.png"
+                      alt={BRAND_NAME}
                       fill
-                      sizes="32px"
+                      sizes="44px"
                       className="object-contain"
                       priority
-                      onError={(e) => {
-                          // next/image onError fallback은 제한적이라,
-                          // 로고 파일이 없으면 아래 텍스트가 주요 식별자가 됩니다.
-                          // (실제 파일만 넣어주면 해결)
-                      }}
                   />
-                </span>
-
-                                <span className="text-[15px] font-extrabold tracking-tight text-[color:var(--brand)]">
-                  {title}
                 </span>
                             </Link>
                         )}

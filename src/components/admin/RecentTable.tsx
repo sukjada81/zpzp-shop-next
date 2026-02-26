@@ -32,7 +32,7 @@ export default function RecentTable({
             <div className="flex items-center justify-between border-b px-4 py-3">
                 <div className="text-sm font-bold text-slate-900">{title}</div>
                 <a
-                    href={`/admin/${tenant}/orders`}
+                    href={`/admin/orders`}
                     className="text-xs font-semibold text-slate-700 hover:underline"
                 >
                     전체 보기 →
@@ -89,7 +89,7 @@ export default function RecentTable({
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                     <a
-                                        href={`/admin/${tenant}/orders?orderNo=${encodeURIComponent(r.orderNo)}`}
+                                        href={`/admin/orders?orderNo=${encodeURIComponent(r.orderNo)}`}
                                         className="rounded-lg border px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50"
                                     >
                                         보기

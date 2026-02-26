@@ -25,22 +25,19 @@ type PublicProductsResponse = {
         title: string;
         price: number;
         metaLeft?: string;
-        metaRight?: string; // "픽업" 같은 값
+        metaRight?: string;
     }>;
 };
 
 async function fetchProducts(tenant: string) {
     const baseUrl =
         process.env.NEXT_PUBLIC_BASE_URL ||
-        (process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : "http://localhost:3000");
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
     const url = new URL(`/api/proxy/${tenant}/v1/public/products`, baseUrl);
     url.searchParams.set("take", "50");
 
     const res = await fetch(url.toString(), { cache: "no-store" });
-
     if (!res.ok) return [];
 
     const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
@@ -54,10 +51,7 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
         id: String(p.id),
         title: p.title,
         price: Number(p.price ?? 0),
-        tags: [
-            ...(p.metaLeft ? [p.metaLeft] : []),
-            ...(p.metaRight ? [p.metaRight] : []),
-        ].slice(0, 2),
+        tags: [...(p.metaLeft ? [p.metaLeft] : []), ...(p.metaRight ? [p.metaRight] : [])].slice(0, 2),
     }));
 }
 
@@ -71,15 +65,12 @@ export default async function HomePage({
     if (!tenant || tenant === "undefined" || tenant === "null") notFound();
 
     const products = await fetchProducts(tenant);
-
-    // 섹션 구성 (MVP)
     const pickup = products.filter((p) => (p.metaRight || "").includes("픽업"));
-    const nonPickup = products.filter((p) => !(p.metaRight || "").includes("픽업"));
 
     const todaySection: GridSection = {
         title: "오늘의 공구",
         href: `/${tenant}/goods`,
-        items: toCardItems(nonPickup.slice(0, 4)),
+        items: toCardItems(products.slice(0, 4)),
     };
 
     const pickupSection: GridSection = {
@@ -108,29 +99,33 @@ export default async function HomePage({
             <SectionTitle title={ongoingSection.title} href={ongoingSection.href} />
             <Grid2 tenant={tenant} items={ongoingSection.items} emptyText="진행 중인 공구가 없습니다." />
 
-            {/* 프로모 카드(현재는 고정 UI 유지) */}
+            {/* ✅ 프로모 카드: 그라데이션 제거 + 문구 짧게 */}
             <section className="mt-6">
-                <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm">
-                    <div className="h-[230px] bg-gradient-to-br from-emerald-500 to-teal-400 relative">
+                <div className="rounded-2xl overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
+                    <div
+                        className="h-[230px] relative"
+                        style={{
+                            background: "var(--brand)",
+                        }}
+                    >
                         <div className="absolute inset-0 p-5 text-white">
-                            <div className="text-[24px] font-extrabold leading-tight">
-                                카니발
-                                <br />
-                                하이브리드
-                                <br />
-                                20대 한정
+                            <div className="text-[22px] font-extrabold leading-tight">
+                                장기렌트/리스
                             </div>
-                            <div className="mt-3 text-sm font-bold opacity-95">초기비용 0원!</div>
+                            <div className="mt-2 text-sm font-bold opacity-95">빠르게 견적 받아보세요</div>
 
                             <div className="absolute bottom-4 left-4 right-4">
-                                <div className="rounded-2xl bg-white/90 p-3 text-slate-900">
-                                    <div className="text-xs font-bold">[JAG] 신차 장기렌트 및 리스 문의</div>
-                                    <div className="mt-1 text-[11px] text-slate-600">상담 신청 후 안내드립니다.</div>
+                                <div className="rounded-2xl bg-white/90 p-3 text-[color:var(--fg)]">
+                                    <div className="text-xs font-bold">신차 장기렌트/리스</div>
+                                    <div className="mt-1 text-[11px] text-[color:var(--muted)]">
+                                        상담 신청 후 안내드립니다.
+                                    </div>
                                     <button
                                         type="button"
-                                        className="mt-3 w-full rounded-xl bg-slate-900 py-3 text-sm font-extrabold text-white active:scale-[0.99]"
+                                        className="mt-3 w-full rounded-xl py-3 text-sm font-extrabold text-white active:scale-[0.99]"
+                                        style={{ background: "var(--accent)" }}
                                     >
-                                        상담 신청하기
+                                        상담 신청
                                     </button>
                                 </div>
                             </div>
@@ -146,8 +141,8 @@ function SectionTitle({ title, href }: { title: string; href: string }) {
     return (
         <section className="mt-6">
             <div className="flex items-center justify-between">
-                <div className="text-base font-extrabold text-slate-900">{title}</div>
-                <Link href={href} className="text-xs font-bold text-slate-500 hover:text-slate-700">
+                <div className="text-base font-extrabold text-[color:var(--fg)]">{title}</div>
+                <Link href={href} className="text-xs font-bold text-[color:var(--muted)] hover:opacity-80">
                     더보기 &gt;
                 </Link>
             </div>
@@ -167,7 +162,7 @@ function Grid2({
     if (!items.length) {
         return (
             <section className="mt-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-600">
+                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm font-semibold text-[color:var(--muted)]">
                     {emptyText}
                 </div>
             </section>
@@ -180,17 +175,19 @@ function Grid2({
                 <Link
                     key={it.id}
                     href={`/${tenant}/goods/${it.id}`}
-                    className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden active:scale-[0.995]"
+                    className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm overflow-hidden active:scale-[0.995]"
                 >
-                    <div className="aspect-[4/3] bg-slate-100">
-                        <div className="h-full w-full bg-gradient-to-br from-slate-100 to-slate-200" />
+                    <div className="aspect-[4/3] bg-[color:var(--brand-soft)]">
+                        <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
                     </div>
 
                     <div className="p-3">
-                        <div className="line-clamp-2 text-[13px] font-extrabold text-slate-900">{it.title}</div>
+                        <div className="line-clamp-2 text-[13px] font-extrabold text-[color:var(--fg)]">
+                            {it.title}
+                        </div>
 
                         <div className="mt-2 flex items-center justify-between">
-                            <div className="text-[15px] font-extrabold tabular-nums text-slate-900">
+                            <div className="text-[15px] font-extrabold tabular-nums text-[color:var(--fg)]">
                                 {it.price.toLocaleString()}원
                             </div>
                         </div>
@@ -200,7 +197,7 @@ function Grid2({
                                 {it.tags.slice(0, 2).map((t) => (
                                     <div
                                         key={t}
-                                        className="inline-flex max-w-full items-center rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600"
+                                        className="inline-flex max-w-full items-center rounded-full bg-[color:var(--accent-soft)] px-2 py-1 text-[11px] font-bold text-[color:var(--brand)]"
                                     >
                                         <span className="truncate">{t}</span>
                                     </div>
@@ -209,7 +206,7 @@ function Grid2({
                         ) : null}
 
                         <div className="mt-3">
-                            <div className="w-full rounded-xl border border-slate-200 bg-white py-2 text-center text-[12px] font-extrabold text-slate-700">
+                            <div className="w-full rounded-xl border border-[color:var(--border)] bg-white py-2 text-center text-[12px] font-extrabold text-[color:var(--brand)]">
                                 자세히 보기
                             </div>
                         </div>

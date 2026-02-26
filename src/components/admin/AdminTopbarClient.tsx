@@ -1,3 +1,4 @@
+// src/components/admin/AdminTopbarClient.tsx
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -24,11 +25,24 @@ export default function AdminTopbarClient() {
                 Dashboard
             </a>
             <a
-                href="/admin/tenants"
+                href="/admin/products"
                 className="rounded-full border border-[var(--dad-border)] bg-white/70 px-4 py-2 text-sm font-bold text-[var(--dad-ink)]"
             >
-                Tenants
+                Products
             </a>
+            <a
+                href="/admin/orders"
+                className="rounded-full border border-[var(--dad-border)] bg-white/70 px-4 py-2 text-sm font-bold text-[var(--dad-ink)]"
+            >
+                Orders
+            </a>
+            <a
+                href="/admin/points"
+                className="rounded-full border border-[var(--dad-border)] bg-white/70 px-4 py-2 text-sm font-bold text-[var(--dad-ink)]"
+            >
+                Points
+            </a>
+
             <button
                 onClick={onLogout}
                 className="rounded-full bg-[var(--dad-orange)] px-4 py-2 text-sm font-extrabold text-white shadow-sm"

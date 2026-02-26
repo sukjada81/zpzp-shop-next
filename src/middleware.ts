@@ -7,7 +7,7 @@ function isGlobalRoute(pathname: string) {
         pathname.startsWith("/select-tenant/") ||
         pathname === "/login" ||
         pathname.startsWith("/login/") ||
-        pathname === "/admin/login" || // ✅ admin login은 쉘/보호 제외
+        pathname === "/admin/login" ||
         pathname.startsWith("/admin/login/")
     );
 }
@@ -48,7 +48,6 @@ function extractTenant(pathname: string) {
     return segs[0] || "";
 }
 
-// ✅ 통합 관리자 경로 여부
 function isAdminPath(pathname: string) {
     return pathname === "/admin" || pathname.startsWith("/admin/");
 }
@@ -62,16 +61,13 @@ export async function middleware(req: NextRequest) {
     // A-1. 글로벌 라우트는 tenant rewrite 금지
     if (isGlobalRoute(pathname)) return NextResponse.next();
 
-    // ✅ A-2. 통합 admin은 tenant rewrite 금지 (host 기반 rewrite에 말려들면 안됨)
+    // ✅ A-2. 통합 admin 보호 (tenant rewrite 금지 + 세션 체크)
     if (isAdminPath(pathname)) {
-        // ✅ /admin/login은 위에서 이미 통과
-        // ✅ /admin/* 는 세션 체크 후 없으면 로그인으로
-        const sessionCheckUrl = req.nextUrl.clone();
-        sessionCheckUrl.pathname = "/api/admin/session";
-        sessionCheckUrl.search = "";
+        const sessionUrl = req.nextUrl.clone();
+        sessionUrl.pathname = "/api/admin/session";
+        sessionUrl.search = "";
 
-        // 현재 요청의 cookie를 그대로 포함해서 내부 API 호출
-        const res = await fetch(sessionCheckUrl, {
+        const res = await fetch(sessionUrl, {
             headers: { cookie: req.headers.get("cookie") || "" },
         });
 
@@ -103,7 +99,7 @@ export async function middleware(req: NextRequest) {
     // C. 기존 public path 통과
     if (isPublicPath(pathname)) return NextResponse.next();
 
-    // D. 인증 필요 여부(tenant 앱/셀러)
+    // D. tenant 앱/셀러 인증 필요 여부
     if (!needsAuth(pathname)) return NextResponse.next();
 
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";

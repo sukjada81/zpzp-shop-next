@@ -3,6 +3,17 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { getTenantList } from "@/lib/tenant/tenants";
 
+const TENANT_IMAGES: Record<string, { label?: string }> = {
+    // slug별로 실제 이미지가 생기면 여기만 바꾸면 됩니다.
+    // 예: "a": { image: "/tenants/a.jpg" }
+};
+
+function normalizeTenant(raw: string) {
+    const t = (raw || "").toLowerCase().trim();
+    if (!t || t === "undefined" || t === "null") return "";
+    return t;
+}
+
 export default async function SelectTenantPage() {
     const ck = await cookies();
 
@@ -10,101 +21,177 @@ export default async function SelectTenantPage() {
     const isLoggedIn = ck.get("mockLogin")?.value === "1";
 
     // ✅ 현재 선택 지점(= active tenant)
-    // 기존 쿠키명이 selectedTenant이므로 우선 유지
-    const active = (ck.get("selectedTenant")?.value || "").toLowerCase();
+    const active = normalizeTenant(ck.get("selectedTenant")?.value || "");
 
     const tenants = getTenantList();
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24">
-            <div className="pt-8">
-                <div className="text-[22px] font-extrabold text-slate-900 leading-tight">
-                    가맹점(지점)을 선택해 주세요
-                </div>
-
-                <div className="mt-2 text-sm font-semibold text-slate-600">
-                    지점마다 상품/주문/포인트 데이터가 분리됩니다.
-                </div>
-
-                {/* ✅ 로그인 상태 + active tenant가 있으면 안내만 보여주고, 리다이렉트는 하지 않음 */}
-                {isLoggedIn ? (
-                    <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="text-[13px] font-extrabold text-slate-900">현재 상태</div>
-                        <div className="mt-2 text-[12px] font-semibold text-slate-700">
-                            로그인: <span className="font-extrabold">완료</span>
+            <div className="pt-7">
+                {/* 타이틀: 최소 문구 */}
+                <div className="flex items-end justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">
+                            지점 선택
                         </div>
-                        <div className="mt-1 text-[12px] font-semibold text-slate-700">
-                            현재 지점:{" "}
-                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-extrabold text-slate-700">
-                {active ? `/${active}` : "/-"}
-              </span>
-                        </div>
-                        <div className="mt-2 text-[12px] font-semibold text-slate-600">
-                            다른 지점으로 바꾸려면 아래 목록에서 선택하세요.
+                        <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
+                            원하시는 지점을 눌러 들어가세요.
                         </div>
                     </div>
-                ) : (
-                    <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                        <div className="text-[13px] font-extrabold text-amber-900">안내</div>
-                        <div className="mt-2 text-[12px] font-semibold text-amber-800">
-                            로그인하지 않아도 지점은 먼저 선택할 수 있어요.
-                        </div>
-                    </div>
-                )}
 
-                <div className="mt-6 grid gap-3">
+                    {/* 상태 뱃지(최소) */}
+                    <div className="shrink-0">
+            {/*<span*/}
+            {/*    className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-extrabold"*/}
+            {/*    style={{*/}
+            {/*        background: "var(--brand-soft)",*/}
+            {/*        color: "var(--brand)",*/}
+            {/*        border: "1px solid var(--border)",*/}
+            {/*    }}*/}
+            {/*    title={isLoggedIn ? "로그인됨" : "로그인 전"}*/}
+            {/*>*/}
+            {/*  {isLoggedIn ? "로그인" : "게스트"}*/}
+            {/*</span>*/}
+                    </div>
+                </div>
+
+                {/* 카드 그리드 */}
+                <section className="mt-5 grid gap-3">
                     {tenants.map((t) => {
-                        const isActive = active && t.slug.toLowerCase() === active;
+                        const slug = normalizeTenant(t.slug);
+                        const isActive = !!active && slug === active;
+
+                        // placeholder “빌딩 이미지” 영역에 들어갈 보조 라벨 (필요하면 사용)
+                        const imgLabel = TENANT_IMAGES[slug]?.label;
+
                         return (
                             <Link
                                 key={t.slug}
                                 href={`/api/tenant/select?tenant=${encodeURIComponent(t.slug)}`}
                                 className={[
-                                    "rounded-2xl border bg-white p-4 shadow-sm active:scale-[0.995]",
-                                    isActive ? "border-[color:var(--brand)]" : "border-slate-200",
+                                    "group block overflow-hidden rounded-2xl border bg-white shadow-sm transition",
+                                    "hover:-translate-y-[1px] hover:shadow-md active:scale-[0.995]",
+                                    isActive ? "border-[color:var(--brand)]" : "border-[color:var(--border)]",
                                 ].join(" ")}
+                                aria-label={`${t.name} 선택`}
                             >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="text-[16px] font-extrabold text-slate-900">
-                                            {t.name}
-                                            <span className="ml-2 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-extrabold text-slate-700">
-                        /{t.slug}
-                      </span>
-                                            {isActive ? (
-                                                <span className="ml-2 rounded-full bg-[color:var(--brand-weak)] px-2 py-1 text-[11px] font-extrabold text-[color:var(--brand)]">
-                          현재
-                        </span>
-                                            ) : null}
-                                        </div>
-                                        {t.desc ? (
-                                            <div className="mt-1 text-[12px] font-semibold text-slate-600">
-                                                {t.desc}
-                                            </div>
-                                        ) : null}
+                                {/* 빌딩 이미지(placeholder) */}
+                                <div
+                                    className="relative h-[110px] w-full"
+                                    style={{ background: "var(--brand-soft)" }}
+                                >
+                                    {/* 심플한 느낌의 패턴/실루엣 */}
+                                    <div className="absolute inset-0 opacity-[0.9]">
+                                        <svg
+                                            viewBox="0 0 520 160"
+                                            className="h-full w-full"
+                                            preserveAspectRatio="none"
+                                            aria-hidden="true"
+                                        >
+                                            <rect x="0" y="0" width="520" height="160" fill="white" opacity="0.55" />
+                                            {/* 건물들 */}
+                                            <rect x="28" y="58" width="78" height="86" rx="10" fill="rgba(0,0,0,0.05)" />
+                                            <rect x="118" y="36" width="110" height="108" rx="12" fill="rgba(0,0,0,0.06)" />
+                                            <rect x="244" y="62" width="86" height="82" rx="10" fill="rgba(0,0,0,0.05)" />
+                                            <rect x="342" y="30" width="150" height="114" rx="14" fill="rgba(0,0,0,0.07)" />
+                                            {/* 창문 라인 */}
+                                            <g opacity="0.55">
+                                                {Array.from({ length: 6 }).map((_, i) => (
+                                                    <rect
+                                                        key={`w1-${i}`}
+                                                        x={134 + i * 14}
+                                                        y="52"
+                                                        width="8"
+                                                        height="8"
+                                                        rx="2"
+                                                        fill="rgba(255,255,255,0.9)"
+                                                    />
+                                                ))}
+                                            </g>
+                                        </svg>
                                     </div>
 
-                                    <div className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-50 border border-slate-200 text-lg">
-                                        🏬
-                                    </div>
+                                    {/* 좌상단: 현재 뱃지 */}
+                                    {isActive ? (
+                                        <div className="absolute left-3 top-3">
+                      <span
+                          className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-extrabold"
+                          style={{ background: "var(--brand)", color: "white" }}
+                      >
+                        현재 지점
+                      </span>
+                                        </div>
+                                    ) : null}
+
+                                    {/* 우하단: slug(작게) */}
+                    {/*                <div className="absolute bottom-3 right-3">*/}
+                    {/*<span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-extrabold text-[color:var(--muted)]">*/}
+                    {/*  /{t.slug}*/}
+                    {/*</span>*/}
+                    {/*                </div>*/}
+
+                                    {/* (선택) 이미지 라벨 */}
+                                    {imgLabel ? (
+                                        <div className="absolute bottom-3 left-3">
+                      <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-extrabold text-[color:var(--muted)]">
+                        {imgLabel}
+                      </span>
+                                        </div>
+                                    ) : null}
                                 </div>
 
-                                <div className="mt-3 rounded-xl border border-slate-200 bg-white py-2 text-center text-[12px] font-extrabold text-slate-700">
-                                    {isActive ? "현재 지점입니다" : "이 지점으로 변경 →"}
+                                {/* 하단 텍스트 */}
+                                <div className="p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="truncate text-[16px] font-extrabold text-[color:var(--fg)]">
+                                                {t.name}
+                                            </div>
+                                            {/* desc는 “있으면만” 아주 작게 */}
+                                            {t.desc ? (
+                                                <div className="mt-1 line-clamp-1 text-[12px] font-semibold text-[color:var(--muted)]">
+                                                    {t.desc}
+                                                </div>
+                                            ) : (
+                                                <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
+                                                    {/* 문구 최소화: 빈 줄 대신 얇은 안내 */}
+                                                    선택 후 바로 이동합니다.
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div
+                                            className="grid h-11 w-11 place-items-center rounded-2xl border bg-white"
+                                            style={{ borderColor: "var(--border)" }}
+                                            aria-hidden="true"
+                                        >
+                      <span className="text-[18px]">
+                        {isActive ? "✅" : "🏢"}
+                      </span>
+                                        </div>
+                                    </div>
+
+                                    {/* CTA 바(심플) */}
+                                    <div
+                                        className={[
+                                            "mt-3 rounded-xl py-2 text-center text-[12px] font-extrabold",
+                                            isActive
+                                                ? "bg-[color:var(--brand-soft)] text-[color:var(--brand)]"
+                                                : "bg-[color:var(--accent-soft)] text-[color:var(--fg)] group-hover:opacity-90",
+                                        ].join(" ")}
+                                        style={{
+                                            border: "1px solid var(--border)",
+                                        }}
+                                    >
+                                        {isActive ? "선택됨" : "선택"}
+                                    </div>
                                 </div>
                             </Link>
                         );
                     })}
-                </div>
+                </section>
 
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-[13px] font-extrabold text-slate-900">DB 분기 방식</div>
-                    <ul className="mt-2 list-disc pl-5 text-[12px] font-semibold text-slate-700 space-y-1">
-                        <li>계정은 전역 1개(users)로 유지합니다.</li>
-                        <li>주문/포인트/장바구니는 tenant_id 기준으로 분기합니다.</li>
-                        <li>지점 권한은 memberships(tenant_id,user_id)로 관리합니다.</li>
-                    </ul>
-                </div>
+                {/* 아래 설명 박스 제거(요청: 문구 최소화) */}
             </div>
         </main>
     );

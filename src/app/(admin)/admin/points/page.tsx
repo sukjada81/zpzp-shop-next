@@ -167,7 +167,7 @@ function Pager({
                 ← 이전
             </a>
             <div className="text-xs font-bold text-[var(--dad-muted)]">
-                {page} / {totalPages}
+                오케이
             </div>
             <a className="dad-btn dad-btn-primary px-3 py-2 text-xs" href={mk(next)}>
                 다음 →

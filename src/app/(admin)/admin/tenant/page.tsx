@@ -1,4 +1,4 @@
-// src/app/(admin)/admin/tenants/page.tsx
+// src/app/(admin)/admin/route.ts/page.tsx
 import { getAdminTenants } from "@/lib/admin/adminApi";
 
 export const dynamic = "force-dynamic";

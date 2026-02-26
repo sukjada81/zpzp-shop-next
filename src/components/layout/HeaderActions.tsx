@@ -19,7 +19,7 @@ export default function HeaderActions({
                     type="button"
                     aria-label="검색"
                     onClick={onSearchAction}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg active:bg-gray-100"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg active:bg-[color:var(--brand-soft)]"
                 >
                     <span className="text-lg">⌕</span>
                 </button>
@@ -30,7 +30,7 @@ export default function HeaderActions({
                     type="button"
                     aria-label="장바구니"
                     onClick={onCartAction}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg active:bg-gray-100"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg active:bg-[color:var(--brand-soft)]"
                 >
                     <span className="text-lg">🛒</span>
                 </button>

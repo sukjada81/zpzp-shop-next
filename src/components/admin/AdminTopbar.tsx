@@ -1,14 +1,18 @@
 // src/components/admin/AdminTopbar.tsx
 "use client";
 
-export default function AdminTopbar({ onToggle }: { onToggle: () => void }) {
+import { useAdminUiStore } from "@/lib/admin/adminUiStore";
+
+export default function AdminTopbar() {
+    const toggleSidebar = useAdminUiStore((s) => s.toggleSidebar);
+
     return (
         <header className="sticky top-0 z-40 border-b border-[var(--dad-border)] bg-white/80 backdrop-blur">
             <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-3 py-3 sm:px-4">
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        onClick={onToggle}
+                        onClick={toggleSidebar}
                         className="dad-btn dad-btn-ghost inline-flex h-10 w-10 items-center justify-center lg:hidden"
                         aria-label="사이드바 열기"
                     >

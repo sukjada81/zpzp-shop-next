@@ -1,25 +1,37 @@
+// src/app/(admin-auth)/admin/login/page.tsx
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { adminLogin } from "@/lib/admin/adminAuthClient";
 
 export default function AdminLoginPage() {
     const router = useRouter();
     const sp = useSearchParams();
-    const returnTo = sp.get("returnTo") || "/admin/dashboard";
+    const rawReturnTo = sp.get("returnTo") || "/admin/dashboard";
+    const returnTo = rawReturnTo === "/admin" ? "/admin/dashboard" : rawReturnTo;
 
-    const [id, setId] = useState("admin@example.com"); // 예시: email/phone/kakaoProviderId 모두 가능
+    const [id, setId] = useState("admin"); // 기본값은 편의용(원하시면 빈값으로)
     const [password, setPassword] = useState("");
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [isPending, startTransition] = useTransition();
 
-    const onSubmit = async () => {
+    const onSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (loading) return;
+
         setErr(null);
         setLoading(true);
+
         try {
             await adminLogin(id, password);
-            router.replace(returnTo);
+
+            // ✅ 세션 반영을 위해 "서버 트리 재렌더"까지 같이 해줘야 합니다.
+            startTransition(() => {
+                router.replace(returnTo);
+                router.refresh();
+            });
         } catch (e: any) {
             setErr(String(e?.message ?? e));
         } finally {
@@ -41,14 +53,15 @@ export default function AdminLoginPage() {
                         </div>
                     </div>
 
-                    <div className="mt-5 rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4">
-                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">안내</div>
-                        <div className="mt-1 text-xs text-[var(--dad-muted)]">
-                            Super Admin만 접근 가능합니다. (아이디: email/phone/kakaoProviderId 중 하나)
-                        </div>
-                    </div>
+                    {/*<div className="mt-5 rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4">*/}
+                    {/*    <div className="text-sm font-extrabold text-[var(--dad-ink)]">안내</div>*/}
+                    {/*    <div className="mt-1 text-xs text-[var(--dad-muted)]">*/}
+                    {/*        Super Admin만 접근 가능합니다. (아이디: email/phone/kakaoProviderId 중 하나)*/}
+                    {/*    </div>*/}
+                    {/*</div>*/}
 
-                    <div className="mt-6 space-y-3">
+                    {/* ✅ form으로 감싸서 submit 기반으로 처리 */}
+                    <form onSubmit={onSubmit} className="mt-6 space-y-3">
                         <label className="block">
                             <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">아이디</div>
                             <input
@@ -56,6 +69,8 @@ export default function AdminLoginPage() {
                                 value={id}
                                 onChange={(e) => setId(e.target.value)}
                                 placeholder="아이디 입력"
+                                autoComplete="username"
+                                name="username"
                             />
                         </label>
 
@@ -67,6 +82,8 @@ export default function AdminLoginPage() {
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="••••••••"
                                 type="password"
+                                autoComplete="current-password"
+                                name="password"
                             />
                         </label>
 
@@ -78,17 +95,17 @@ export default function AdminLoginPage() {
                         )}
 
                         <button
-                            onClick={onSubmit}
-                            disabled={loading}
+                            type="submit"
+                            disabled={loading || isPending}
                             className="dad-btn dad-btn-primary mt-2 h-12 w-full text-sm disabled:opacity-60"
                         >
-                            {loading ? "로그인 중..." : "로그인"}
+                            {loading || isPending ? "로그인 중..." : "로그인"}
                         </button>
 
-                        <div className="mt-2 text-xs text-[var(--dad-muted)]">
-                            returnTo: <span className="font-mono text-[var(--dad-ink)]">{returnTo}</span>
-                        </div>
-                    </div>
+                        {/*<div className="mt-2 text-xs text-[var(--dad-muted)]">*/}
+                        {/*    returnTo: <span className="font-mono text-[var(--dad-ink)]">{returnTo}</span>*/}
+                        {/*</div>*/}
+                    </form>
                 </div>
             </div>
         </div>

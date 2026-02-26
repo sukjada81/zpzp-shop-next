@@ -7,6 +7,8 @@ import MobileHeader from "./MobileHeader";
 import SideDrawer from "./SideDrawer";
 import { getTenantList } from "@/lib/tenant/tenants";
 
+const BRAND_NAME = "디스카운트 올데이";
+
 function normalizeTenant(raw: string) {
     const t = (raw || "").toLowerCase().trim();
     if (!t || t === "undefined" || t === "null") return "";
@@ -36,13 +38,13 @@ export default function AppShellClient({
     const router = useRouter();
     const [drawerOpen, setDrawerOpen] = useState(false);
 
-    // ✅ 1) prop tenant (서버에서 내려준 값)
+    // ✅ 1) prop tenant
     const propTenant = normalizeTenant(rawTenant);
 
-    // ✅ 2) pathname에서 tenant 역추출 (prop이 비거나 깨질 때 대비)
+    // ✅ 2) pathname fallback
     const pathTenant = useMemo(() => extractTenantFromPath(pathname), [pathname]);
 
-    // ✅ 최종 tenant: prop 우선, 없으면 pathname fallback
+    // ✅ 최종 tenant
     const tenant = propTenant || pathTenant;
 
     const tenantInfo = useMemo(() => {
@@ -56,13 +58,19 @@ export default function AppShellClient({
         return pathname?.includes(`/login`) ?? false;
     }, [pathname]);
 
+    // ✅ IMPORTANT FIX:
+    // 기존: startsWith(`/${tenant}/order`) 는 /orders(주문내역)도 매칭됨
+    // 수정: 정확히 /{tenant}/order 또는 /{tenant}/order/... 만 주문서로 처리
     const isOrderPage = useMemo(() => {
-        if (!pathname) return false;
-        return tenant ? pathname.startsWith(`/${tenant}/order`) : false;
+        if (!pathname || !tenant) return false;
+
+        const base = `/${tenant}/order`;
+        return pathname === base || pathname.startsWith(base + "/");
     }, [pathname, tenant]);
 
+    // ✅ 헤더 타이틀
     const title = useMemo(() => {
-        if (!pathname) return "오늘의 공구";
+        if (!pathname) return BRAND_NAME;
 
         const p =
             tenant && pathname.startsWith(`/${tenant}`)
@@ -70,19 +78,20 @@ export default function AppShellClient({
                 : pathname;
 
         if (p === "" || p === "/") return "홈";
-        if (p.startsWith("/home")) return "오늘의 공구";
+        if (p.startsWith("/home")) return BRAND_NAME;
         if (p.startsWith("/goods")) return "상품";
         if (p.startsWith("/orders")) return "주문내역";
         if (p.startsWith("/order")) return "주문/결제";
         if (p.startsWith("/cart")) return "장바구니";
-        return "오늘의 공구";
+        return BRAND_NAME;
     }, [pathname, tenant]);
 
-    const brandLabel = tenantInfo?.name ?? "가맹점";
-    const subLabel = `현재 지점 /${tenant || "-"}` + (tenantInfo?.name ? ` ${tenantInfo.name}` : "");
+    // ✅ 드로어에서는 지점명만
+    const brandLabel = tenantInfo?.name ?? "";
+    const subLabel = tenantInfo?.name ?? "";
 
     return (
-        <div className="min-h-dvh bg-[var(--bg)]">
+        <div className="min-h-dvh bg-white text-[color:var(--fg)]">
             {!hideHeader && (
                 <MobileHeader
                     tenant={tenant}

@@ -1,185 +1,208 @@
 // src/app/(admin)/admin/orders/page.tsx
-import { getAdminOrders, getAdminTenants } from "@/lib/admin/adminApi";
+import { headers } from "next/headers";
+import OrderStatusSelect from "./ui/OrderStatusSelect";
 
-export const dynamic = "force-dynamic";
+type OrderRow = {
+    id: string | number;
+    orderNo: string;
+    buyerName: string;
+    buyerPhone: string;
+    status: string;
+    paymentStatus: string;
+    totalAmount: number | string;
+    pickupAt: string | null;
+    createdAt: string;
+    tenant: { slug: string; name: string };
+};
+
+type OrdersRes = {
+    ok: boolean;
+    total: number;
+    page: number;
+    limit: number;
+    rows: OrderRow[];
+    message?: string;
+};
+
+async function getOrigin() {
+    const h = await headers();
+    const host = h.get("host") ?? "localhost:3000";
+    const proto = h.get("x-forwarded-proto") ?? "http";
+    return `${proto}://${host}`;
+}
+
+async function fetchOrders(qs: URLSearchParams): Promise<OrdersRes> {
+    const origin = await getOrigin();
+    const res = await fetch(`${origin}/api/admin/orders?${qs.toString()}`, { cache: "no-store" });
+    return res.json();
+}
+
+const STATUS = ["", "PENDING", "CONFIRMED", "READY", "DONE", "CANCELED"];
+
+function chipClass(active: boolean) {
+    return [
+        "rounded-full border px-3 py-2 text-xs font-extrabold",
+        active
+            ? "border-transparent bg-[var(--dad-ink)] text-white"
+            : "border-[var(--dad-border)] bg-white/70 text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]",
+    ].join(" ");
+}
 
 export default async function AdminOrdersPage({
                                                   searchParams,
                                               }: {
-    searchParams: { tenant?: string; q?: string; status?: string; page?: string; pageSize?: string };
+    searchParams: { tenant?: string; status?: string; q?: string; page?: string };
 }) {
-    const tenant = (searchParams.tenant ?? "all").trim();
-    const q = (searchParams.q ?? "").trim();
-    const status = (searchParams.status ?? "").trim();
-    const page = (searchParams.page ?? "1").trim();
-    const pageSize = (searchParams.pageSize ?? "20").trim();
+    const qs = new URLSearchParams();
+    qs.set("tenant", searchParams.tenant || "all");
+    if (searchParams.status) qs.set("status", searchParams.status);
+    if (searchParams.q) qs.set("q", searchParams.q);
+    qs.set("page", searchParams.page || "1");
+    qs.set("limit", "20");
 
-    const [tenants, list] = await Promise.all([
-        getAdminTenants(),
-        getAdminOrders({ tenant, q, status, page, pageSize }),
-    ]);
+    const data = await fetchOrders(qs);
 
-    const totalPages = Math.max(1, Math.ceil(list.total / list.pageSize));
-    const current = Math.min(Number(list.page), totalPages);
+    const tenant = qs.get("tenant") || "all";
+    const status = qs.get("status") || "";
+    const q = qs.get("q") || "";
+    const page = Number(qs.get("page") || 1);
+    const totalPages = Math.max(1, Math.ceil((data.total || 0) / (data.limit || 20)));
 
     return (
-        <div className="space-y-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                    <h1 className="text-lg font-extrabold text-[var(--dad-ink)]">주문 관리</h1>
-                    <p className="mt-1 text-sm text-[var(--dad-muted)]">전체 tenant 주문을 통합 조회합니다.</p>
+        <div className="space-y-4">
+            <div className="dad-card p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <div className="text-lg font-extrabold text-[var(--dad-ink)]">주문 관리</div>
+                        <div className="text-sm font-bold text-[var(--dad-muted)]">
+                            통합 관리자 / 전체 tenant 주문을 조회/처리합니다.
+                        </div>
+                    </div>
+                    <a href="/admin/dashboard" className="dad-btn dad-btn-ghost px-4 py-2 text-sm">
+                        대시보드 →
+                    </a>
                 </div>
 
-                <a href="/admin/dashboard" className="dad-btn dad-btn-ghost inline-flex h-10 items-center justify-center px-4 text-sm">
-                    대시보드 →
-                </a>
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {["all", "a", "b"].map((t) => (
+                        <a
+                            key={t}
+                            className={chipClass(tenant === t)}
+                            href={`/admin/orders?tenant=${encodeURIComponent(t)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&page=1`}
+                        >
+                            {t === "all" ? "전체" : `${t.toUpperCase()} 지점`}
+                        </a>
+                    ))}
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+                    <form className="flex w-full gap-2" action="/admin/orders" method="get">
+                        <input type="hidden" name="tenant" value={tenant} />
+                        <select
+                            name="status"
+                            defaultValue={status}
+                            className="h-11 w-[170px] rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
+                        >
+                            {STATUS.map((s) => (
+                                <option key={s || "ALL"} value={s}>
+                                    {s ? s : "상태(전체)"}
+                                </option>
+                            ))}
+                        </select>
+
+                        <input
+                            name="q"
+                            defaultValue={q}
+                            placeholder="주문번호/구매자/전화 검색"
+                            className="h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-4 text-sm font-bold text-[var(--dad-ink)] outline-none focus:ring-2 focus:ring-[var(--dad-orange)]"
+                        />
+                        <button className="h-11 shrink-0 rounded-2xl bg-[var(--dad-ink)] px-5 text-sm font-extrabold text-white">
+                            검색
+                        </button>
+                    </form>
+
+                    <div className="text-xs font-bold text-[var(--dad-muted)]">
+                        Page {page} / {totalPages} · Total {data.total || 0}
+                    </div>
+                </div>
             </div>
 
-            <form className="dad-card flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
-                <span className="dad-chip">Tenant</span>
-                <select
-                    name="tenant"
-                    defaultValue={tenant}
-                    className="h-10 rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
-                >
-                    <option value="all">전체</option>
-                    {tenants.map((t) => (
-                        <option key={t.slug} value={t.slug}>
-                            {t.name} ({t.slug})
-                        </option>
-                    ))}
-                </select>
-
-                <span className="dad-chip">Status</span>
-                <input
-                    name="status"
-                    defaultValue={status}
-                    placeholder="예: PENDING/CONFIRMED/CANCELED"
-                    className="h-10 flex-1 rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
-                />
-
-                <span className="dad-chip">Search</span>
-                <input
-                    name="q"
-                    defaultValue={q}
-                    placeholder="주문번호/구매자/전화번호"
-                    className="h-10 flex-1 rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
-                />
-
-                <input type="hidden" name="page" value="1" />
-                <input type="hidden" name="pageSize" value={pageSize} />
-
-                <button className="dad-btn dad-btn-primary h-10 px-4 text-sm" type="submit">
-                    적용
-                </button>
-            </form>
-
-            <div className="dad-card overflow-hidden">
-                <div className="flex items-center justify-between border-b border-[var(--dad-border)] px-4 py-3">
-                    <div className="text-sm font-extrabold text-[var(--dad-ink)]">
-                        Orders <span className="text-[var(--dad-muted)]">({list.total.toLocaleString()})</span>
-                    </div>
-                    <div className="dad-chip">Page {current} / {totalPages}</div>
-                </div>
-
-                <div className="overflow-auto">
-                    <table className="min-w-full text-sm">
-                        <thead className="bg-white">
-                        <tr className="text-xs text-[var(--dad-muted)]">
-                            <th className="px-4 py-3 text-left font-extrabold">지점</th>
-                            <th className="px-4 py-3 text-left font-extrabold">주문</th>
-                            <th className="px-4 py-3 text-left font-extrabold">구매자</th>
-                            <th className="px-4 py-3 text-right font-extrabold">총액</th>
-                            <th className="px-4 py-3 text-right font-extrabold">포인트</th>
-                            <th className="px-4 py-3 text-left font-extrabold">상태</th>
-                            <th className="px-4 py-3 text-left font-extrabold">결제</th>
-                            <th className="px-4 py-3 text-left font-extrabold">픽업</th>
+            <div className="dad-card p-5">
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[1100px] text-left text-sm">
+                        <thead>
+                        <tr className="border-b border-[var(--dad-border)] text-xs font-extrabold text-[var(--dad-muted)]">
+                            <th className="py-3 pr-3">지점</th>
+                            <th className="py-3 pr-3">주문번호</th>
+                            <th className="py-3 pr-3">구매자</th>
+                            <th className="py-3 pr-3">상태</th>
+                            <th className="py-3 pr-3">결제</th>
+                            <th className="py-3 pr-3 text-right">금액</th>
+                            <th className="py-3 pr-3">픽업</th>
+                            <th className="py-3 pr-3">일시</th>
                         </tr>
                         </thead>
                         <tbody>
-                        {list.items.length === 0 ? (
-                            <tr>
-                                <td colSpan={8} className="px-4 py-10 text-center text-[var(--dad-muted)]">
-                                    결과가 없습니다.
+                        {(data.rows || []).map((o) => (
+                            <tr key={String(o.id)} className="border-b border-[var(--dad-border)]">
+                                <td className="py-3 pr-3 font-bold text-[var(--dad-ink)]">
+                                    {o.tenant?.name} ({o.tenant?.slug})
+                                </td>
+                                <td className="py-3 pr-3 font-extrabold text-[var(--dad-ink)]">{o.orderNo}</td>
+                                <td className="py-3 pr-3">
+                                    <div className="font-bold text-[var(--dad-ink)]">{o.buyerName}</div>
+                                    <div className="text-xs font-bold text-[var(--dad-muted)]">{o.buyerPhone}</div>
+                                </td>
+                                <td className="py-3 pr-3">
+                                    <OrderStatusSelect id={String(o.id)} current={o.status} />
+                                </td>
+                                <td className="py-3 pr-3">
+                    <span className="inline-flex items-center rounded-full border border-[var(--dad-border)] bg-white/70 px-3 py-1 text-xs font-extrabold text-[var(--dad-ink)]">
+                      {o.paymentStatus}
+                    </span>
+                                </td>
+                                <td className="py-3 pr-3 text-right font-extrabold text-[var(--dad-ink)]">
+                                    {Number(o.totalAmount ?? 0).toLocaleString()}원
+                                </td>
+                                <td className="py-3 pr-3 text-xs font-bold text-[var(--dad-muted)]">
+                                    {o.pickupAt ? new Date(o.pickupAt).toLocaleString("ko-KR") : "-"}
+                                </td>
+                                <td className="py-3 pr-3 text-xs font-bold text-[var(--dad-muted)]">
+                                    {new Date(o.createdAt).toLocaleString("ko-KR")}
                                 </td>
                             </tr>
-                        ) : (
-                            list.items.map((o) => (
-                                <tr key={o.id} className="border-t border-[var(--dad-border)]">
-                                    <td className="px-4 py-3">
-                                        {o.tenant ? <span className="dad-chip">{o.tenant.name} / {o.tenant.slug}</span> : "-"}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="font-extrabold text-[var(--dad-ink)] font-mono text-[12px]">{o.orderNo}</div>
-                                        <div className="text-xs text-[var(--dad-muted)]">{new Date(o.createdAt).toLocaleString()}</div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="font-extrabold text-[var(--dad-ink)]">{o.buyerName}</div>
-                                        <div className="text-xs text-[var(--dad-muted)]">{o.buyerPhone}</div>
-                                    </td>
-                                    <td className="px-4 py-3 text-right font-extrabold tabular-nums text-[var(--dad-ink)]">
-                                        {Number(o.totalAmount).toLocaleString()}원
-                                    </td>
-                                    <td className="px-4 py-3 text-right font-extrabold tabular-nums text-[var(--dad-ink)]">
-                                        {Number(o.pointUsedAmount).toLocaleString()}P
-                                    </td>
-                                    <td className="px-4 py-3"><span className="dad-chip">{o.status}</span></td>
-                                    <td className="px-4 py-3"><span className="dad-chip">{o.paymentStatus}</span></td>
-                                    <td className="px-4 py-3 text-[var(--dad-ink)]">{o.pickupAt ?? "-"}</td>
-                                </tr>
-                            ))
+                        ))}
+
+                        {(data.rows || []).length === 0 && (
+                            <tr>
+                                <td colSpan={8} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
+                                    주문 데이터가 없습니다.
+                                </td>
+                            </tr>
                         )}
                         </tbody>
                     </table>
                 </div>
 
-                <Pager baseHref="/admin/orders" tenant={tenant} q={q} status={status} page={current} totalPages={totalPages} pageSize={pageSize} />
+                <div className="mt-4 flex items-center justify-between">
+                    <a
+                        className="dad-btn dad-btn-ghost px-4 py-2 text-sm"
+                        href={`/admin/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(
+                            q
+                        )}&page=${Math.max(1, page - 1)}`}
+                    >
+                        ← 이전
+                    </a>
+                    <a
+                        className="dad-btn dad-btn-ghost px-4 py-2 text-sm"
+                        href={`/admin/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(
+                            q
+                        )}&page=${Math.min(totalPages, page + 1)}`}
+                    >
+                        다음 →
+                    </a>
+                </div>
             </div>
-        </div>
-    );
-}
-
-function Pager({
-                   baseHref,
-                   tenant,
-                   q,
-                   status,
-                   page,
-                   totalPages,
-                   pageSize,
-               }: {
-    baseHref: string;
-    tenant: string;
-    q: string;
-    status: string;
-    page: number;
-    totalPages: number;
-    pageSize: string;
-}) {
-    const prev = Math.max(1, page - 1);
-    const next = Math.min(totalPages, page + 1);
-
-    const mk = (p: number) => {
-        const sp = new URLSearchParams();
-        sp.set("tenant", tenant);
-        if (q) sp.set("q", q);
-        if (status) sp.set("status", status);
-        sp.set("page", String(p));
-        sp.set("pageSize", pageSize);
-        return `${baseHref}?${sp.toString()}`;
-    };
-
-    return (
-        <div className="flex items-center justify-between border-t border-[var(--dad-border)] px-4 py-3">
-            <a className="dad-btn dad-btn-ghost px-3 py-2 text-xs" href={mk(prev)}>
-                ← 이전
-            </a>
-            <div className="text-xs font-bold text-[var(--dad-muted)]">
-                {page} / {totalPages}
-            </div>
-            <a className="dad-btn dad-btn-primary px-3 py-2 text-xs" href={mk(next)}>
-                다음 →
-            </a>
         </div>
     );
 }

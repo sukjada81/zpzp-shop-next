@@ -5,27 +5,34 @@ function baseUrl() {
     return "http://localhost:3000";
 }
 
-async function postJson<T>(path: string, body: unknown) {
-    const url = new URL(path, baseUrl());
-    const res = await fetch(url, {
+// src/lib/admin/adminAuthClient.ts
+export async function postJson<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
         body: JSON.stringify(body),
         cache: "no-store",
+        credentials: "include",
     });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || `HTTP ${res.status}`);
-    return json as T;
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+        // 서버 메시지까지 같이 보이게(디버깅용)
+        const msg = (data as any)?.message || `HTTP ${res.status}`;
+        throw new Error(msg);
+    }
+
+    return data as T;
 }
 
 export async function adminLogin(id: string, password: string) {
-    return postJson<{ ok: true } | { ok: false; message?: string }>("/api/proxy/admin/auth/login", {
-        id,
-        password,
-    });
+    return postJson("/api/proxy/admin/auth/login", { id, password });
 }
 
 export async function adminLogout() {
-    return postJson<{ ok: true }>("/api/proxy/admin/auth/logout", {});
+    return postJson("/api/proxy/admin/auth/logout", {});
 }

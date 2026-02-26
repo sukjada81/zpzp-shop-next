@@ -1,10 +1,11 @@
 // src/app/(site)/[tenant]/(app)/goods/page.tsx
+import { notFound } from "next/navigation";
 import GoodsListClient, { type GoodsListItem } from "@/components/goods/GoodsListClient";
 
-type ProductsResponse = {
-    ok: boolean;
-    tenant?: string;
-    items?: Array<{
+type PublicProductsResponse = {
+    ok: true;
+    tenant: string;
+    items: Array<{
         id: string;
         title: string;
         price: number;
@@ -12,55 +13,59 @@ type ProductsResponse = {
         badgeRight?: string;
         metaLeft?: string;
         metaRight?: string;
-        thumbnailUrl?: string;
     }>;
 };
 
-async function fetchProducts(tenant: string): Promise<GoodsListItem[]> {
-    try {
-        const res = await fetch(
-            `${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/proxy/${tenant}/v1/public/products`,
-            { cache: "no-store" }
-        );
-
-        // NEXT_PUBLIC_BASE_URL 없으면 상대경로 fetch도 동작하게 fallback
-        if (!res.ok) {
-            const res2 = await fetch(`/api/proxy/${tenant}/v1/public/products`, { cache: "no-store" });
-            const data2 = (await res2.json()) as ProductsResponse;
-            return (data2.items ?? []).map((it) => ({
-                id: String(it.id),
-                title: it.title,
-                price: Number(it.price ?? 0),
-                badgeLeft: it.badgeLeft,
-                badgeRight: it.badgeRight,
-                metaLeft: it.metaLeft,
-                metaRight: it.metaRight,
-            }));
-        }
-
-        const data = (await res.json()) as ProductsResponse;
-        return (data.items ?? []).map((it) => ({
-            id: String(it.id),
-            title: it.title,
-            price: Number(it.price ?? 0),
-            badgeLeft: it.badgeLeft,
-            badgeRight: it.badgeRight,
-            metaLeft: it.metaLeft,
-            metaRight: it.metaRight,
-        }));
-    } catch {
-        return [];
-    }
+function normalizeTenant(raw: string) {
+    const t = (raw || "").toLowerCase().trim();
+    if (!t || t === "undefined" || t === "null") return "";
+    return t;
 }
 
-export default async function GoodsListPage({
-                                                params,
-                                            }: {
+function getBaseUrl() {
+    return (
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+    );
+}
+
+async function fetchProducts(tenant: string): Promise<PublicProductsResponse["items"]> {
+    const baseUrl = getBaseUrl();
+    const url = new URL(`/api/proxy/${tenant}/v1/public/products`, baseUrl);
+    url.searchParams.set("take", "200"); // ✅ 넉넉히
+
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) return [];
+
+    const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
+    if (!data || data.ok !== true) return [];
+
+    return data.items ?? [];
+}
+
+function toGoodsListItems(items: PublicProductsResponse["items"]): GoodsListItem[] {
+    return items.map((p) => ({
+        id: String(p.id),
+        title: p.title ?? "",
+        price: Number(p.price ?? 0),
+        badgeLeft: p.badgeLeft,
+        badgeRight: p.badgeRight,
+        metaLeft: p.metaLeft,
+        metaRight: p.metaRight,
+    }));
+}
+
+export default async function GoodsPage({
+                                            params,
+                                        }: {
     params: Promise<{ tenant: string }>;
 }) {
-    const { tenant } = await params;
+    const { tenant: rawTenant } = await params;
+    const tenant = normalizeTenant(rawTenant);
+    if (!tenant) notFound();
 
-    const items = await fetchProducts(tenant);
+    const products = await fetchProducts(tenant);
+    const initialItems = toGoodsListItems(products);
 
-    return <GoodsListClient tenant={tenant} initialItems={items} />;
+    return <GoodsListClient tenant={tenant} initialItems={initialItems} />;
 }

@@ -83,4 +83,13 @@ export type AdminPointItem = {
     reason: string | null;
     orderId: string | null;
     createdAt: string;
+};// src/lib/admin/types.ts
+
+export type AdminRecentOrderRow = {
+    orderNo: string;
+    buyerName: string;
+    buyerPhone: string;
+    totalAmount: number;
+    status: string;
+    pickupAt?: string | null;
 };

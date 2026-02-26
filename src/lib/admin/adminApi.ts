@@ -1,4 +1,5 @@
 // src/lib/admin/adminApi.ts
+import { headers } from "next/headers";
 import type {
     AdminDashboardDto,
     AdminListResponse,
@@ -21,30 +22,57 @@ function getBaseUrl() {
     return "http://localhost:3000";
 }
 
-async function fetchJson<T>(path: string, params?: Record<string, string | undefined>) {
+/**
+ * ✅ Server Component에서 내부 API(/api/...) 호출 시
+ * "현재 요청의 쿠키"를 직접 헤더로 실어줘야 세션이 유지됩니다.
+ */
+async function getCookieHeader(): Promise<string> {
+    const h = await headers();
+    return h.get("cookie") ?? "";
+}
+
+async function fetchJson<T>(
+    path: string,
+    params?: Record<string, string | undefined>,
+    init?: RequestInit
+) {
     const baseUrl = getBaseUrl();
     const url = new URL(path, baseUrl);
+
     if (params) {
         for (const [k, v] of Object.entries(params)) {
             if (v != null && String(v).length > 0) url.searchParams.set(k, String(v));
         }
     }
 
-    const res = await fetch(url, { cache: "no-store" });
+    // ✅ 쿠키 전달(세션 유지 핵심)
+    const cookie = await getCookieHeader();
+
+    const res = await fetch(url.toString(), {
+        cache: "no-store",
+        ...init,
+        headers: {
+            Accept: "application/json",
+            ...(cookie ? { cookie } : {}),
+            ...(init?.headers ?? {}),
+        },
+    });
+
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(`Admin API failed: ${url.pathname} HTTP ${res.status} ${text}`);
     }
+
     return (await res.json()) as T;
 }
 
 export async function getAdminTenants(): Promise<AdminTenant[]> {
-    const json = await fetchJson<{ ok: true; tenants: AdminTenant[] }>("/api/proxy/admin/v1/tenants");
-    return json.tenants ?? [];
+    const json = await fetchJson<{ ok: boolean; rows: AdminTenant[] }>("/api/admin/tenants");
+    return (json as any).rows ?? [];
 }
 
 export async function getAdminDashboard(tenant: string): Promise<AdminDashboardDto> {
-    return fetchJson<AdminDashboardDto>("/api/proxy/admin/v1/dashboard", { tenant: tenant || "all" });
+    return fetchJson<AdminDashboardDto>("/api/admin/dashboard", { tenant: tenant || "all" });
 }
 
 export async function getAdminProducts(params: {
@@ -54,10 +82,10 @@ export async function getAdminProducts(params: {
     q?: string;
     status?: string;
 }): Promise<AdminListResponse<AdminProductItem>> {
-    return fetchJson<AdminListResponse<AdminProductItem>>("/api/proxy/admin/v1/page.tsx", {
+    return fetchJson<AdminListResponse<AdminProductItem>>("/api/admin/products", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        pageSize: params.pageSize ?? "20",
+        limit: params.pageSize ?? "20",
         q: params.q,
         status: params.status,
     });
@@ -70,10 +98,10 @@ export async function getAdminOrders(params: {
     q?: string;
     status?: string;
 }): Promise<AdminListResponse<AdminOrderItem>> {
-    return fetchJson<AdminListResponse<AdminOrderItem>>("/api/proxy/admin/v1/orders", {
+    return fetchJson<AdminListResponse<AdminOrderItem>>("/api/admin/orders", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        pageSize: params.pageSize ?? "20",
+        limit: params.pageSize ?? "20",
         q: params.q,
         status: params.status,
     });
@@ -86,12 +114,15 @@ export async function getAdminPoints(params: {
     q?: string;
     type?: string;
 }): Promise<AdminListResponse<AdminPointItem>> {
-    // points는 서버에서 status 파라미터를 type 필터로 재사용
-    return fetchJson<AdminListResponse<AdminPointItem>>("/api/proxy/admin/v1/points", {
+    return fetchJson<AdminListResponse<AdminPointItem>>("/api/admin/points", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        pageSize: params.pageSize ?? "20",
+        limit: params.pageSize ?? "20",
         q: params.q,
-        status: params.type,
+        type: params.type,
     });
+}
+
+export async function getAdminProductDetail(id: string) {
+    return fetchJson<{ ok: true; product: any }>(`/api/admin/products/${id}`);
 }
