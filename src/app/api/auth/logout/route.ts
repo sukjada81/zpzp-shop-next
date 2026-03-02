@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const tenant = safeTenant(url.searchParams.get("tenant") || "");
 
     // ✅ tenant가 없으면 "/"로 보내지 말고(404 가능), 항상 있는 지점선택으로 이동
-    const redirectPath = tenant ? `/${tenant}/login` : "/select-tenant";
+    const redirectPath = "/login";
 
     const origin = getRequestOrigin(req);
     const res = NextResponse.redirect(new URL(redirectPath, origin), { status: 302 });

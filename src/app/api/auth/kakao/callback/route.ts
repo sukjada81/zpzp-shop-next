@@ -50,6 +50,27 @@ function getRequestOrigin(req: NextRequest) {
     return `${proto}://${hostname}`;
 }
 
+function buildTenantOrigin(req: NextRequest, tenant: string) {
+    const isProd = process.env.NODE_ENV === "production";
+    const BASE_DOMAIN = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+
+    if (isProd) {
+        return `https://${tenant}.${BASE_DOMAIN}`;
+    }
+
+    // dev/local: 현재 요청 origin을 그대로 사용하되, host만 tenant로 바꿈
+    // (로컬에서 hosts 설정 시: tenant.discountallday.kr -> 127.0.0.1)
+    const origin = getRequestOrigin(req);
+    const u = new URL(origin);
+    u.hostname = `${tenant}.${BASE_DOMAIN}`;
+    return u.toString().replace(/\/$/, "");
+}
+
+function cookieDomainForShare() {
+    // 운영 공유 쿠키 도메인
+    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
+}
+
 export async function GET(req: NextRequest) {
     const url = req.nextUrl;
 
@@ -71,16 +92,16 @@ export async function GET(req: NextRequest) {
     const v = verifyState(state, AUTH_STATE_SECRET);
     if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 });
 
-    const tenant = v.payload.tenant || "";
-    const returnTo = v.payload.returnTo || "/home";
-    const safeReturnTo = isSafeReturnTo(returnTo) ? returnTo : "/home";
+    const tenant = (v.payload.tenant || "").trim();
+    const returnTo = v.payload.returnTo || "/select-tenant";
+    const safeReturnTo = isSafeReturnTo(returnTo) ? returnTo : "/select-tenant";
 
     const origin = getRequestOrigin(req);
 
-    // ✅ code 없이 error로 돌아오는 케이스: 일반 로그인으로 재시도
+    // code 없이 error로 돌아오는 케이스: 일반 로그인으로 재시도
     if (!code && err) {
         const retry = new URL("/api/auth/kakao/login", origin);
-        retry.searchParams.set("tenant", tenant);
+        if (tenant) retry.searchParams.set("tenant", tenant);
         retry.searchParams.set("returnTo", safeReturnTo);
         return NextResponse.redirect(retry, { status: 302 });
     }
@@ -101,16 +122,35 @@ export async function GET(req: NextRequest) {
     // ✅ 프론트-only(MOCK_AUTH) 로그인 처리
     const MOCK_AUTH = process.env.MOCK_AUTH === "1";
     if (MOCK_AUTH) {
-        const redirectPath = tenant ? `/${tenant}${safeReturnTo}` : safeReturnTo;
-        const redirectTo = redirectPath.replace("//", "/");
+        const domain = cookieDomainForShare();
 
-        const res = NextResponse.redirect(new URL(redirectTo, origin), { status: 302 });
-        res.cookies.set("mockLogin", "1", { httpOnly: true, path: "/", sameSite: "lax" });
-        res.cookies.set("mockTenant", tenant, { httpOnly: true, path: "/", sameSite: "lax" });
+        // ✅ tenant 있으면 지점으로, 없으면 메인(/select-tenant)으로
+        const targetUrl = tenant
+            ? new URL(safeReturnTo, buildTenantOrigin(req, tenant))
+            : new URL("/select-tenant", getRequestOrigin(req));
+
+        const res = NextResponse.redirect(targetUrl, { status: 302 });
+
+        res.cookies.set("mockLogin", "1", {
+            httpOnly: true,
+            path: "/",
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production",
+            domain,
+        });
+
+        res.cookies.set("mockTenant", tenant, {
+            httpOnly: true,
+            path: "/",
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production",
+            domain,
+        });
+
         return res;
     }
 
-    // ✅ (나중) PHP 연동 단계
+    // ✅ (나중) 실제 인증 연동 단계
     return NextResponse.json(
         { ok: false, error: "PHP_AUTH_NOT_CONNECTED_YET", tenant, returnTo: safeReturnTo },
         { status: 501 }

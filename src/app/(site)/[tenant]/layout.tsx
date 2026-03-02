@@ -2,17 +2,11 @@
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { CartProvider } from "@/lib/cart/CartProvider";
-import { getTenantList } from "@/lib/tenant/tenants";
 
 function normalizeTenant(raw: string) {
     const t = (raw || "").toLowerCase().trim();
     if (!t || t === "undefined" || t === "null") return "";
     return t;
-}
-
-function isKnownTenant(tenant: string) {
-    const list = getTenantList();
-    return list.some((t) => normalizeTenant((t as any).slug) === tenant);
 }
 
 export default async function SiteTenantLayout({
@@ -27,7 +21,11 @@ export default async function SiteTenantLayout({
 
     if (!tenant) notFound();
 
-    if (!isKnownTenant(tenant)) notFound();
+    // ✅ IMPORTANT:
+    // 서브도메인 + DB 기반 테넌트 확장 구조에서는
+    // 프론트에서 고정 리스트(getTenantList)로 테넌트를 검증하면
+    // DB에 새 지점이 추가될 때마다 프론트가 404를 내게 됩니다.
+    // 테넌트 존재/상태 검증은 백엔드(tenant plugin + DB)에서 처리하세요.
 
     return <CartProvider>{children}</CartProvider>;
 }
