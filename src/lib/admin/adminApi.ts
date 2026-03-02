@@ -67,8 +67,10 @@ async function fetchJson<T>(
 }
 
 export async function getAdminTenants(): Promise<AdminTenant[]> {
-    const json = await fetchJson<{ ok: boolean; rows: AdminTenant[] }>("/api/admin/tenants");
-    return (json as any).rows ?? [];
+    // ✅ 현재 BFF(/api/admin/tenants)는 { ok, tenants } 형태가 더 자연스럽습니다.
+    // 다만 기존 코드가 rows를 기대하므로 둘 다 대응합니다.
+    const json = await fetchJson<any>("/api/admin/tenants");
+    return (json?.tenants ?? json?.rows ?? []) as AdminTenant[];
 }
 
 export async function getAdminDashboard(tenant: string): Promise<AdminDashboardDto> {
@@ -85,7 +87,7 @@ export async function getAdminProducts(params: {
     return fetchJson<AdminListResponse<AdminProductItem>>("/api/admin/products", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        limit: params.pageSize ?? "20",
+        pageSize: params.pageSize ?? "20", // ✅ limit -> pageSize
         q: params.q,
         status: params.status,
     });
@@ -101,7 +103,7 @@ export async function getAdminOrders(params: {
     return fetchJson<AdminListResponse<AdminOrderItem>>("/api/admin/orders", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        limit: params.pageSize ?? "20",
+        pageSize: params.pageSize ?? "20", // ✅ limit -> pageSize
         q: params.q,
         status: params.status,
     });
@@ -117,9 +119,9 @@ export async function getAdminPoints(params: {
     return fetchJson<AdminListResponse<AdminPointItem>>("/api/admin/points", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        limit: params.pageSize ?? "20",
+        pageSize: params.pageSize ?? "20", // ✅ limit -> pageSize
         q: params.q,
-        type: params.type,
+        type: params.type, // ✅ type 그대로 전달
     });
 }
 

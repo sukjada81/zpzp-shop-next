@@ -12,14 +12,6 @@ function isGlobalRoute(pathname: string) {
     );
 }
 
-function getSubdomain(host: string) {
-    const h = host.split(":")[0].toLowerCase();
-    if (h === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
-    const parts = h.split(".");
-    if (parts.length < 3) return null;
-    return parts[0];
-}
-
 function isPublicAsset(pathname: string) {
     return (
         pathname.startsWith("/_next") ||
@@ -52,54 +44,78 @@ function isAdminPath(pathname: string) {
     return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+function getSubdomain(host: string) {
+    const h = host.split(":")[0].toLowerCase();
+
+    if (h === "localhost") return null;
+    if (h.endsWith(".localhost")) return null;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
+
+    const parts = h.split(".");
+    if (parts.length < 3) return null;
+    return parts[0];
+}
+
 export async function middleware(req: NextRequest) {
     const { pathname, search } = req.nextUrl;
 
-    // A. 정적 리소스 제외
     if (isPublicAsset(pathname)) return NextResponse.next();
-
-    // A-1. 글로벌 라우트는 tenant rewrite 금지
     if (isGlobalRoute(pathname)) return NextResponse.next();
 
-    // ✅ A-2. 통합 admin 보호 (tenant rewrite 금지 + 세션 체크)
+    // ✅ Admin 보호 (그대로)
     if (isAdminPath(pathname)) {
-        const sessionUrl = req.nextUrl.clone();
-        sessionUrl.pathname = "/api/admin/session";
-        sessionUrl.search = "";
+        if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
+            return NextResponse.next();
+        }
 
-        const res = await fetch(sessionUrl, {
-            headers: { cookie: req.headers.get("cookie") || "" },
-        });
+        try {
+            const sessionUrl = new URL("/api/admin/session", req.nextUrl.origin);
+            const res = await fetch(sessionUrl.toString(), {
+                headers: { cookie: req.headers.get("cookie") || "" },
+                cache: "no-store",
+            });
 
-        if (!res.ok) {
+            if (!res.ok) {
+                const loginUrl = req.nextUrl.clone();
+                loginUrl.pathname = "/admin/login";
+                loginUrl.searchParams.set("returnTo", `${pathname}${search || ""}`);
+                return NextResponse.redirect(loginUrl);
+            }
+
+            return NextResponse.next();
+        } catch {
             const loginUrl = req.nextUrl.clone();
             loginUrl.pathname = "/admin/login";
             loginUrl.searchParams.set("returnTo", `${pathname}${search || ""}`);
             return NextResponse.redirect(loginUrl);
         }
-
-        return NextResponse.next();
     }
 
-    // B. Host 기반 rewrite (운영용)
-    const host = req.headers.get("host") ?? "";
-    const subdomain = getSubdomain(host);
+    /**
+     * ✅ 중요:
+     * 지금 프로젝트는 "path 기반 tenant"(/b/home)로 동작 중.
+     * 따라서 서브도메인 rewrite는 기본 OFF.
+     * 운영에서 Host 기반 테넌트를 쓸 때만 TENANT_BY_SUBDOMAIN=1 로 켠다.
+     */
+    const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
 
-    if (subdomain) {
-        const seg = pathname.split("/").filter(Boolean)[0];
+    if (ENABLE_SUBDOMAIN_TENANT) {
+        const host = req.headers.get("host") ?? "";
+        const subdomain = getSubdomain(host);
 
-        if (seg !== subdomain) {
-            const url = req.nextUrl.clone();
-            url.pathname = `/${subdomain}${pathname}`;
-            url.search = search;
-            return NextResponse.rewrite(url);
+        if (subdomain) {
+            const seg = pathname.split("/").filter(Boolean)[0];
+
+            if (seg !== subdomain) {
+                const url = req.nextUrl.clone();
+                url.pathname = `/${subdomain}${pathname}`;
+                url.search = search;
+                return NextResponse.rewrite(url);
+            }
         }
     }
 
-    // C. 기존 public path 통과
     if (isPublicPath(pathname)) return NextResponse.next();
-
-    // D. tenant 앱/셀러 인증 필요 여부
     if (!needsAuth(pathname)) return NextResponse.next();
 
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";
@@ -124,8 +140,12 @@ export async function middleware(req: NextRequest) {
     const returnToWithQuery = `${returnTo}${search || ""}`;
 
     const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = tenant ? `/${tenant}/login` : `/login`;
-    loginUrl.searchParams.set("returnTo", returnToWithQuery);
+    if (!tenant) {
+        loginUrl.pathname = "/select-tenant";
+    } else {
+        loginUrl.pathname = `/${tenant}/login`;
+        loginUrl.searchParams.set("returnTo", returnToWithQuery);
+    }
 
     return NextResponse.redirect(loginUrl);
 }

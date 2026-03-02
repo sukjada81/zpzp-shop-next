@@ -50,8 +50,8 @@ model TenantMembership {
   userId    BigInt   @map("user_id") @db.UnsignedBigInt
   role      String   @default("MEMBER") @db.VarChar(32)
   createdAt DateTime @default(now()) @map("created_at")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction)
+  user      User     @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   @@unique([tenantId, userId], map: "uq_dad_membership_tenant_user")
   @@index([userId], map: "idx_dad_membership_user")
@@ -73,15 +73,15 @@ model Product {
   maxQty       Int?            @map("max_qty") @db.UnsignedInt
   saleStartAt  DateTime?       @map("sale_start_at")
   saleEndAt    DateTime?       @map("sale_end_at")
-  sortOrder    Int             @default(0) @map("sort_order")
-  deletedAt    DateTime?       @map("deleted_at")
   createdBy    BigInt          @map("created_by") @db.UnsignedBigInt
   createdAt    DateTime        @default(now()) @map("created_at")
-  updatedAt    DateTime        @updatedAt @map("updated_at")
+  updatedAt    DateTime        @default(now()) @updatedAt @map("updated_at")
+  sortOrder    Int             @default(0) @map("sort_order")
+  deletedAt    DateTime?       @map("deleted_at")
   items        OrderItem[]
   options      ProductOption[]
-  creator      User            @relation("ProductCreatedBy", fields: [createdBy], references: [id])
-  tenant       Tenant          @relation(fields: [tenantId], references: [id])
+  creator      User            @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: NoAction)
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction)
 
   @@index([tenantId, status, updatedAt], map: "idx_dad_products_tenant_status")
   @@index([createdBy], map: "dad_products_created_by_fkey")
@@ -100,7 +100,7 @@ model ProductOption {
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
   items     OrderItem[]
-  product   Product     @relation(fields: [productId], references: [id])
+  product   Product     @relation(fields: [productId], references: [id], onDelete: NoAction)
 
   @@unique([productId, name], map: "uq_dad_option_product_name")
   @@map("dad_product_options")
@@ -124,7 +124,7 @@ model Order {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   items           OrderItem[]
-  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: NoAction)
   user            User?          @relation(fields: [userId], references: [id])
   payments        Payment[]
   points          PointsLedger[]
@@ -148,8 +148,8 @@ model OrderItem {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
   option             ProductOption? @relation(fields: [optionId], references: [id])
-  order              Order          @relation(fields: [orderId], references: [id])
-  product            Product        @relation(fields: [productId], references: [id])
+  order              Order          @relation(fields: [orderId], references: [id], onDelete: NoAction)
+  product            Product        @relation(fields: [productId], references: [id], onDelete: NoAction)
 
   @@index([orderId], map: "idx_items_order")
   @@index([optionId], map: "dad_order_items_option_id_fkey")
@@ -169,7 +169,7 @@ model Payment {
   rawJson      String?   @map("raw_json") @db.LongText
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
-  order        Order     @relation(fields: [orderId], references: [id])
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: NoAction)
 
   @@index([orderId], map: "dad_payments_order_id_fkey")
   @@map("dad_payments")
@@ -186,11 +186,2974 @@ model PointsLedger {
   orderId      BigInt?  @map("order_id") @db.UnsignedBigInt
   createdAt    DateTime @default(now()) @map("created_at")
   order        Order?   @relation(fields: [orderId], references: [id])
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  user         User     @relation(fields: [userId], references: [id])
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction)
+  user         User     @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   @@index([tenantId, userId, createdAt], map: "idx_points_tenant_user_created")
   @@index([orderId], map: "dad_points_ledger_order_id_fkey")
   @@index([userId], map: "dad_points_ledger_user_id_fkey")
   @@map("dad_points_ledger")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_add_page {
+  uid               Int    @id @default(autoincrement()) @db.UnsignedInt
+  title             String @default("") @db.VarChar(100)
+  detail_image      String @db.Text
+  detail_image_only Int    @default(0) @db.UnsignedTinyInt
+  detail_image_type Int    @default(1) @db.UnsignedTinyInt
+  explains          String @db.Text
+  status            Int    @default(0) @db.UnsignedTinyInt
+  signdate          Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_admin_configuration {
+  uid          Int                                @id @default(autoincrement()) @db.UnsignedInt
+  id           String                             @default("") @db.VarChar(50)
+  push_yn      mallRN_admin_configuration_push_yn @default(N)
+  token_pc     String                             @default("") @db.VarChar(250)
+  token_mobile String                             @default("") @db.VarChar(250)
+  widget_info  String                             @db.Text
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_admin_log {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  id       String @default("") @db.VarChar(50)
+  content  String @default("") @db.VarChar(250)
+  type     Int    @default(0) @db.UnsignedTinyInt
+  acc_ip   String @default("") @db.VarChar(50)
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_auto_mail {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  type     String @default("") @db.VarChar(50)
+  send     Int    @default(0) @db.UnsignedTinyInt
+  subject  String @default("") @db.VarChar(150)
+  content  String @db.Text
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_banner {
+  uid      Int       @id @default(autoincrement()) @db.UnsignedInt
+  name     String    @default("") @db.VarChar(100)
+  code     String    @default("") @db.VarChar(10)
+  image1   String    @default("") @db.VarChar(100)
+  link1    String    @default("") @db.VarChar(250)
+  status   Int?      @default(0) @db.UnsignedInt
+  target   Int?      @default(0) @db.UnsignedInt
+  s_date   DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  e_date   DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  sequence Int       @default(0) @db.UnsignedInt
+  moddate  Int       @default(0) @db.UnsignedInt
+  signdate Int       @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_counsel {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  notice        Int    @default(1) @db.UnsignedTinyInt
+  idx           Int    @default(0) @db.UnsignedTinyInt
+  main          Int    @default(65535) @db.UnsignedSmallInt
+  sub           Int    @default(0) @db.UnsignedSmallInt
+  depth         Int    @default(0) @db.UnsignedTinyInt
+  id            String @default("") @db.VarChar(50)
+  name          String @default("") @db.VarChar(50)
+  subject       String @default("") @db.VarChar(250)
+  cate          Int    @default(0) @db.UnsignedTinyInt
+  content       String @db.Text
+  count         Int    @default(0) @db.UnsignedInt
+  count_comment Int    @default(0) @db.UnsignedInt
+  files         String @db.Text
+  links         String @db.Text
+  add1          String @default("") @db.VarChar(250)
+  add2          String @default("") @db.VarChar(250)
+  add3          String @default("") @db.VarChar(250)
+  add4          String @default("") @db.VarChar(250)
+  add5          String @default("") @db.VarChar(250)
+  secret        Int    @default(0) @db.UnsignedTinyInt
+  passwd        String @default("") @db.VarChar(100)
+  goods_info    String @default("") @db.VarChar(250)
+  ip            String @default("") @db.VarChar(20)
+  o_id          String @default("") @db.VarChar(50)
+  o_uid         String @default("") @db.VarChar(50)
+  dels          Int    @default(0) @db.UnsignedTinyInt
+  signdate      Int    @default(0) @db.UnsignedInt
+
+  @@index([notice, idx, main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_counsel_comment {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  b_uid    Int    @default(0) @db.UnsignedInt
+  main     Int    @default(65535) @db.UnsignedSmallInt
+  sub      Int    @default(0) @db.UnsignedSmallInt
+  depth    Int    @default(0) @db.UnsignedTinyInt
+  id       String @default("") @db.VarChar(50)
+  name     String @default("") @db.VarChar(50)
+  content  String @db.Text
+  passwd   String @default("") @db.VarChar(100)
+  ip       String @default("") @db.VarChar(20)
+  o_uid    String @default("") @db.VarChar(50)
+  dels     Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+
+  @@index([main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_faq {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  notice        Int    @default(1) @db.UnsignedTinyInt
+  idx           Int    @default(0) @db.UnsignedTinyInt
+  main          Int    @default(65535) @db.UnsignedSmallInt
+  sub           Int    @default(0) @db.UnsignedSmallInt
+  depth         Int    @default(0) @db.UnsignedTinyInt
+  id            String @default("") @db.VarChar(50)
+  name          String @default("") @db.VarChar(50)
+  subject       String @default("") @db.VarChar(250)
+  cate          Int    @default(0) @db.UnsignedTinyInt
+  content       String @db.Text
+  count         Int    @default(0) @db.UnsignedInt
+  count_comment Int    @default(0) @db.UnsignedInt
+  files         String @db.Text
+  links         String @db.Text
+  add1          String @default("") @db.VarChar(250)
+  add2          String @default("") @db.VarChar(250)
+  add3          String @default("") @db.VarChar(250)
+  add4          String @default("") @db.VarChar(250)
+  add5          String @default("") @db.VarChar(250)
+  secret        Int    @default(0) @db.UnsignedTinyInt
+  passwd        String @default("") @db.VarChar(100)
+  goods_info    String @default("") @db.VarChar(250)
+  ip            String @default("") @db.VarChar(20)
+  o_id          String @default("") @db.VarChar(50)
+  o_uid         String @default("") @db.VarChar(50)
+  dels          Int    @default(0) @db.UnsignedTinyInt
+  signdate      Int    @default(0) @db.UnsignedInt
+
+  @@index([notice, idx, main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_faq_comment {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  b_uid    Int    @default(0) @db.UnsignedInt
+  main     Int    @default(65535) @db.UnsignedSmallInt
+  sub      Int    @default(0) @db.UnsignedSmallInt
+  depth    Int    @default(0) @db.UnsignedTinyInt
+  id       String @default("") @db.VarChar(50)
+  name     String @default("") @db.VarChar(50)
+  content  String @db.Text
+  passwd   String @default("") @db.VarChar(100)
+  ip       String @default("") @db.VarChar(20)
+  o_uid    String @default("") @db.VarChar(50)
+  dels     Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+
+  @@index([main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_gallery {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  notice        Int    @default(1) @db.UnsignedTinyInt
+  idx           Int    @default(0) @db.UnsignedTinyInt
+  main          Int    @default(65535) @db.UnsignedSmallInt
+  sub           Int    @default(0) @db.UnsignedSmallInt
+  depth         Int    @default(0) @db.UnsignedTinyInt
+  id            String @default("") @db.VarChar(50)
+  name          String @default("") @db.VarChar(50)
+  subject       String @default("") @db.VarChar(250)
+  cate          Int    @default(0) @db.UnsignedTinyInt
+  content       String @db.Text
+  count         Int    @default(0) @db.UnsignedInt
+  count_comment Int    @default(0) @db.UnsignedInt
+  files         String @db.Text
+  links         String @db.Text
+  add1          String @default("") @db.VarChar(250)
+  add2          String @default("") @db.VarChar(250)
+  add3          String @default("") @db.VarChar(250)
+  add4          String @default("") @db.VarChar(250)
+  add5          String @default("") @db.VarChar(250)
+  secret        Int    @default(0) @db.UnsignedTinyInt
+  passwd        String @default("") @db.VarChar(100)
+  goods_info    String @default("") @db.VarChar(250)
+  ip            String @default("") @db.VarChar(20)
+  o_id          String @default("") @db.VarChar(50)
+  o_uid         String @default("") @db.VarChar(50)
+  dels          Int    @default(0) @db.UnsignedTinyInt
+  signdate      Int    @default(0) @db.UnsignedInt
+
+  @@index([notice, idx, main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_gallery_comment {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  b_uid    Int    @default(0) @db.UnsignedInt
+  main     Int    @default(65535) @db.UnsignedSmallInt
+  sub      Int    @default(0) @db.UnsignedSmallInt
+  depth    Int    @default(0) @db.UnsignedTinyInt
+  id       String @default("") @db.VarChar(50)
+  name     String @default("") @db.VarChar(50)
+  content  String @db.Text
+  passwd   String @default("") @db.VarChar(100)
+  ip       String @default("") @db.VarChar(20)
+  o_uid    String @default("") @db.VarChar(50)
+  dels     Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+
+  @@index([main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_manager {
+  uid                  Int    @id @default(autoincrement()) @db.UnsignedInt
+  id                   String @default("") @db.VarChar(50)
+  name                 String @default("") @db.VarChar(50)
+  skin                 String @default("") @db.VarChar(50)
+  types                Int    @default(0) @db.UnsignedInt
+  record_num           Int    @default(0) @db.UnsignedInt
+  start_page           Int    @default(0) @db.UnsignedInt
+  view_type            Int    @default(0) @db.UnsignedInt
+  secret_type          Int    @default(0) @db.UnsignedInt
+  privacy_type         Int    @default(0) @db.UnsignedInt
+  upload_file          Int    @default(0) @db.UnsignedInt
+  upload_size          Int    @default(0) @db.UnsignedInt
+  links                Int    @default(0) @db.UnsignedInt
+  new_icon             Int    @default(0) @db.UnsignedInt
+  cate_info            String @db.Text
+  access_list          Int    @default(0) @db.UnsignedInt
+  access_list_level    String @default("") @db.VarChar(250)
+  access_view          Int    @default(0) @db.UnsignedInt
+  access_view_level    String @default("") @db.VarChar(250)
+  access_write         Int    @default(0) @db.UnsignedInt
+  access_write_level   String @default("") @db.VarChar(250)
+  access_reply         Int    @default(0) @db.UnsignedInt
+  access_reply_level   String @default("") @db.VarChar(250)
+  access_comment       Int    @default(0) @db.UnsignedInt
+  access_comment_level String @default("") @db.VarChar(250)
+  form_add1_title      String @default("") @db.VarChar(50)
+  form_add1            Int    @default(0) @db.UnsignedTinyInt
+  form_add2_title      String @default("") @db.VarChar(50)
+  form_add2            Int    @default(0) @db.UnsignedTinyInt
+  form_add3_title      String @default("") @db.VarChar(50)
+  form_add3            Int    @default(0) @db.UnsignedTinyInt
+  form_add4_title      String @default("") @db.VarChar(50)
+  form_add4            Int    @default(0) @db.UnsignedTinyInt
+  form_add5_title      String @default("") @db.VarChar(50)
+  form_add5            Int    @default(0) @db.UnsignedTinyInt
+  header               Int    @default(0) @db.UnsignedInt
+  header_content       String @db.Text
+  footer               Int    @default(0) @db.UnsignedInt
+  footer_content       String @db.Text
+  ck_auto              String @db.Text
+  signdate             Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_notice {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  notice        Int    @default(1) @db.UnsignedTinyInt
+  idx           Int    @default(0) @db.UnsignedTinyInt
+  main          Int    @default(65535) @db.UnsignedSmallInt
+  sub           Int    @default(0) @db.UnsignedSmallInt
+  depth         Int    @default(0) @db.UnsignedTinyInt
+  id            String @default("") @db.VarChar(50)
+  name          String @default("") @db.VarChar(50)
+  subject       String @default("") @db.VarChar(250)
+  cate          Int    @default(0) @db.UnsignedTinyInt
+  content       String @db.Text
+  count         Int    @default(0) @db.UnsignedInt
+  count_comment Int    @default(0) @db.UnsignedInt
+  files         String @db.Text
+  links         String @db.Text
+  add1          String @default("") @db.VarChar(250)
+  add2          String @default("") @db.VarChar(250)
+  add3          String @default("") @db.VarChar(250)
+  add4          String @default("") @db.VarChar(250)
+  add5          String @default("") @db.VarChar(250)
+  secret        Int    @default(0) @db.UnsignedTinyInt
+  passwd        String @default("") @db.VarChar(100)
+  goods_info    String @default("") @db.VarChar(250)
+  ip            String @default("") @db.VarChar(20)
+  o_id          String @default("") @db.VarChar(50)
+  o_uid         String @default("") @db.VarChar(50)
+  dels          Int    @default(0) @db.UnsignedTinyInt
+  signdate      Int    @default(0) @db.UnsignedInt
+
+  @@index([notice, idx, main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_notice_comment {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  b_uid    Int    @default(0) @db.UnsignedInt
+  main     Int    @default(65535) @db.UnsignedSmallInt
+  sub      Int    @default(0) @db.UnsignedSmallInt
+  depth    Int    @default(0) @db.UnsignedTinyInt
+  id       String @default("") @db.VarChar(50)
+  name     String @default("") @db.VarChar(50)
+  content  String @db.Text
+  passwd   String @default("") @db.VarChar(100)
+  ip       String @default("") @db.VarChar(20)
+  o_uid    String @default("") @db.VarChar(50)
+  dels     Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+
+  @@index([main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_vcounsel {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  notice        Int    @default(1) @db.UnsignedTinyInt
+  idx           Int    @default(0) @db.UnsignedTinyInt
+  main          Int    @default(65535) @db.UnsignedSmallInt
+  sub           Int    @default(0) @db.UnsignedSmallInt
+  depth         Int    @default(0) @db.UnsignedTinyInt
+  id            String @default("") @db.VarChar(50)
+  name          String @default("") @db.VarChar(50)
+  subject       String @default("") @db.VarChar(250)
+  cate          Int    @default(0) @db.UnsignedTinyInt
+  content       String @db.Text
+  count         Int    @default(0) @db.UnsignedInt
+  count_comment Int    @default(0) @db.UnsignedInt
+  files         String @db.Text
+  links         String @db.Text
+  add1          String @default("") @db.VarChar(250)
+  add2          String @default("") @db.VarChar(250)
+  add3          String @default("") @db.VarChar(250)
+  add4          String @default("") @db.VarChar(250)
+  add5          String @default("") @db.VarChar(250)
+  secret        Int    @default(0) @db.UnsignedTinyInt
+  passwd        String @default("") @db.VarChar(100)
+  goods_info    String @default("") @db.VarChar(250)
+  ip            String @default("") @db.VarChar(20)
+  o_id          String @default("") @db.VarChar(50)
+  o_uid         String @default("") @db.VarChar(50)
+  dels          Int    @default(0) @db.UnsignedTinyInt
+  signdate      Int    @default(0) @db.UnsignedInt
+
+  @@index([notice, idx, main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_vcounsel_comment {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  b_uid    Int    @default(0) @db.UnsignedInt
+  main     Int    @default(65535) @db.UnsignedSmallInt
+  sub      Int    @default(0) @db.UnsignedSmallInt
+  depth    Int    @default(0) @db.UnsignedTinyInt
+  id       String @default("") @db.VarChar(50)
+  name     String @default("") @db.VarChar(50)
+  content  String @db.Text
+  passwd   String @default("") @db.VarChar(100)
+  ip       String @default("") @db.VarChar(20)
+  o_uid    String @default("") @db.VarChar(50)
+  dels     Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+
+  @@index([main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_vnotice {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  notice        Int    @default(1) @db.UnsignedTinyInt
+  idx           Int    @default(0) @db.UnsignedTinyInt
+  main          Int    @default(65535) @db.UnsignedSmallInt
+  sub           Int    @default(0) @db.UnsignedSmallInt
+  depth         Int    @default(0) @db.UnsignedTinyInt
+  id            String @default("") @db.VarChar(50)
+  name          String @default("") @db.VarChar(50)
+  subject       String @default("") @db.VarChar(250)
+  cate          Int    @default(0) @db.UnsignedTinyInt
+  content       String @db.Text
+  count         Int    @default(0) @db.UnsignedInt
+  count_comment Int    @default(0) @db.UnsignedInt
+  files         String @db.Text
+  links         String @db.Text
+  add1          String @default("") @db.VarChar(250)
+  add2          String @default("") @db.VarChar(250)
+  add3          String @default("") @db.VarChar(250)
+  add4          String @default("") @db.VarChar(250)
+  add5          String @default("") @db.VarChar(250)
+  secret        Int    @default(0) @db.UnsignedTinyInt
+  passwd        String @default("") @db.VarChar(100)
+  goods_info    String @default("") @db.VarChar(250)
+  ip            String @default("") @db.VarChar(20)
+  o_id          String @default("") @db.VarChar(50)
+  o_uid         String @default("") @db.VarChar(50)
+  dels          Int    @default(0) @db.UnsignedTinyInt
+  signdate      Int    @default(0) @db.UnsignedInt
+
+  @@index([notice, idx, main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_board_vnotice_comment {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  b_uid    Int    @default(0) @db.UnsignedInt
+  main     Int    @default(65535) @db.UnsignedSmallInt
+  sub      Int    @default(0) @db.UnsignedSmallInt
+  depth    Int    @default(0) @db.UnsignedTinyInt
+  id       String @default("") @db.VarChar(50)
+  name     String @default("") @db.VarChar(50)
+  content  String @db.Text
+  passwd   String @default("") @db.VarChar(100)
+  ip       String @default("") @db.VarChar(20)
+  o_uid    String @default("") @db.VarChar(50)
+  dels     Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+
+  @@index([main, sub], map: "POS")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_cart {
+  uid                Int     @id @default(autoincrement()) @db.UnsignedInt
+  vendor             String  @default("") @db.VarChar(50)
+  vendor_delivery    String  @default("") @db.VarChar(50)
+  cart_id            String  @default("") @db.VarChar(50)
+  g_uid              Int     @default(0) @db.UnsignedInt
+  g_cate             BigInt  @default(0) @db.UnsignedBigInt
+  qty                Int     @default(0) @db.UnsignedInt
+  option             Int     @default(0) @db.UnsignedInt
+  hotdeal_setting_id Int     @default(0)
+  hotdeal_price      Decimal @default(0.00) @db.Decimal(15, 2)
+  direct             Int     @default(0) @db.UnsignedTinyInt
+  selects            Int     @default(0) @db.UnsignedTinyInt
+  contact            Int     @default(0) @db.UnsignedTinyInt
+  signdate           Int     @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_cate {
+  uid          Int    @id @default(autoincrement()) @db.UnsignedInt
+  cate         BigInt @default(0) @db.UnsignedBigInt
+  cate_name    String @default("") @db.VarChar(60)
+  cate_dep     Int    @default(0) @db.UnsignedTinyInt
+  cate_parent  BigInt @default(0) @db.UnsignedBigInt
+  cate_sub     Int    @default(1) @db.UnsignedTinyInt
+  used         Int    @default(1) @db.UnsignedTinyInt
+  sequence     Int    @default(0) @db.UnsignedInt
+  access_type  Int    @default(0) @db.UnsignedTinyInt
+  access_level String @default("") @db.VarChar(250)
+  matching     String @default("") @db.VarChar(100)
+  image1       String @default("") @db.VarChar(100)
+  image2       String @default("") @db.VarChar(100)
+  image3       String @default("") @db.VarChar(100)
+
+  @@index([cate], map: "cate")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_cate_backup {
+  uid          Int    @id @default(autoincrement()) @db.UnsignedInt
+  cate         BigInt @default(0) @db.UnsignedBigInt
+  cate_name    String @default("") @db.VarChar(60)
+  cate_dep     Int    @default(0) @db.UnsignedTinyInt
+  cate_parent  BigInt @default(0) @db.UnsignedBigInt
+  cate_sub     Int    @default(1) @db.UnsignedTinyInt
+  used         Int    @default(1) @db.UnsignedTinyInt
+  sequence     Int    @default(0) @db.UnsignedInt
+  access_type  Int    @default(0) @db.UnsignedTinyInt
+  access_level String @default("") @db.VarChar(250)
+  matching     String @default("") @db.VarChar(100)
+  image1       String @default("") @db.VarChar(100)
+  image2       String @default("") @db.VarChar(100)
+  image3       String @default("") @db.VarChar(100)
+
+  @@index([cate], map: "cate")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_cate_matching {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor   String @default("") @db.VarChar(50)
+  cate     BigInt @default(0) @db.UnsignedBigInt
+  matching String @default("") @db.VarChar(100)
+
+  @@index([cate], map: "cate")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_configuration {
+  uid                           Int                                               @id @default(autoincrement()) @db.UnsignedInt
+  basic_url                     String                                            @default("") @db.VarChar(100)
+  basic_name                    String                                            @default("") @db.VarChar(50)
+  basic_admin                   String                                            @default("") @db.VarChar(50)
+  basic_email                   String                                            @default("") @db.VarChar(100)
+  basic_cs_time1                String                                            @default("") @db.VarChar(50)
+  basic_cs_time2                String                                            @default("") @db.VarChar(50)
+  basic_cs_time3                String                                            @default("") @db.VarChar(50)
+  basic_cs_time4                String                                            @default("") @db.VarChar(50)
+  basic_title                   String                                            @default("") @db.VarChar(250)
+  basic_description             String                                            @default("") @db.VarChar(250)
+  basic_image                   String                                            @default("") @db.VarChar(100)
+  basic_keyword                 String                                            @default("") @db.VarChar(250)
+  basic_real_keyword            String                                            @default("") @db.VarChar(250)
+  comp_name                     String                                            @default("") @db.VarChar(50)
+  comp_owner                    String                                            @default("") @db.VarChar(50)
+  comp_license_no1              String                                            @default("") @db.VarChar(50)
+  comp_license_no2              String                                            @default("") @db.VarChar(50)
+  comp_type                     String                                            @default("") @db.VarChar(100)
+  comp_item                     String                                            @default("") @db.VarChar(100)
+  comp_email                    String                                            @default("") @db.VarChar(100)
+  comp_tel                      String                                            @default("") @db.VarChar(50)
+  comp_fax                      String                                            @default("") @db.VarChar(50)
+  comp_postcode                 String                                            @default("") @db.VarChar(10)
+  comp_address1                 String                                            @default("") @db.VarChar(100)
+  comp_address2                 String                                            @default("") @db.VarChar(100)
+  comp_rtn_postcode             String                                            @default("") @db.VarChar(10)
+  comp_rtn_address1             String                                            @default("") @db.VarChar(100)
+  comp_rtn_address2             String                                            @default("") @db.VarChar(100)
+  payment_type_b                Int                                               @default(0) @db.UnsignedTinyInt
+  payment_type_c                Int                                               @default(0) @db.UnsignedTinyInt
+  payment_type_r                Int                                               @default(0) @db.UnsignedTinyInt
+  payment_type_v                Int                                               @default(0) @db.UnsignedTinyInt
+  payment_type_h                Int                                               @default(0) @db.UnsignedTinyInt
+  payment_cp                    String                                            @default("") @db.VarChar(30)
+  payment_shop_id               String                                            @default("") @db.VarChar(50)
+  payment_shop_key              String                                            @default("") @db.VarChar(100)
+  payment_install_range         Int                                               @default(6) @db.UnsignedInt
+  payment_escrow_v              Int                                               @default(0) @db.UnsignedTinyInt
+  payment_complex_tax           Int                                               @default(0) @db.UnsignedTinyInt
+  payment_bank_info             String                                            @db.Text
+  payment_commission_c          Float                                             @default(0.00) @db.Float
+  payment_commission_r          Float                                             @default(0.00) @db.Float
+  payment_commission_r2         Int                                               @default(0) @db.UnsignedInt
+  payment_commission_v          Int                                               @default(0) @db.UnsignedInt
+  payment_commission_h          Float                                             @default(0.00) @db.Float
+  cash_receipts_used            Int                                               @default(0) @db.UnsignedTinyInt
+  cash_receipts_require         Int                                               @default(0) @db.UnsignedTinyInt
+  cash_receipts_method          Int                                               @default(0) @db.UnsignedTinyInt
+  cash_receipts_type            Int                                               @default(0) @db.UnsignedTinyInt
+  naverpay_used                 Int                                               @default(0) @db.UnsignedTinyInt
+  naverpay_mode                 Int                                               @default(0) @db.UnsignedTinyInt
+  naverpay_test_id              String                                            @default("") @db.VarChar(50)
+  naverpay_shop_id              String                                            @default("") @db.VarChar(50)
+  naverpay_key1                 String                                            @default("") @db.VarChar(50)
+  naverpay_key2                 String                                            @default("") @db.VarChar(50)
+  naverpay_key3                 String                                            @default("") @db.VarChar(50)
+  delivery_type                 mallRN_configuration_delivery_type                @default(P)
+  delivery_d_price              Int                                               @default(0) @db.UnsignedInt
+  delivery_p_type               String                                            @default("order") @db.VarChar(20)
+  delivery_p_price1             Int                                               @default(0) @db.UnsignedInt
+  delivery_p_price2             Int                                               @default(0) @db.UnsignedInt
+  delivery_info                 String                                            @db.Text
+  delivery_im_areas1_used       Int                                               @default(0) @db.UnsignedTinyInt
+  delivery_im_areas1_price      Int                                               @default(0) @db.UnsignedInt
+  delivery_im_areas2_used       Int                                               @default(0) @db.UnsignedTinyInt
+  delivery_im_areas2_price      Int                                               @default(0) @db.UnsignedInt
+  member_auth                   mallRN_configuration_member_auth                  @default(A)
+  member_auth_email             Int                                               @default(0) @db.UnsignedInt
+  member_auth_cell              Int                                               @default(0) @db.UnsignedInt
+  member_unavailable_id         String                                            @db.Text
+  member_mileage_yn             mallRN_configuration_member_mileage_yn            @default(Y)
+  member_mileage_validity_yn    mallRN_configuration_member_mileage_validity_yn   @default(N)
+  member_mileage_validity       String                                            @default("") @db.VarChar(100)
+  member_mileage_validity_type  mallRN_configuration_member_mileage_validity_type @default(Y)
+  member_mileage_join           Int                                               @default(0) @db.UnsignedInt
+  member_mileage_order          Int                                               @default(0) @db.UnsignedInt
+  member_limit_count            Int                                               @default(0) @db.UnsignedInt
+  member_limit_minute           Int                                               @default(0) @db.UnsignedInt
+  member_admin_auth             mallRN_configuration_member_admin_auth            @default(N)
+  member_login_limit_minute     Int                                               @default(0) @db.UnsignedInt
+  member_form_tel               Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_cell              Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_address           Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_birth             Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_gender            Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_marry             Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_job               Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_job_info          String                                            @db.Text
+  member_form_hobby             Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_hobby_info        String                                            @db.Text
+  member_form_mailling          Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_sms               Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_comp              Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_comp_num          Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_comp_owner        Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_comp_address      Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_comp_type         Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_comp_item         Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_add1_title        String                                            @default("") @db.VarChar(50)
+  member_form_add1              Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_add2_title        String                                            @default("") @db.VarChar(50)
+  member_form_add2              Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_add3_title        String                                            @default("") @db.VarChar(50)
+  member_form_add3              Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_add4_title        String                                            @default("") @db.VarChar(50)
+  member_form_add4              Int                                               @default(0) @db.UnsignedTinyInt
+  member_form_add5_title        String                                            @default("") @db.VarChar(50)
+  member_form_add5              Int                                               @default(0) @db.UnsignedTinyInt
+  member_level_time             Int                                               @default(0) @db.UnsignedInt
+  member_level_date             String                                            @default("") @db.VarChar(50)
+  agreement_info1               String                                            @db.Text
+  agreement_info2               String                                            @db.Text
+  agreement_info3               String                                            @db.Text
+  agreement_info4               String                                            @db.Text
+  agreement_info5               String                                            @db.Text
+  agreement_info6               String                                            @db.Text
+  goods_price_limit1            Int                                               @default(0) @db.UnsignedInt
+  goods_price_limit2            Int                                               @default(1) @db.UnsignedTinyInt
+  goods_soldout                 Int                                               @default(0) @db.UnsignedTinyInt
+  goods_engine_naver            Int                                               @default(0) @db.UnsignedTinyInt
+  goods_engine_daum             Int                                               @default(0) @db.UnsignedTinyInt
+  goods_option_info             String                                            @db.Text
+  goods_brand_info              String                                            @db.Text
+  goods_make_info               String                                            @db.Text
+  goods_origin_info             String                                            @db.Text
+  goods_require_info            String                                            @db.Text
+  goods_icon_info               String                                            @db.Text
+  goods_delivery_info           String                                            @db.Text
+  goods_refund_info             String                                            @db.Text
+  goods_exchange_info           String                                            @db.Text
+  goods_as_info                 String                                            @db.Text
+  order_cancel_info             String                                            @db.Text
+  order_message_info            String                                            @db.Text
+  order_auto_completed1         Int                                               @default(0) @db.UnsignedInt
+  order_auto_completed2         Int                                               @default(0) @db.UnsignedInt
+  order_auto_completed3         Int                                               @default(0) @db.UnsignedInt
+  order_tracker_yn              mallRN_configuration_order_tracker_yn             @default(N)
+  order_tracker_key             String                                            @default("") @db.VarChar(50)
+  sms_yn                        mallRN_configuration_sms_yn                       @default(Y)
+  sms_key                       String                                            @default("") @db.VarChar(50)
+  sms_secret                    String                                            @default("") @db.VarChar(50)
+  sms_pfid                      String                                            @default("") @db.VarChar(50)
+  sms_calling_number            String                                            @default("") @db.VarChar(30)
+  sms_admin_number1             String                                            @default("") @db.VarChar(30)
+  sms_admin_number2             String                                            @default("") @db.VarChar(30)
+  sms_admin_number3             String                                            @default("") @db.VarChar(30)
+  design_skin                   String                                            @default("") @db.VarChar(50)
+  design_skin_ing               String                                            @default("") @db.VarChar(50)
+  design_top_menu               String                                            @db.Text
+  design_main_display1          Int                                               @default(0) @db.UnsignedTinyInt
+  design_main_display2          Int                                               @default(0) @db.UnsignedTinyInt
+  design_main_display3          Int                                               @default(0) @db.UnsignedTinyInt
+  design_main_category          Int                                               @default(0) @db.UnsignedTinyInt
+  design_main_category_info     String                                            @db.Text
+  design_main_custom_code       Int                                               @default(0) @db.UnsignedTinyInt
+  design_main_custom_code_image String                                            @db.Text
+  design_main_custom_code_info  String                                            @db.Text
+  design_main_display_order     String                                            @db.Text
+  design_main2_display1         Int                                               @default(0) @db.UnsignedTinyInt
+  design_main2_display2         Int                                               @default(0) @db.UnsignedTinyInt
+  design_main2_display3         Int                                               @default(0) @db.UnsignedTinyInt
+  design_main2_display_order    String                                            @db.Text
+  design_icon_display           String                                            @default("") @db.VarChar(20)
+  design_vendor_link            Int                                               @default(0) @db.UnsignedTinyInt
+  mobile_yn                     mallRN_configuration_mobile_yn                    @default(Y)
+  mobile_icon                   String                                            @default("") @db.VarChar(50)
+  mobile_top_menu               String                                            @db.Text
+  inquiry_cate_info             String                                            @db.Text
+  inquiry_access_write          Int                                               @default(0) @db.UnsignedInt
+  inquiry_secret_type           Int                                               @default(0) @db.UnsignedInt
+  inquiry_privacy_type          Int                                               @default(0) @db.UnsignedInt
+  push_apiKey                   String                                            @default("") @db.VarChar(100)
+  push_authDomain               String                                            @default("") @db.VarChar(100)
+  push_projectId                String                                            @default("") @db.VarChar(100)
+  push_storageBucket            String                                            @default("") @db.VarChar(100)
+  push_messagingSenderId        String                                            @default("") @db.VarChar(100)
+  push_appId                    String                                            @default("") @db.VarChar(100)
+  push_server_key               String                                            @default("") @db.VarChar(200)
+  push_server_key2              String                                            @default("") @db.VarChar(200)
+  script_naver_tag              String                                            @default("") @db.VarChar(100)
+  script_google_analytics       String                                            @default("") @db.VarChar(100)
+  script_top_code               String                                            @db.Text
+  script_bottom_code            String                                            @db.Text
+  signdate                      Int                                               @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_configuration_cus {
+  uid        Int      @id
+  main_title String?  @db.VarChar(255)
+  use_yn     Boolean? @default(false)
+  regdt      Int?
+  moddt      Int?
+  etc1       String?  @db.VarChar(255)
+  etc2       String?  @db.VarChar(255)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_configuration_cus_goods {
+  uid      Int  @id @default(autoincrement()) @db.UnsignedInt
+  euid     Int? @default(0) @db.UnsignedInt
+  guid     Int? @default(0) @db.UnsignedInt
+  ecate    Int? @default(0) @db.UnsignedInt
+  sequence Int  @default(99999) @db.UnsignedInt
+}
+
+model mallRN_configuration_cus_tab {
+  uid               Int     @id @default(autoincrement()) @db.UnsignedInt
+  configuration_uid Int     @db.UnsignedInt
+  tab_no            Int     @db.UnsignedTinyInt
+  tab_name          String  @default("") @db.VarChar(200)
+  tab_enabled       Boolean @default(true)
+  sort_order        Int     @default(0) @db.UnsignedTinyInt
+  regdt             Int     @db.UnsignedInt
+  moddt             Int     @db.UnsignedInt
+
+  @@unique([configuration_uid, tab_no], map: "uniq_conf_tab")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_configuration_social {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  site    String @default("") @db.VarChar(50)
+  used    Int    @default(0) @db.UnsignedTinyInt
+  api_id  String @default("") @db.VarChar(100)
+  api_key String @default("") @db.VarChar(100)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_count_browser {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_count_keyword {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_count_list {
+  uid    Int @id @default(autoincrement()) @db.UnsignedInt
+  type   Int @default(0) @db.UnsignedTinyInt
+  year   Int @default(0) @db.UnsignedInt
+  month  Int @default(0) @db.UnsignedTinyInt
+  day    Int @default(0) @db.UnsignedTinyInt
+  week   Int @default(0) @db.UnsignedTinyInt
+  h_00   Int @default(0) @db.UnsignedInt
+  h_01   Int @default(0) @db.UnsignedInt
+  h_02   Int @default(0) @db.UnsignedInt
+  h_03   Int @default(0) @db.UnsignedInt
+  h_04   Int @default(0) @db.UnsignedInt
+  h_05   Int @default(0) @db.UnsignedInt
+  h_06   Int @default(0) @db.UnsignedInt
+  h_07   Int @default(0) @db.UnsignedInt
+  h_08   Int @default(0) @db.UnsignedInt
+  h_09   Int @default(0) @db.UnsignedInt
+  h_10   Int @default(0) @db.UnsignedInt
+  h_11   Int @default(0) @db.UnsignedInt
+  h_12   Int @default(0) @db.UnsignedInt
+  h_13   Int @default(0) @db.UnsignedInt
+  h_14   Int @default(0) @db.UnsignedInt
+  h_15   Int @default(0) @db.UnsignedInt
+  h_16   Int @default(0) @db.UnsignedInt
+  h_17   Int @default(0) @db.UnsignedInt
+  h_18   Int @default(0) @db.UnsignedInt
+  h_19   Int @default(0) @db.UnsignedInt
+  h_20   Int @default(0) @db.UnsignedInt
+  h_21   Int @default(0) @db.UnsignedInt
+  h_22   Int @default(0) @db.UnsignedInt
+  h_23   Int @default(0) @db.UnsignedInt
+  mh_00  Int @default(0) @db.UnsignedInt
+  mh_01  Int @default(0) @db.UnsignedInt
+  mh_02  Int @default(0) @db.UnsignedInt
+  mh_03  Int @default(0) @db.UnsignedInt
+  mh_04  Int @default(0) @db.UnsignedInt
+  mh_05  Int @default(0) @db.UnsignedInt
+  mh_06  Int @default(0) @db.UnsignedInt
+  mh_07  Int @default(0) @db.UnsignedInt
+  mh_08  Int @default(0) @db.UnsignedInt
+  mh_09  Int @default(0) @db.UnsignedInt
+  mh_10  Int @default(0) @db.UnsignedInt
+  mh_11  Int @default(0) @db.UnsignedInt
+  mh_12  Int @default(0) @db.UnsignedInt
+  mh_13  Int @default(0) @db.UnsignedInt
+  mh_14  Int @default(0) @db.UnsignedInt
+  mh_15  Int @default(0) @db.UnsignedInt
+  mh_16  Int @default(0) @db.UnsignedInt
+  mh_17  Int @default(0) @db.UnsignedInt
+  mh_18  Int @default(0) @db.UnsignedInt
+  mh_19  Int @default(0) @db.UnsignedInt
+  mh_20  Int @default(0) @db.UnsignedInt
+  mh_21  Int @default(0) @db.UnsignedInt
+  mh_22  Int @default(0) @db.UnsignedInt
+  mh_23  Int @default(0) @db.UnsignedInt
+  total  Int @default(0) @db.UnsignedInt
+  mtotal Int @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_count_os {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_count_referer {
+  uid        Int    @id @default(autoincrement()) @db.UnsignedInt
+  referer    String @default("") @db.VarChar(255)
+  os         String @default("") @db.VarChar(50)
+  browser    String @default("") @db.VarChar(50)
+  check_ip   String @default("") @db.VarChar(20)
+  check_date Int    @default(0) @db.UnsignedInt
+  check_proc Int    @default(0) @db.UnsignedTinyInt
+  signdate   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_count_site {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_coupon {
+  uid      Int       @id @default(autoincrement()) @db.UnsignedInt
+  c_uid    Int       @default(0) @db.UnsignedInt
+  g_uid    Int       @default(0) @db.UnsignedInt
+  id       String    @default("") @db.VarChar(50)
+  status   Int       @default(0) @db.UnsignedTinyInt
+  e_date   DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  usedate  Int       @default(0) @db.UnsignedInt
+  signdate Int       @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_coupon_manager {
+  uid            Int                                 @id @default(autoincrement()) @db.UnsignedInt
+  name           String                              @default("") @db.VarChar(100)
+  type           Int                                 @default(0) @db.UnsignedInt
+  discount       Int                                 @default(0) @db.UnsignedInt
+  discount_type  mallRN_coupon_manager_discount_type @default(P)
+  discount_limit Int                                 @default(0) @db.UnsignedInt
+  use_type       Int                                 @default(0) @db.UnsignedInt
+  use_s_date     DateTime?                           @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  use_e_date     DateTime?                           @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  use_day        Int                                 @default(0) @db.UnsignedInt
+  use_limit      Int                                 @default(0) @db.UnsignedInt
+  use_limit2     Int                                 @default(0) @db.UnsignedInt
+  goods_order    String                              @db.Text
+  signdate       Int                                 @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_db_error_log {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  id       String @default("") @db.VarChar(50)
+  name     String @default("") @db.VarChar(50)
+  status   Int    @default(0) @db.UnsignedTinyInt
+  message  String @db.Text
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_delivery_api_log {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  order_num     String @default("") @db.VarChar(32)
+  og_uid        Int    @default(0) @db.UnsignedInt
+  delivery_name String @default("") @db.VarChar(50)
+  delivery_num  String @default("") @db.VarChar(50)
+  delivery_code String @default("") @db.VarChar(20)
+  status        Int    @default(0) @db.UnsignedTinyInt
+  message       String @default("") @db.VarChar(250)
+  signdate      Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_delivery_configuration {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor   String @default("") @db.VarChar(50)
+  title    String @default("") @db.VarChar(250)
+  price    Int    @default(0) @db.UnsignedInt
+  used     Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_exhibition {
+  uid               Int                           @id @default(autoincrement()) @db.UnsignedInt
+  name              String                        @default("") @db.VarChar(100)
+  discount_yn       mallRN_exhibition_discount_yn @default(Y)
+  discount          Int                           @default(0) @db.UnsignedInt
+  s_date            DateTime?                     @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  e_date            DateTime?                     @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  cate_info         String                        @db.Text
+  image1            String                        @default("") @db.VarChar(100)
+  detail_image      String                        @db.Text
+  detail_image_only Int                           @default(0) @db.UnsignedTinyInt
+  detail_image_type Int                           @default(1) @db.UnsignedTinyInt
+  explains          String                        @db.Text
+  status            Int                           @default(0) @db.UnsignedTinyInt
+  signdate          Int                           @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_exhibition_goods {
+  uid      Int  @id @default(autoincrement()) @db.UnsignedInt
+  euid     Int? @default(0) @db.UnsignedInt
+  guid     Int? @default(0) @db.UnsignedInt
+  ecate    Int? @default(0) @db.UnsignedInt
+  sequence Int  @default(99999) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_favorite_goods {
+  uid      Int                          @id @default(autoincrement()) @db.UnsignedInt
+  id       String                       @default("") @db.VarChar(50)
+  g_uid    Int                          @default(0) @db.UnsignedInt
+  vendor   String                       @default("") @db.VarChar(50)
+  mobile   mallRN_favorite_goods_mobile @default(N)
+  signdate Int                          @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_favorite_store {
+  uid      Int                          @id @default(autoincrement()) @db.UnsignedInt
+  id       String                       @default("") @db.VarChar(50)
+  vendor   String                       @default("") @db.VarChar(50)
+  mobile   mallRN_favorite_store_mobile @default(N)
+  signdate Int                          @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_goods {
+  uid                      Int                  @id @default(autoincrement()) @db.UnsignedInt
+  re_uid                   Int                  @default(99999999) @db.UnsignedInt
+  cate                     BigInt               @default(0) @db.UnsignedBigInt
+  vendor                   String               @default("") @db.VarChar(50)
+  name                     String               @default("") @db.VarChar(250)
+  name_code_able           String               @default("") @db.VarChar(250)
+  price                    Int                  @default(0) @db.UnsignedInt
+  orig_price               Int                  @default(0) @db.UnsignedInt
+  consumer_price           Int                  @default(0) @db.UnsignedInt
+  price_ment               String               @default("") @db.VarChar(100)
+  commission_type          Int                  @default(0) @db.UnsignedTinyInt
+  commission               Float                @default(0.00) @db.Float
+  image1                   String               @default("") @db.VarChar(50)
+  image2                   String               @default("") @db.VarChar(50)
+  image3                   String               @default("") @db.VarChar(50)
+  other_image              String               @db.Text
+  detail_image             String               @db.Text
+  detail_image_only        Int                  @default(0) @db.UnsignedTinyInt
+  detail_image_type        Int                  @default(1) @db.UnsignedTinyInt
+  explains                 String               @db.Text
+  option_use               Int                  @default(0) @db.UnsignedTinyInt
+  option_info              String               @db.Text
+  option_soldout           Int                  @default(0) @db.UnsignedInt
+  qty_type                 Int                  @default(0) @db.UnsignedTinyInt
+  qty                      Int                  @default(0) @db.UnsignedInt
+  limit_qty                Int                  @default(0) @db.UnsignedInt
+  require_info             String               @db.Text
+  display_use              Int                  @default(0) @db.UnsignedTinyInt
+  sale_use                 Int                  @default(0) @db.UnsignedTinyInt
+  order_priority           Int                  @default(5) @db.UnsignedTinyInt
+  main1_display1           Int                  @default(0) @db.UnsignedTinyInt
+  main1_display2           Int                  @default(0) @db.UnsignedTinyInt
+  main1_display3           Int                  @default(0) @db.UnsignedTinyInt
+  main2_display1           Int                  @default(0) @db.UnsignedTinyInt
+  main2_display2           Int                  @default(0) @db.UnsignedTinyInt
+  main2_display3           Int                  @default(0) @db.UnsignedTinyInt
+  store_display1           Int                  @default(0) @db.UnsignedTinyInt
+  store_display2           Int                  @default(0) @db.UnsignedTinyInt
+  store_display3           Int                  @default(0) @db.UnsignedTinyInt
+  main1_display1_sequence  Int                  @default(99999) @db.UnsignedInt
+  main1_display2_sequence  Int                  @default(99999) @db.UnsignedInt
+  main1_display3_sequence  Int                  @default(99999) @db.UnsignedInt
+  main2_display1_sequence  Int                  @default(99999) @db.UnsignedInt
+  main2_display2_sequence  Int                  @default(99999) @db.UnsignedInt
+  main2_display3_sequence  Int                  @default(99999) @db.UnsignedInt
+  store_display1_sequence  Int                  @default(99999) @db.UnsignedInt
+  store_display2_sequence  Int                  @default(99999) @db.UnsignedInt
+  store_display3_sequence  Int                  @default(99999) @db.UnsignedInt
+  icon                     String               @default("") @db.VarChar(250)
+  goods_code               String               @default("") @db.VarChar(50)
+  detail                   String               @db.Text
+  brand                    String               @default("") @db.VarChar(50)
+  make                     String               @default("") @db.VarChar(50)
+  origin                   String               @default("") @db.VarChar(50)
+  model                    String               @default("") @db.VarChar(50)
+  making_info              String               @db.Text
+  mileage_type             Int                  @default(1) @db.UnsignedTinyInt
+  mileage_common           Int                  @default(0) @db.UnsignedInt
+  mileage_level            String               @db.Text
+  delivery_type            Int                  @default(1) @db.UnsignedTinyInt
+  delivery_type_qty        Int                  @default(1) @db.UnsignedInt
+  delivery_price           Int                  @default(0) @db.UnsignedInt
+  delivery_im_areas1_used  Int                  @default(0) @db.UnsignedTinyInt
+  delivery_im_areas1_price Int                  @default(0) @db.UnsignedInt
+  delivery_im_areas2_used  Int                  @default(0) @db.UnsignedTinyInt
+  delivery_im_areas2_price Int                  @default(0) @db.UnsignedInt
+  keyword                  String               @db.Text
+  related_goods_type       Int                  @default(0) @db.UnsignedTinyInt
+  related_goods            String               @default("") @db.VarChar(250)
+  information_use          Int                  @default(1) @db.UnsignedTinyInt
+  delivery_info            String               @db.Text
+  refund_info              String               @db.Text
+  exchange_info            String               @db.Text
+  as_info                  String               @db.Text
+  exhibition               String               @db.Text
+  engine_use               Int                  @default(1) @db.UnsignedTinyInt
+  view_cnt                 Int                  @default(0) @db.UnsignedInt
+  order_cnt                Int                  @default(0) @db.UnsignedInt
+  cate_hide                Int                  @default(0) @db.UnsignedTinyInt
+  vendor_hide              Int                  @default(0) @db.UnsignedTinyInt
+  auth_ck                  mallRN_goods_auth_ck @default(Y)
+  moddate                  Int                  @default(0) @db.UnsignedInt
+  signdate                 Int                  @default(0) @db.UnsignedInt
+
+  @@index([name], map: "name")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_goods_backup {
+  uid                      Int                         @id @default(autoincrement()) @db.UnsignedInt
+  re_uid                   Int                         @default(99999999) @db.UnsignedInt
+  cate                     BigInt                      @default(0) @db.UnsignedBigInt
+  vendor                   String                      @default("") @db.VarChar(50)
+  name                     String                      @default("") @db.VarChar(250)
+  name_code_able           String                      @default("") @db.VarChar(250)
+  price                    Int                         @default(0) @db.UnsignedInt
+  orig_price               Int                         @default(0) @db.UnsignedInt
+  consumer_price           Int                         @default(0) @db.UnsignedInt
+  price_ment               String                      @default("") @db.VarChar(100)
+  commission_type          Int                         @default(0) @db.UnsignedTinyInt
+  commission               Float                       @default(0.00) @db.Float
+  image1                   String                      @default("") @db.VarChar(50)
+  image2                   String                      @default("") @db.VarChar(50)
+  image3                   String                      @default("") @db.VarChar(50)
+  other_image              String                      @db.Text
+  detail_image             String                      @db.Text
+  detail_image_only        Int                         @default(0) @db.UnsignedTinyInt
+  detail_image_type        Int                         @default(1) @db.UnsignedTinyInt
+  explains                 String                      @db.Text
+  option_use               Int                         @default(0) @db.UnsignedTinyInt
+  option_info              String                      @db.Text
+  option_soldout           Int                         @default(0) @db.UnsignedInt
+  qty_type                 Int                         @default(0) @db.UnsignedTinyInt
+  qty                      Int                         @default(0) @db.UnsignedInt
+  limit_qty                Int                         @default(0) @db.UnsignedInt
+  require_info             String                      @db.Text
+  display_use              Int                         @default(0) @db.UnsignedTinyInt
+  sale_use                 Int                         @default(0) @db.UnsignedTinyInt
+  order_priority           Int                         @default(5) @db.UnsignedTinyInt
+  main1_display1           Int                         @default(0) @db.UnsignedTinyInt
+  main1_display2           Int                         @default(0) @db.UnsignedTinyInt
+  main1_display3           Int                         @default(0) @db.UnsignedTinyInt
+  main2_display1           Int                         @default(0) @db.UnsignedTinyInt
+  main2_display2           Int                         @default(0) @db.UnsignedTinyInt
+  main2_display3           Int                         @default(0) @db.UnsignedTinyInt
+  store_display1           Int                         @default(0) @db.UnsignedTinyInt
+  store_display2           Int                         @default(0) @db.UnsignedTinyInt
+  store_display3           Int                         @default(0) @db.UnsignedTinyInt
+  main1_display1_sequence  Int                         @default(99999) @db.UnsignedInt
+  main1_display2_sequence  Int                         @default(99999) @db.UnsignedInt
+  main1_display3_sequence  Int                         @default(99999) @db.UnsignedInt
+  main2_display1_sequence  Int                         @default(99999) @db.UnsignedInt
+  main2_display2_sequence  Int                         @default(99999) @db.UnsignedInt
+  main2_display3_sequence  Int                         @default(99999) @db.UnsignedInt
+  store_display1_sequence  Int                         @default(99999) @db.UnsignedInt
+  store_display2_sequence  Int                         @default(99999) @db.UnsignedInt
+  store_display3_sequence  Int                         @default(99999) @db.UnsignedInt
+  icon                     String                      @default("") @db.VarChar(250)
+  goods_code               String                      @default("") @db.VarChar(50)
+  detail                   String                      @db.Text
+  brand                    String                      @default("") @db.VarChar(50)
+  make                     String                      @default("") @db.VarChar(50)
+  origin                   String                      @default("") @db.VarChar(50)
+  model                    String                      @default("") @db.VarChar(50)
+  making_info              String                      @db.Text
+  mileage_type             Int                         @default(1) @db.UnsignedTinyInt
+  mileage_common           Int                         @default(0) @db.UnsignedInt
+  mileage_level            String                      @db.Text
+  delivery_type            Int                         @default(1) @db.UnsignedTinyInt
+  delivery_type_qty        Int                         @default(1) @db.UnsignedInt
+  delivery_price           Int                         @default(0) @db.UnsignedInt
+  delivery_im_areas1_used  Int                         @default(0) @db.UnsignedTinyInt
+  delivery_im_areas1_price Int                         @default(0) @db.UnsignedInt
+  delivery_im_areas2_used  Int                         @default(0) @db.UnsignedTinyInt
+  delivery_im_areas2_price Int                         @default(0) @db.UnsignedInt
+  keyword                  String                      @db.Text
+  related_goods_type       Int                         @default(0) @db.UnsignedTinyInt
+  related_goods            String                      @default("") @db.VarChar(250)
+  information_use          Int                         @default(1) @db.UnsignedTinyInt
+  delivery_info            String                      @db.Text
+  refund_info              String                      @db.Text
+  exchange_info            String                      @db.Text
+  as_info                  String                      @db.Text
+  exhibition               String                      @db.Text
+  engine_use               Int                         @default(1) @db.UnsignedTinyInt
+  view_cnt                 Int                         @default(0) @db.UnsignedInt
+  order_cnt                Int                         @default(0) @db.UnsignedInt
+  cate_hide                Int                         @default(0) @db.UnsignedTinyInt
+  vendor_hide              Int                         @default(0) @db.UnsignedTinyInt
+  auth_ck                  mallRN_goods_backup_auth_ck @default(Y)
+  moddate                  Int                         @default(0) @db.UnsignedInt
+  signdate                 Int                         @default(0) @db.UnsignedInt
+
+  @@index([name], map: "name")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_goods_cate {
+  uid       Int    @id @default(autoincrement()) @db.UnsignedInt
+  guid      Int?   @default(0) @db.UnsignedInt
+  cate      BigInt @default(0) @db.UnsignedBigInt
+  cate_rep  Int    @default(0) @db.UnsignedTinyInt
+  sequence  Int    @default(0) @db.UnsignedInt
+  sequence1 Int    @default(99999) @db.UnsignedInt
+  sequence2 Int    @default(99999) @db.UnsignedInt
+  sequence3 Int    @default(99999) @db.UnsignedInt
+  sequence4 Int    @default(99999) @db.UnsignedInt
+
+  @@index([guid], map: "guid")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_goods_option {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  guid     Int?   @default(0) @db.UnsignedInt
+  value    String @default("") @db.VarChar(250)
+  price    Int    @default(0)
+  qty_type Int    @default(0) @db.UnsignedTinyInt
+  qty      Int    @default(0) @db.UnsignedInt
+  used     Int    @default(0) @db.UnsignedTinyInt
+  code     String @default("") @db.VarChar(100)
+  sequence Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_goods_recent_view {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  check_id String @default("") @db.VarChar(50)
+  g_uid    Int    @default(0) @db.UnsignedInt
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_goods_view {
+  uid      Int                      @id @default(autoincrement()) @db.UnsignedInt
+  check_id String                   @default("") @db.VarChar(50)
+  g_uid    Int                      @default(0) @db.UnsignedInt
+  vendor   String                   @default("") @db.VarChar(50)
+  mobile   mallRN_goods_view_mobile @default(N)
+  signdate Int                      @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_groupbuy_apply {
+  id                       BigInt                   @id @default(autoincrement()) @db.UnsignedBigInt
+  gb_setting_id            BigInt                   @db.UnsignedBigInt
+  user_id                  String                   @db.VarChar(50)
+  is_applied               Boolean                  @default(true)
+  is_canceled              Boolean                  @default(false)
+  cancel_available_at      DateTime?                @db.DateTime(0)
+  applied_at               DateTime                 @default(now()) @db.DateTime(0)
+  canceled_at              DateTime?                @db.DateTime(0)
+  canceled_by_type         Boolean?
+  canceled_by_id           String?                  @db.VarChar(50)
+  status                   Boolean                  @default(false)
+  created_at               DateTime                 @default(now()) @db.Timestamp(0)
+  updated_at               DateTime                 @default(now()) @db.Timestamp(0)
+  mallRN_groupbuy_settings mallRN_groupbuy_settings @relation(fields: [gb_setting_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_groupbuy_apply_setting")
+
+  @@index([gb_setting_id, user_id], map: "idx_gb_user")
+  @@index([status], map: "idx_status")
+  @@index([user_id], map: "idx_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_groupbuy_conditions {
+  id                       BigInt                   @id @default(autoincrement()) @db.UnsignedBigInt
+  setting_id               BigInt                   @db.UnsignedBigInt
+  row_no                   Int                      @db.UnsignedTinyInt
+  people_count             Int                      @db.UnsignedInt
+  price_percent            Decimal?                 @db.Decimal(5, 2)
+  price_fixed              Decimal?                 @db.Decimal(12, 2)
+  condition_text           String                   @db.VarChar(100)
+  created_at               DateTime                 @default(now()) @db.Timestamp(0)
+  updated_at               DateTime                 @default(now()) @db.Timestamp(0)
+  mallRN_groupbuy_settings mallRN_groupbuy_settings @relation(fields: [setting_id], references: [id], onDelete: Cascade, map: "fk_gbcond_setting")
+
+  @@unique([setting_id, people_count], map: "uq_setting_people")
+  @@unique([setting_id, row_no], map: "uq_setting_row")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_groupbuy_settings {
+  id                         BigInt                       @id @default(autoincrement()) @db.UnsignedBigInt
+  product_id                 BigInt                       @db.UnsignedBigInt
+  product_price              Decimal                      @db.Decimal(12, 2)
+  gb_start_price             Decimal                      @default(0.00) @db.Decimal(12, 2)
+  stock_qty                  Int                          @db.UnsignedInt
+  gb_start_at                DateTime                     @db.DateTime(0)
+  gb_end_at                  DateTime?                    @db.DateTime(0)
+  is_completed               Int                          @default(2) @db.TinyInt
+  is_used                    Boolean                      @default(true)
+  approve_status             Boolean                      @default(false)
+  approved_by                String?                      @db.VarChar(50)
+  approved_at                DateTime?                    @db.DateTime(0)
+  reject_reason              String?                      @db.VarChar(255)
+  gb_start_day               Int?                         @default(1)
+  created_at                 DateTime                     @default(now()) @db.Timestamp(0)
+  updated_at                 DateTime                     @default(now()) @db.Timestamp(0)
+  mallRN_groupbuy_apply      mallRN_groupbuy_apply[]
+  mallRN_groupbuy_conditions mallRN_groupbuy_conditions[]
+
+  @@index([is_completed], map: "idx_completed")
+  @@index([gb_end_at], map: "idx_end")
+  @@index([product_id], map: "idx_product")
+  @@index([gb_start_at], map: "idx_start")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_hotdeal_settings {
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  product_id      BigInt    @db.UnsignedBigInt
+  vendor          String    @db.VarChar(50)
+  hotdeal_price   Int       @db.UnsignedInt
+  hotdeal_stock   Int       @db.UnsignedInt
+  start_at        DateTime  @db.DateTime(0)
+  end_at          DateTime  @db.DateTime(0)
+  status          Int       @default(0) @db.UnsignedTinyInt
+  created_at      DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
+  updated_at      DateTime  @default(dbgenerated("'now()'")) @db.DateTime(0)
+  admin_memo      String    @default("") @db.VarChar(255)
+  approved_by     String    @default("") @db.VarChar(50)
+  approved_at     DateTime? @db.DateTime(0)
+  rejected_by     String?   @db.VarChar(50)
+  rejected_at     DateTime? @db.DateTime(0)
+  rejected_reason String?   @db.VarChar(255)
+
+  @@unique([product_id, start_at], map: "uq_product_start")
+  @@index([start_at, end_at], map: "idx_period")
+  @@index([product_id], map: "idx_product")
+  @@index([vendor], map: "idx_vendor")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_im_areas {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  postcode String @default("") @db.VarChar(10)
+  address  String @default("") @db.VarChar(100)
+  base     Int    @default(0) @db.UnsignedTinyInt
+  vendor   String @default("") @db.VarChar(50)
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_im_areas_except {
+  uid    Int    @id @default(autoincrement()) @db.UnsignedInt
+  p_uid  Int    @default(0) @db.UnsignedInt
+  vendor String @default("") @db.VarChar(50)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_inquiry {
+  uid      Int     @id @default(autoincrement()) @db.UnsignedInt
+  vendor   String  @default("") @db.VarChar(50)
+  g_uid    Int     @default(0) @db.UnsignedInt
+  g_name   String  @default("") @db.VarChar(100)
+  id       String  @default("") @db.VarChar(50)
+  name     String  @default("") @db.VarChar(50)
+  passwd   String  @default("") @db.VarChar(100)
+  cate     Int     @default(0) @db.UnsignedTinyInt
+  subject  String  @default("") @db.VarChar(250)
+  contact  String  @default("") @db.VarChar(50)
+  content  String  @db.Text
+  answer   String  @db.Text
+  secret   Int     @default(0) @db.UnsignedTinyInt
+  files    String? @db.Text
+  acc_ip   String  @default("") @db.VarChar(50)
+  signdate Int     @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_keyword_autocomplete {
+  uid              Int    @id @default(autoincrement()) @db.UnsignedInt
+  keyword          String @default("") @db.VarChar(100)
+  split_keyword    String @default("") @db.VarChar(250)
+  split_keyword_ek String @default("") @db.VarChar(250)
+  count            Int    @default(0) @db.UnsignedInt
+  type             Int?   @default(0) @db.UnsignedInt
+  signdate         Int    @default(0) @db.UnsignedInt
+
+  @@index([split_keyword], map: "split_keyword")
+  @@index([split_keyword_ek], map: "split_keyword_ek")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_keyword_recent {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  keyword  String @default("") @db.VarChar(100)
+  id       String @default("") @db.VarChar(50)
+  ip       String @default("") @db.VarChar(20)
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_keyword_recent2 {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  keyword  String @default("") @db.VarChar(100)
+  id       String @default("") @db.VarChar(50)
+  ip       String @default("") @db.VarChar(20)
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_keyword_search {
+  uid     Int       @id @default(autoincrement()) @db.UnsignedInt
+  keyword String    @default("") @db.VarChar(100)
+  count   Int       @default(0) @db.UnsignedInt
+  date    DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+
+  @@index([keyword], map: "keyword")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_list_show_config {
+  uid    Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor String @default("") @db.VarChar(50)
+  name   String @default("") @db.VarChar(50)
+  fields String @default("") @db.VarChar(250)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member {
+  uid             Int                    @id @default(autoincrement()) @db.UnsignedInt
+  id              String                 @unique(map: "id") @default("") @db.VarChar(50)
+  name            String                 @default("") @db.VarChar(50)
+  passwd          String                 @default("") @db.VarChar(100)
+  tel             String                 @default("") @db.VarChar(30)
+  cell            String                 @default("") @db.VarChar(30)
+  postcode        String                 @default("") @db.VarChar(10)
+  address1        String                 @default("") @db.VarChar(100)
+  address2        String                 @default("") @db.VarChar(100)
+  email           String                 @default("") @db.VarChar(80)
+  birth           String                 @default("") @db.VarChar(30)
+  birth_sl        mallRN_member_birth_sl @default(N)
+  gender          mallRN_member_gender   @default(N)
+  marry           mallRN_member_marry    @default(N)
+  hobby           String                 @default("") @db.VarChar(50)
+  job             String                 @default("") @db.VarChar(250)
+  level           Int                    @default(1) @db.UnsignedTinyInt
+  member_role     Int?                   @db.TinyInt
+  mileage         Int                    @default(0)
+  mailling        mallRN_member_mailling @default(N)
+  mailling_date   Int                    @default(0) @db.UnsignedInt
+  sms             mallRN_member_sms      @default(N)
+  sms_date        Int                    @default(0) @db.UnsignedInt
+  comp            String                 @default("") @db.VarChar(50)
+  comp_owner      String                 @default("") @db.VarChar(50)
+  comp_num        String                 @default("") @db.VarChar(50)
+  comp_postcode   String                 @default("") @db.VarChar(10)
+  comp_address1   String                 @default("") @db.VarChar(100)
+  comp_address2   String                 @default("") @db.VarChar(100)
+  comp_type       String                 @default("") @db.VarChar(100)
+  comp_item       String                 @default("") @db.VarChar(100)
+  comp_name       String                 @default("") @db.VarChar(100)
+  comp_license_no String?                @db.VarChar(50)
+  comp_email      String                 @default("") @db.VarChar(100)
+  comp_tel        String                 @default("") @db.VarChar(20)
+  comp_fax        String                 @default("") @db.VarChar(20)
+  cont_name       String                 @default("") @db.VarChar(100)
+  cont_cell       String                 @default("") @db.VarChar(20)
+  cont_email      String                 @default("") @db.VarChar(50)
+  cont_part       String                 @default("") @db.VarChar(50)
+  cont_position   String                 @default("") @db.VarChar(50)
+  add1            String                 @db.Text
+  add2            String                 @db.Text
+  add3            String                 @db.Text
+  add4            String                 @db.Text
+  add5            String                 @db.Text
+  memo            String                 @db.Text
+  image1          String                 @default("") @db.VarChar(100)
+  sns_type        String                 @default("") @db.VarChar(50)
+  sns_id          String                 @default("") @db.VarChar(50)
+  sns_name        String                 @default("") @db.VarChar(50)
+  dup_info        String                 @default("") @db.VarChar(100)
+  cnts            Int                    @default(0) @db.UnsignedInt
+  fail_cnts       Int                    @default(0) @db.UnsignedInt
+  fail_time       Int                    @default(0) @db.UnsignedInt
+  mobile          mallRN_member_mobile   @default(N)
+  auth            mallRN_member_auth     @default(Y)
+  reference       String                 @default("") @db.VarChar(50)
+  auth_code       String                 @default("") @db.VarChar(10)
+  auth_code_time  Int                    @default(0) @db.UnsignedInt
+  nondormant_time Int                    @default(0) @db.UnsignedInt
+  login_time      Int                    @default(0) @db.UnsignedInt
+  order_time      Int                    @default(0) @db.UnsignedInt
+  sleep_time      Int                    @default(0) @db.UnsignedInt
+  signdate        Int                    @default(0) @db.UnsignedInt
+
+  @@index([member_role], map: "idx_member_role")
+  @@index([name], map: "name")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_bak_20251219 {
+  uid             Int                                 @id @default(autoincrement()) @db.UnsignedInt
+  id              String                              @unique(map: "id") @default("") @db.VarChar(50)
+  name            String                              @default("") @db.VarChar(50)
+  passwd          String                              @default("") @db.VarChar(100)
+  tel             String                              @default("") @db.VarChar(30)
+  cell            String                              @default("") @db.VarChar(30)
+  postcode        String                              @default("") @db.VarChar(10)
+  address1        String                              @default("") @db.VarChar(100)
+  address2        String                              @default("") @db.VarChar(100)
+  email           String                              @default("") @db.VarChar(80)
+  birth           String                              @default("") @db.VarChar(30)
+  birth_sl        mallRN_member_bak_20251219_birth_sl @default(N)
+  gender          mallRN_member_bak_20251219_gender   @default(N)
+  marry           mallRN_member_bak_20251219_marry    @default(N)
+  hobby           String                              @default("") @db.VarChar(50)
+  job             String                              @default("") @db.VarChar(250)
+  level           Int                                 @default(1) @db.UnsignedTinyInt
+  mileage         Int                                 @default(0)
+  mailling        mallRN_member_bak_20251219_mailling @default(N)
+  mailling_date   Int                                 @default(0) @db.UnsignedInt
+  sms             mallRN_member_bak_20251219_sms      @default(N)
+  sms_date        Int                                 @default(0) @db.UnsignedInt
+  comp            String                              @default("") @db.VarChar(50)
+  comp_owner      String                              @default("") @db.VarChar(50)
+  comp_num        String                              @default("") @db.VarChar(50)
+  comp_postcode   String                              @default("") @db.VarChar(10)
+  comp_address1   String                              @default("") @db.VarChar(100)
+  comp_address2   String                              @default("") @db.VarChar(100)
+  comp_type       String                              @default("") @db.VarChar(100)
+  comp_item       String                              @default("") @db.VarChar(100)
+  add1            String                              @db.Text
+  add2            String                              @db.Text
+  add3            String                              @db.Text
+  add4            String                              @db.Text
+  add5            String                              @db.Text
+  memo            String                              @db.Text
+  sns_type        String                              @default("") @db.VarChar(50)
+  sns_id          String                              @default("") @db.VarChar(50)
+  sns_name        String                              @default("") @db.VarChar(50)
+  dup_info        String                              @default("") @db.VarChar(100)
+  cnts            Int                                 @default(0) @db.UnsignedInt
+  fail_cnts       Int                                 @default(0) @db.UnsignedInt
+  fail_time       Int                                 @default(0) @db.UnsignedInt
+  mobile          mallRN_member_bak_20251219_mobile   @default(N)
+  auth            mallRN_member_bak_20251219_auth     @default(Y)
+  reference       String                              @default("") @db.VarChar(50)
+  auth_code       String                              @default("") @db.VarChar(10)
+  auth_code_time  Int                                 @default(0) @db.UnsignedInt
+  nondormant_time Int                                 @default(0) @db.UnsignedInt
+  login_time      Int                                 @default(0) @db.UnsignedInt
+  order_time      Int                                 @default(0) @db.UnsignedInt
+  sleep_time      Int                                 @default(0) @db.UnsignedInt
+  signdate        Int                                 @default(0) @db.UnsignedInt
+
+  @@index([name], map: "name")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_grade {
+  uid         Int    @id @default(autoincrement()) @db.UnsignedInt
+  member_id   String @db.VarChar(50)
+  grade_code  String @db.VarChar(30)
+  base_amount Int    @default(0) @db.UnsignedInt
+  year_month  String @db.Char(7)
+  created_at  Int    @db.UnsignedInt
+
+  @@unique([member_id, year_month], map: "uq_member_month")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_grade_month {
+  uid              BigInt  @id @default(autoincrement()) @db.UnsignedBigInt
+  member_id        String  @db.VarChar(50)
+  year_month       String  @db.Char(7)
+  prev_month_sales Int     @default(0) @db.UnsignedInt
+  grade_code       String  @db.VarChar(30)
+  is_booster       Boolean @default(false)
+  booster_until    String? @db.Char(7)
+  decided_at       Int     @default(0) @db.UnsignedInt
+
+  @@unique([member_id, year_month], map: "uq_member_month")
+  @@index([member_id], map: "idx_member")
+  @@index([year_month, grade_code], map: "idx_month_grade")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_grade_policy {
+  uid                 Int     @id @default(autoincrement()) @db.UnsignedInt
+  grade_code          String  @unique(map: "uq_grade_code") @db.VarChar(30)
+  title               String  @db.VarChar(50)
+  min_sales           Int     @default(0) @db.UnsignedInt
+  max_sales           Int     @default(0) @db.UnsignedInt
+  base_reward_rate    Decimal @default(0.00) @db.Decimal(6, 2)
+  booster_reward_rate Decimal @default(0.00) @db.Decimal(6, 2)
+  sort                Int     @default(0) @db.UnsignedTinyInt
+  is_active           Boolean @default(true)
+  note                String? @db.VarChar(255)
+  created_at          Int     @default(0) @db.UnsignedInt
+  updated_at          Int     @default(0) @db.UnsignedInt
+
+  @@index([is_active, sort], map: "idx_active_sort")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_level {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  level         Int    @default(0) @db.UnsignedInt
+  name          String @default("") @db.VarChar(250)
+  discount      Int    @default(0) @db.UnsignedInt
+  mileage       Int    @default(0) @db.UnsignedInt
+  delivery_free Int    @default(0) @db.UnsignedTinyInt
+  price         Int    @default(0) @db.UnsignedInt
+  coupon_uid    Int    @default(0) @db.UnsignedInt
+  signdate      Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_sleep {
+  uid             Int                          @id @default(autoincrement()) @db.UnsignedInt
+  id              String                       @unique(map: "id") @default("") @db.VarChar(50)
+  name            String                       @default("") @db.VarChar(50)
+  passwd          String                       @default("") @db.VarChar(100)
+  tel             String                       @default("") @db.VarChar(30)
+  cell            String                       @default("") @db.VarChar(30)
+  postcode        String                       @default("") @db.VarChar(10)
+  address1        String                       @default("") @db.VarChar(100)
+  address2        String                       @default("") @db.VarChar(100)
+  email           String                       @default("") @db.VarChar(80)
+  birth           String                       @default("") @db.VarChar(30)
+  birth_sl        mallRN_member_sleep_birth_sl @default(N)
+  gender          mallRN_member_sleep_gender   @default(N)
+  marry           mallRN_member_sleep_marry    @default(N)
+  hobby           String                       @default("") @db.VarChar(50)
+  job             String                       @default("") @db.VarChar(250)
+  level           Int                          @default(1) @db.UnsignedTinyInt
+  mileage         Int                          @default(0)
+  mailling        mallRN_member_sleep_mailling @default(N)
+  mailling_date   Int                          @default(0) @db.UnsignedInt
+  sms             mallRN_member_sleep_sms      @default(N)
+  sms_date        Int                          @default(0) @db.UnsignedInt
+  comp            String                       @default("") @db.VarChar(50)
+  comp_owner      String                       @default("") @db.VarChar(50)
+  comp_num        String                       @default("") @db.VarChar(50)
+  comp_postcode   String                       @default("") @db.VarChar(10)
+  comp_address1   String                       @default("") @db.VarChar(100)
+  comp_address2   String                       @default("") @db.VarChar(100)
+  comp_type       String                       @default("") @db.VarChar(100)
+  comp_item       String                       @default("") @db.VarChar(100)
+  add1            String                       @db.Text
+  add2            String                       @db.Text
+  add3            String                       @db.Text
+  add4            String                       @db.Text
+  add5            String                       @db.Text
+  memo            String                       @db.Text
+  sns_type        String                       @default("") @db.VarChar(50)
+  sns_id          String                       @default("") @db.VarChar(50)
+  sns_name        String                       @default("") @db.VarChar(50)
+  dup_info        String                       @default("") @db.VarChar(100)
+  cnts            Int                          @default(0) @db.UnsignedInt
+  fail_cnts       Int                          @default(0) @db.UnsignedInt
+  fail_time       Int                          @default(0) @db.UnsignedInt
+  mobile          mallRN_member_sleep_mobile   @default(N)
+  auth            mallRN_member_sleep_auth     @default(Y)
+  reference       String                       @default("") @db.VarChar(50)
+  auth_code       String                       @default("") @db.VarChar(10)
+  auth_code_time  Int                          @default(0) @db.UnsignedInt
+  nondormant_time Int                          @default(0) @db.UnsignedInt
+  login_time      Int                          @default(0) @db.UnsignedInt
+  order_time      Int                          @default(0) @db.UnsignedInt
+  sleep_time      Int                          @default(0) @db.UnsignedInt
+  signdate        Int                          @default(0) @db.UnsignedInt
+
+  @@index([name], map: "name")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_tmp {
+  uid             Int                          @id @default(autoincrement()) @db.UnsignedInt
+  id              String                       @unique(map: "id") @default("") @db.VarChar(50)
+  name            String                       @default("") @db.VarChar(50)
+  passwd          String                       @default("") @db.VarChar(100)
+  tel             String                       @default("") @db.VarChar(30)
+  comp_tel        String                       @default("") @db.VarChar(20)
+  cell            String                       @default("") @db.VarChar(30)
+  comp_fax        String                       @default("") @db.VarChar(20)
+  cont_name       String                       @default("") @db.VarChar(100)
+  cont_cell       String                       @default("") @db.VarChar(20)
+  cont_email      String                       @default("") @db.VarChar(50)
+  cont_part       String                       @default("") @db.VarChar(50)
+  cont_position   String                       @default("") @db.VarChar(50)
+  postcode        String                       @default("") @db.VarChar(10)
+  address1        String                       @default("") @db.VarChar(100)
+  address2        String                       @default("") @db.VarChar(100)
+  email           String                       @default("") @db.VarChar(80)
+  comp_email      String                       @default("") @db.VarChar(100)
+  birth           String                       @default("") @db.VarChar(30)
+  birth_sl        mallRN_member_tmp_birth_sl   @default(N)
+  gender          mallRN_member_tmp_gender     @default(N)
+  marry           mallRN_member_tmp_marry      @default(N)
+  hobby           String                       @default("") @db.VarChar(50)
+  job             String                       @default("") @db.VarChar(250)
+  level           Int                          @default(1) @db.UnsignedTinyInt
+  mileage         Int                          @default(0)
+  mailling        mallRN_member_tmp_mailling   @default(N)
+  mailling_date   Int                          @default(0) @db.UnsignedInt
+  sms             mallRN_member_tmp_sms        @default(N)
+  sms_date        Int                          @default(0) @db.UnsignedInt
+  comp            String                       @default("") @db.VarChar(50)
+  comp_name       String                       @default("") @db.VarChar(100)
+  comp_owner      String                       @default("") @db.VarChar(50)
+  comp_num        String                       @default("") @db.VarChar(50)
+  comp_license_no String                       @unique(map: "uk_comp_license_no") @default("") @db.VarChar(50)
+  comp_postcode   String                       @default("") @db.VarChar(10)
+  comp_address1   String                       @default("") @db.VarChar(100)
+  comp_address2   String                       @default("") @db.VarChar(100)
+  comp_type       String                       @default("") @db.VarChar(100)
+  comp_item       String                       @default("") @db.VarChar(100)
+  add1            String                       @db.Text
+  add2            String                       @db.Text
+  add3            String                       @db.Text
+  add4            String                       @db.Text
+  add5            String                       @db.Text
+  memo            String                       @db.Text
+  sns_type        String                       @default("") @db.VarChar(50)
+  sns_id          String                       @default("") @db.VarChar(50)
+  sns_name        String                       @default("") @db.VarChar(50)
+  dup_info        String                       @default("") @db.VarChar(100)
+  cnts            Int                          @default(0) @db.UnsignedInt
+  fail_cnts       Int                          @default(0) @db.UnsignedInt
+  fail_time       Int                          @default(0) @db.UnsignedInt
+  mobile          mallRN_member_tmp_mobile     @default(N)
+  auth            mallRN_member_tmp_auth       @default(Y)
+  buyer_auth      mallRN_member_tmp_buyer_auth @default(R)
+  reference       String                       @default("") @db.VarChar(50)
+  auth_code       String                       @default("") @db.VarChar(10)
+  auth_code_time  Int                          @default(0) @db.UnsignedInt
+  nondormant_time Int                          @default(0) @db.UnsignedInt
+  login_time      Int                          @default(0) @db.UnsignedInt
+  order_time      Int                          @default(0) @db.UnsignedInt
+  sleep_time      Int                          @default(0) @db.UnsignedInt
+  signdate        Int                          @default(0) @db.UnsignedInt
+
+  @@index([comp_license_no], map: "idx_comp_license_no")
+  @@index([comp_tel], map: "idx_comp_tel")
+  @@index([cont_cell], map: "idx_cont_cell")
+  @@index([name], map: "name")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_member_withdrawal {
+  uid       Int                             @id @default(autoincrement()) @db.UnsignedInt
+  id        String                          @default("") @db.VarChar(50)
+  name      String                          @default("") @db.VarChar(50)
+  reason    String                          @default("") @db.VarChar(50)
+  order_cnt Int                             @default(0) @db.UnsignedInt
+  message   String                          @db.Text
+  mobile    mallRN_member_withdrawal_mobile @default(N)
+  signdate  Int                             @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_mileage {
+  uid          Int      @id @default(autoincrement()) @db.UnsignedInt
+  id           String   @default("") @db.VarChar(50)
+  content      String   @default("") @db.VarChar(100)
+  mileage      Int      @default(0) @db.UnsignedInt
+  use_mileage  Int      @default(0) @db.UnsignedInt
+  proc_mileage Int      @default(0) @db.UnsignedInt
+  expired_use  Int      @default(0) @db.TinyInt
+  expired      Int      @default(0) @db.TinyInt
+  expired_date DateTime @default(dbgenerated("'1000-01-01'")) @db.Date
+  order_num    String   @default("") @db.VarChar(50)
+  goods_uid    String   @default("") @db.VarChar(50)
+  proc_id      String   @default("") @db.VarChar(50)
+  proc_acc_ip  String   @default("") @db.VarChar(50)
+  signdate     Int      @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_mileage_log {
+  uid             Int      @id @default(autoincrement()) @db.UnsignedInt
+  id              String   @default("") @db.VarChar(50)
+  content         String   @default("") @db.VarChar(100)
+  mileage         Int      @default(0) @db.UnsignedInt
+  use_mileage     Int      @default(0) @db.UnsignedInt
+  proc_mileage    Int      @default(0) @db.UnsignedInt
+  expired_use     Int      @default(0) @db.TinyInt
+  expired         Int      @default(0) @db.TinyInt
+  expired_date    DateTime @default(dbgenerated("'1000-01-01'")) @db.Date
+  order_num       String   @default("") @db.VarChar(50)
+  goods_uid       String   @default("") @db.VarChar(50)
+  proc_id         String   @default("") @db.VarChar(50)
+  proc_acc_ip     String   @default("") @db.VarChar(50)
+  log_signdate    Int      @default(0) @db.UnsignedInt
+  log_proc_id     String   @default("") @db.VarChar(50)
+  log_proc_acc_ip String   @default("") @db.VarChar(50)
+  log_uid         String   @default("") @db.VarChar(50)
+  status          Int      @default(0) @db.UnsignedTinyInt
+  signdate        Int      @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_mobile_banner {
+  uid      Int       @id @default(autoincrement()) @db.UnsignedInt
+  name     String    @default("") @db.VarChar(100)
+  code     String    @default("") @db.VarChar(10)
+  image1   String    @default("") @db.VarChar(100)
+  link1    String    @default("") @db.VarChar(250)
+  status   Int?      @default(0) @db.UnsignedInt
+  target   Int?      @default(0) @db.UnsignedInt
+  s_date   DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  e_date   DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  sequence Int       @default(0) @db.UnsignedInt
+  moddate  Int       @default(0) @db.UnsignedInt
+  signdate Int       @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_mobile_popup {
+  uid            Int       @id @default(autoincrement()) @db.UnsignedInt
+  name           String    @default("") @db.VarChar(80)
+  status         Int?      @default(0) @db.UnsignedInt
+  type           Int?      @default(0) @db.UnsignedInt
+  period         Int?      @default(0) @db.UnsignedInt
+  s_date         DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  e_date         DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  position       Int?      @default(0) @db.UnsignedInt
+  input_position String    @default("") @db.VarChar(50)
+  input_size     String    @default("") @db.VarChar(50)
+  image_only     Int       @default(0) @db.UnsignedTinyInt
+  image1         String    @default("") @db.VarChar(100)
+  link1          String    @default("") @db.VarChar(250)
+  content        String    @db.Text
+  signdate       Int       @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_cancel_cp_log {
+  uid        Int                                 @id @default(autoincrement()) @db.UnsignedInt
+  order_num  String                              @default("") @db.VarChar(32)
+  og_uid     Int                                 @default(0) @db.UnsignedInt
+  price      Int                                 @default(0)
+  rem_price  Int                                 @default(0)
+  pay_type   mallRN_order_cancel_cp_log_pay_type @default(B)
+  pay_number String                              @default("") @db.VarChar(100)
+  status     Int                                 @default(0) @db.UnsignedTinyInt
+  message    String                              @default("") @db.VarChar(250)
+  proc       Int                                 @default(0) @db.UnsignedTinyInt
+  signdate   Int                                 @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_cash_receipts {
+  uid               Int                                 @id @default(autoincrement()) @db.UnsignedInt
+  order_num         String                              @default("") @db.VarChar(32)
+  id                String                              @default("") @db.VarChar(50)
+  name              String                              @default("") @db.VarChar(50)
+  cell              String                              @default("") @db.VarChar(30)
+  email             String                              @default("") @db.VarChar(80)
+  price             Int                                 @default(0) @db.UnsignedInt
+  partial_price     Int                                 @default(0) @db.UnsignedInt
+  goods_name        String                              @default("") @db.VarChar(250)
+  pay_type          mallRN_order_cash_receipts_pay_type @default(B)
+  tax_type          Int                                 @default(0) @db.UnsignedInt
+  cash_type         Int                                 @default(0) @db.UnsignedInt
+  auth_number       String                              @default("") @db.VarChar(30)
+  receipt_time      String                              @default("") @db.VarChar(30)
+  receipt_no        String                              @default("") @db.VarChar(50)
+  receipt_cancel_no String                              @default("") @db.VarChar(50)
+  receipt_info      String                              @default("") @db.VarChar(100)
+  receipt_status    String                              @default("") @db.VarChar(20)
+  receipt_error     String                              @default("") @db.VarChar(250)
+  status            Int                                 @default(0) @db.UnsignedInt
+  status_date       Int                                 @default(0) @db.UnsignedInt
+  signdate          Int                                 @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_delivery {
+  uid       Int    @id @default(autoincrement()) @db.UnsignedInt
+  order_num String @default("") @db.VarChar(32)
+  vendor    String @default("") @db.VarChar(50)
+  price     Int    @default(0) @db.UnsignedInt
+  adds      Int    @default(0) @db.UnsignedInt
+  info      String @default("") @db.VarChar(100)
+  signdate  Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_excel_batch {
+  batch_uid    Int    @id @default(autoincrement()) @db.UnsignedInt
+  id           String @default("") @db.VarChar(50)
+  filename     String @default("") @db.VarChar(255)
+  total_rows   Int    @default(0) @db.UnsignedInt
+  success_rows Int    @default(0) @db.UnsignedInt
+  fail_rows    Int    @default(0) @db.UnsignedInt
+  status       Int    @default(0) @db.UnsignedTinyInt
+  signdate     Int    @default(0) @db.UnsignedInt
+}
+
+model mallRN_order_excel_batch_row {
+  row_uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  batch_uid         Int    @default(0) @db.UnsignedInt
+  row_no            Int    @default(0) @db.UnsignedInt
+  valid             Int    @default(0) @db.UnsignedTinyInt
+  error_msg         String @default("") @db.VarChar(255)
+  raw_json          String @db.MediumText
+  created_order_num String @default("") @db.VarChar(32)
+
+  @@index([batch_uid], map: "idx_batch")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_goods {
+  uid                Int     @id @default(autoincrement()) @db.UnsignedInt
+  vendor             String  @default("") @db.VarChar(50)
+  vendor_delivery    String  @default("") @db.VarChar(50)
+  commission         Float   @default(0.00) @db.Float
+  order_num          String  @default("") @db.VarChar(32)
+  g_uid              Int     @default(0) @db.UnsignedInt
+  g_cate             BigInt  @default(0) @db.UnsignedBigInt
+  g_name             String  @default("") @db.VarChar(100)
+  g_code             String  @default("") @db.VarChar(50)
+  price              Int     @default(0) @db.UnsignedInt
+  orig_price         Int     @default(0) @db.UnsignedInt
+  qty                Int     @default(0) @db.UnsignedInt
+  mileage            Int     @default(0) @db.UnsignedInt
+  option             Int     @default(0) @db.UnsignedInt
+  hotdeal_setting_id Int     @default(0)
+  hotdeal_price      Decimal @default(0.00) @db.Decimal(12, 2)
+  option_name        String  @default("") @db.VarChar(100)
+  delivery_type      Int     @default(0) @db.UnsignedInt
+  delivery_type_qty  Int     @default(1) @db.UnsignedInt
+  delivery_price     Int     @default(0) @db.UnsignedInt
+  delivery_add_price Int     @default(0) @db.UnsignedInt
+  delivery_info      String  @default("") @db.VarChar(100)
+  use_coupon         Int     @default(0) @db.UnsignedInt
+  coupon_uid         Int     @default(0) @db.UnsignedInt
+  discount           Int     @default(0) @db.UnsignedInt
+  discount_info      String  @default("") @db.VarChar(50)
+  status             Int     @default(0) @db.UnsignedTinyInt
+  status2            Int     @default(0) @db.UnsignedTinyInt
+  status_date        Int     @default(0) @db.UnsignedInt
+  reals              Int     @default(0) @db.UnsignedTinyInt
+  signdate           Int     @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_info {
+  uid            Int                          @id @default(autoincrement()) @db.UnsignedInt
+  id             String                       @default("") @db.VarChar(50)
+  order_num      String                       @unique(map: "order_num") @default("") @db.VarChar(32)
+  name           String                       @default("") @db.VarChar(50)
+  cell           String                       @default("") @db.VarChar(30)
+  email          String                       @default("") @db.VarChar(80)
+  name2          String                       @default("") @db.VarChar(50)
+  cell2          String                       @default("") @db.VarChar(30)
+  postcode       String                       @default("") @db.VarChar(10)
+  address1       String                       @default("") @db.VarChar(100)
+  address2       String                       @default("") @db.VarChar(100)
+  message        String?                      @db.Text
+  memo           String                       @db.Text
+  passwd         String                       @default("") @db.VarChar(100)
+  pay_total      Int                          @default(0) @db.UnsignedInt
+  cancel_total   Int                          @default(0) @db.UnsignedInt
+  refund_total   Int                          @default(0) @db.UnsignedInt
+  delivery_total Int                          @default(0) @db.UnsignedInt
+  pay_type       mallRN_order_info_pay_type   @default(B)
+  pay_status     mallRN_order_info_pay_status @default(A)
+  pay_info       String                       @default("") @db.VarChar(255)
+  pay_number     String                       @default("") @db.VarChar(100)
+  escrow         Int                          @default(0) @db.UnsignedTinyInt
+  bank_info      String                       @default("") @db.VarChar(250)
+  use_mileage    Int                          @default(0) @db.UnsignedInt
+  use_coupon     Int                          @default(0) @db.UnsignedInt
+  coupon_uid     Int                          @default(0) @db.UnsignedInt
+  cash_receipts  String                       @default("") @db.VarChar(250)
+  mail_send      Int                          @default(0) @db.UnsignedTinyInt
+  cash_issued    Int                          @default(0) @db.UnsignedTinyInt
+  tax_issued     Int                          @default(0) @db.UnsignedTinyInt
+  mobile         mallRN_order_info_mobile     @default(N)
+  direct         Int                          @default(0) @db.UnsignedTinyInt
+  new            Int                          @default(0) @db.UnsignedTinyInt
+  sales_issued   Int                          @default(0) @db.UnsignedTinyInt
+  mail_ok        Int                          @default(0) @db.UnsignedTinyInt
+  reals          Int                          @default(0) @db.UnsignedTinyInt
+  status_date    Int                          @default(0) @db.UnsignedInt
+  signdate       Int                          @default(0) @db.UnsignedInt
+  use_td_money   BigInt                       @default(0)
+  use_td_point   Int                          @default(0) @db.UnsignedInt
+  pay_method     String                       @default("") @db.VarChar(20)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_log {
+  uid          Int    @id @default(autoincrement()) @db.UnsignedInt
+  order_num    String @default("") @db.VarChar(32)
+  og_uid       Int    @default(0) @db.UnsignedInt
+  id           String @default("") @db.VarChar(50)
+  prev_status  Int    @default(0) @db.UnsignedTinyInt
+  prev_status2 Int    @default(0) @db.UnsignedTinyInt
+  status       Int    @default(0) @db.UnsignedTinyInt
+  status2      Int    @default(0) @db.UnsignedTinyInt
+  signdate     Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_related_goods {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  goods    String @default("") @db.VarChar(250)
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_sales {
+  uid          Int                         @id @default(autoincrement()) @db.UnsignedInt
+  id           String                      @default("") @db.VarChar(50)
+  vendor       String                      @default("") @db.VarChar(50)
+  order_num    String                      @default("") @db.VarChar(32)
+  og_uid       Int                         @default(0) @db.UnsignedInt
+  g_uid        Int                         @default(0) @db.UnsignedInt
+  g_cate       BigInt                      @default(0) @db.UnsignedBigInt
+  price        Int                         @default(0) @db.UnsignedInt
+  qty          Int                         @default(0) @db.UnsignedInt
+  commission   Int                         @default(0)
+  option       Int                         @default(0) @db.UnsignedInt
+  title        String                      @default("") @db.VarChar(250)
+  type         Int                         @default(0) @db.UnsignedTinyInt
+  status       Int                         @default(0) @db.UnsignedTinyInt
+  mobile       mallRN_order_sales_mobile   @default(N)
+  adjustment   Int                         @default(0) @db.UnsignedTinyInt
+  level        Int                         @default(0) @db.UnsignedInt
+  addr         Int                         @default(0) @db.UnsignedTinyInt
+  week         Int                         @default(0) @db.UnsignedTinyInt
+  new          Int                         @default(0) @db.UnsignedTinyInt
+  pay_type     mallRN_order_sales_pay_type @default(B)
+  confirmation Int                         @default(0) @db.UnsignedTinyInt
+  confirm_date Int                         @default(0) @db.UnsignedInt
+  signdate     Int                         @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_order_status_change {
+  uid         Int     @id @default(autoincrement()) @db.UnsignedInt
+  id          String  @default("") @db.VarChar(50)
+  name        String  @default("") @db.VarChar(50)
+  manager     String  @default("") @db.VarChar(50)
+  vendor      String  @default("") @db.VarChar(50)
+  order_num   String  @default("") @db.VarChar(32)
+  og_uid      Int     @default(0) @db.UnsignedInt
+  reason      String  @default("") @db.VarChar(100)
+  bank_info   String  @default("") @db.VarChar(250)
+  message     String? @db.Text
+  refund      Int     @default(0) @db.UnsignedInt
+  delivery    Int     @default(0) @db.UnsignedInt
+  delivery2   Int     @default(0) @db.UnsignedInt
+  mileage     Int     @default(0) @db.UnsignedInt
+  coupon      Int     @default(0) @db.UnsignedInt
+  refund_fee  Int     @default(0) @db.UnsignedInt
+  status      Int     @default(9) @db.UnsignedTinyInt
+  status2     Int     @default(1) @db.UnsignedTinyInt
+  status_date Int     @default(0) @db.UnsignedInt
+  signdate    Int     @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_patch_check {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  b_uid    Int    @default(0) @db.UnsignedInt
+  subject  String @default("") @db.VarChar(250)
+  confirm  Int    @default(0) @db.UnsignedTinyInt
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_popup {
+  uid            Int       @id @default(autoincrement()) @db.UnsignedInt
+  name           String    @default("") @db.VarChar(80)
+  status         Int?      @default(0) @db.UnsignedInt
+  type           Int?      @default(0) @db.UnsignedInt
+  period         Int?      @default(0) @db.UnsignedInt
+  s_date         DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  e_date         DateTime? @default(dbgenerated("'1000-01-01 00:00:00'")) @db.DateTime(0)
+  position       Int?      @default(0) @db.UnsignedInt
+  input_position String    @default("") @db.VarChar(50)
+  input_size     String    @default("") @db.VarChar(50)
+  image_only     Int       @default(0) @db.UnsignedTinyInt
+  image1         String    @default("") @db.VarChar(100)
+  link1          String    @default("") @db.VarChar(250)
+  content        String    @db.Text
+  signdate       Int       @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_review {
+  uid      Int     @id @default(autoincrement()) @db.UnsignedInt
+  vendor   String  @default("") @db.VarChar(50)
+  og_uid   Int     @default(0) @db.UnsignedInt
+  g_uid    Int     @default(0) @db.UnsignedInt
+  g_name   String  @default("") @db.VarChar(100)
+  op_name  String  @default("") @db.VarChar(100)
+  id       String  @default("") @db.VarChar(50)
+  name     String  @default("") @db.VarChar(50)
+  passwd   String  @default("") @db.VarChar(100)
+  content  String  @db.Text
+  files    String? @db.Text
+  stars    Int?    @default(0) @db.UnsignedInt
+  best     Int     @default(0) @db.UnsignedInt
+  acc_ip   String  @default("") @db.VarChar(50)
+  signdate Int     @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_reward_good {
+  uid              BigInt                           @id @default(autoincrement()) @db.UnsignedBigInt
+  order_num        String                           @default("") @db.VarChar(32)
+  order_goods_uid  Int                              @unique(map: "uk_order_goods") @db.UnsignedInt
+  order_policy_uid BigInt                           @db.UnsignedBigInt
+  member_id        String                           @default("") @db.VarChar(50)
+  vendor_id        String                           @default("") @db.VarChar(50)
+  status           Int                              @default(0) @db.UnsignedTinyInt
+  status2          Int                              @default(0) @db.UnsignedTinyInt
+  status_date      Int                              @default(0) @db.UnsignedInt
+  price            Int                              @default(0) @db.UnsignedInt
+  supply_price     Int                              @default(0) @db.UnsignedInt
+  qty              Int                              @default(0) @db.UnsignedInt
+  margin_amount    Int                              @default(0) @db.UnsignedInt
+  member_rate      Decimal                          @default(0.00) @db.Decimal(6, 2)
+  member_reward    Int                              @default(0) @db.UnsignedInt
+  vendor_rate      Decimal                          @default(0.00) @db.Decimal(6, 2)
+  vendor_reward    Int                              @default(0) @db.UnsignedInt
+  reward_status    mallRN_reward_good_reward_status @default(reserved)
+  created_at       Int                              @default(0) @db.UnsignedInt
+  updated_at       Int                              @default(0) @db.UnsignedInt
+
+  @@index([member_id], map: "idx_member")
+  @@index([order_num], map: "idx_order")
+  @@index([vendor_id], map: "idx_vendor")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_reward_log {
+  uid             BigInt                       @id @default(autoincrement()) @db.UnsignedBigInt
+  owner_type      mallRN_reward_log_owner_type
+  owner_key       String                       @default("") @db.VarChar(50)
+  order_num       String?                      @db.VarChar(32)
+  order_goods_uid Int?                         @db.UnsignedInt
+  status          Int?                         @db.UnsignedTinyInt
+  status2         Int?                         @db.UnsignedTinyInt
+  status_date     Int?                         @db.UnsignedInt
+  policy_uid      Int?                         @db.UnsignedInt
+  rule_uid        BigInt?                      @db.UnsignedBigInt
+  action          mallRN_reward_log_action
+  delta_amount    Int                          @default(0)
+  balance_after   Int                          @default(0)
+  created_at      Int                          @default(0) @db.UnsignedInt
+
+  @@index([order_num], map: "idx_order")
+  @@index([owner_type, owner_key, created_at], map: "idx_owner_time")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_reward_order_policy {
+  uid               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  order_num         String   @unique(map: "uq_order") @default("") @db.VarChar(32)
+  member_policy_uid Int?     @db.UnsignedInt
+  member_rule_uid   BigInt?  @db.UnsignedBigInt
+  member_grade_code String?  @db.VarChar(30)
+  member_rate       Decimal? @db.Decimal(6, 2)
+  vendor_policy_uid Int?     @db.UnsignedInt
+  vendor_rule_uid   BigInt?  @db.UnsignedBigInt
+  vendor_grade_code String?  @db.VarChar(30)
+  vendor_rate       Decimal? @db.Decimal(6, 2)
+  snapshot_note     String?  @db.Text
+  created_at        Int      @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_reward_policy {
+  uid         Int                              @id @default(autoincrement()) @db.UnsignedInt
+  policy_code String                           @unique(map: "uq_policy_code") @db.VarChar(40)
+  target_type mallRN_reward_policy_target_type
+  channel     mallRN_reward_policy_channel
+  title       String                           @db.VarChar(100)
+  is_active   Boolean                          @default(true)
+  base_type   mallRN_reward_policy_base_type   @default(margin)
+  note        String?                          @db.Text
+  created_at  Int                              @db.UnsignedInt
+  updated_at  Int                              @db.UnsignedInt
+
+  @@index([target_type, channel, is_active], map: "idx_target")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_reward_policy_rule {
+  uid           BigInt                              @id @default(autoincrement()) @db.UnsignedBigInt
+  policy_uid    Int                                 @db.UnsignedInt
+  rule_kind     mallRN_reward_policy_rule_rule_kind
+  grade_code    String                              @default("") @db.VarChar(30)
+  min_amount    Int                                 @default(0) @db.UnsignedInt
+  max_amount    Int                                 @default(0) @db.UnsignedInt
+  within_months Int                                 @default(0) @db.UnsignedInt
+  reward_rate   Decimal                             @default(0.00) @db.Decimal(6, 2)
+  max_points    Int                                 @default(0) @db.UnsignedInt
+  fixed_points  Int                                 @default(0) @db.UnsignedInt
+  note          String?                             @db.VarChar(255)
+  created_at    Int                                 @db.UnsignedInt
+
+  @@index([policy_uid, grade_code], map: "idx_grade")
+  @@index([policy_uid, rule_kind], map: "idx_policy")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_reward_policy_rule_log {
+  uid          BigInt                               @id @default(autoincrement()) @db.UnsignedBigInt
+  policy_uid   Int                                  @db.UnsignedInt
+  action       mallRN_reward_policy_rule_log_action @default(update)
+  before_rules Json
+  after_rules  Json
+  changed_by   String                               @default("") @db.VarChar(50)
+  changed_at   Int                                  @db.UnsignedInt
+
+  @@index([policy_uid, changed_at], map: "idx_policy_time")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_reward_wallet {
+  uid         BigInt                          @id @default(autoincrement()) @db.UnsignedBigInt
+  owner_type  mallRN_reward_wallet_owner_type
+  owner_key   String                          @default("") @db.VarChar(50)
+  balance     Int                             @default(0)
+  total_plus  Int                             @default(0)
+  total_minus Int                             @default(0)
+  updated_at  Int                             @default(0) @db.UnsignedInt
+
+  @@unique([owner_type, owner_key], map: "uq_owner")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_sales_calculate {
+  uid         Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor      String @default("") @db.VarChar(50)
+  vendor_name String @default("") @db.VarChar(50)
+  s_date      String @default("") @db.VarChar(20)
+  e_date      String @default("") @db.VarChar(20)
+  sum         Int    @default(0)
+  price1      Int    @default(0)
+  price2      Int    @default(0)
+  price3      Int    @default(0)
+  tax_bill    Int    @default(0) @db.UnsignedTinyInt
+  bank_name   String @default("") @db.VarChar(20)
+  bank_num    String @default("") @db.VarChar(20)
+  bank_owner  String @default("") @db.VarChar(20)
+  type        Int    @default(0) @db.UnsignedTinyInt
+  status      Int    @default(0) @db.UnsignedTinyInt
+  status_date Int    @default(0) @db.UnsignedInt
+  signdate    Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_sms_auto {
+  uid          Int    @id @default(autoincrement()) @db.UnsignedInt
+  code         String @default("") @db.VarChar(50)
+  title        String @default("") @db.VarChar(100)
+  message1     String @db.Text
+  message2     String @db.Text
+  template_id1 String @default("") @db.VarChar(100)
+  template_id2 String @default("") @db.VarChar(100)
+  ck_message1  Int    @default(0) @db.UnsignedInt
+  ck_message2  Int    @default(0) @db.UnsignedInt
+  type         Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_sms_list {
+  uid           Int    @id @default(autoincrement()) @db.UnsignedInt
+  cell          String @default("") @db.VarChar(50)
+  message       String @db.Text
+  type          Int    @default(0) @db.UnsignedInt
+  groupId       String @default("") @db.VarChar(50)
+  messageId     String @default("") @db.VarChar(50)
+  accountId     String @default("") @db.VarChar(50)
+  result        String @default("") @db.VarChar(250)
+  result_code   Int?   @default(0) @db.UnsignedInt
+  status        Int?   @default(0) @db.UnsignedInt
+  received_date Int    @default(0) @db.UnsignedInt
+  signdate      Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_store_count_browser {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor  String @default("") @db.VarChar(50)
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_store_count_keyword {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor  String @default("") @db.VarChar(50)
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_store_count_list {
+  uid    Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor String @default("") @db.VarChar(50)
+  type   Int    @default(0) @db.UnsignedTinyInt
+  year   Int    @default(0) @db.UnsignedInt
+  month  Int    @default(0) @db.UnsignedTinyInt
+  day    Int    @default(0) @db.UnsignedTinyInt
+  week   Int    @default(0) @db.UnsignedTinyInt
+  h_00   Int    @default(0) @db.UnsignedInt
+  h_01   Int    @default(0) @db.UnsignedInt
+  h_02   Int    @default(0) @db.UnsignedInt
+  h_03   Int    @default(0) @db.UnsignedInt
+  h_04   Int    @default(0) @db.UnsignedInt
+  h_05   Int    @default(0) @db.UnsignedInt
+  h_06   Int    @default(0) @db.UnsignedInt
+  h_07   Int    @default(0) @db.UnsignedInt
+  h_08   Int    @default(0) @db.UnsignedInt
+  h_09   Int    @default(0) @db.UnsignedInt
+  h_10   Int    @default(0) @db.UnsignedInt
+  h_11   Int    @default(0) @db.UnsignedInt
+  h_12   Int    @default(0) @db.UnsignedInt
+  h_13   Int    @default(0) @db.UnsignedInt
+  h_14   Int    @default(0) @db.UnsignedInt
+  h_15   Int    @default(0) @db.UnsignedInt
+  h_16   Int    @default(0) @db.UnsignedInt
+  h_17   Int    @default(0) @db.UnsignedInt
+  h_18   Int    @default(0) @db.UnsignedInt
+  h_19   Int    @default(0) @db.UnsignedInt
+  h_20   Int    @default(0) @db.UnsignedInt
+  h_21   Int    @default(0) @db.UnsignedInt
+  h_22   Int    @default(0) @db.UnsignedInt
+  h_23   Int    @default(0) @db.UnsignedInt
+  mh_00  Int    @default(0) @db.UnsignedInt
+  mh_01  Int    @default(0) @db.UnsignedInt
+  mh_02  Int    @default(0) @db.UnsignedInt
+  mh_03  Int    @default(0) @db.UnsignedInt
+  mh_04  Int    @default(0) @db.UnsignedInt
+  mh_05  Int    @default(0) @db.UnsignedInt
+  mh_06  Int    @default(0) @db.UnsignedInt
+  mh_07  Int    @default(0) @db.UnsignedInt
+  mh_08  Int    @default(0) @db.UnsignedInt
+  mh_09  Int    @default(0) @db.UnsignedInt
+  mh_10  Int    @default(0) @db.UnsignedInt
+  mh_11  Int    @default(0) @db.UnsignedInt
+  mh_12  Int    @default(0) @db.UnsignedInt
+  mh_13  Int    @default(0) @db.UnsignedInt
+  mh_14  Int    @default(0) @db.UnsignedInt
+  mh_15  Int    @default(0) @db.UnsignedInt
+  mh_16  Int    @default(0) @db.UnsignedInt
+  mh_17  Int    @default(0) @db.UnsignedInt
+  mh_18  Int    @default(0) @db.UnsignedInt
+  mh_19  Int    @default(0) @db.UnsignedInt
+  mh_20  Int    @default(0) @db.UnsignedInt
+  mh_21  Int    @default(0) @db.UnsignedInt
+  mh_22  Int    @default(0) @db.UnsignedInt
+  mh_23  Int    @default(0) @db.UnsignedInt
+  total  Int    @default(0) @db.UnsignedInt
+  mtotal Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_store_count_os {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor  String @default("") @db.VarChar(50)
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_store_count_referer {
+  uid        Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor     String @default("") @db.VarChar(50)
+  referer    String @default("") @db.VarChar(255)
+  os         String @default("") @db.VarChar(50)
+  browser    String @default("") @db.VarChar(50)
+  check_ip   String @default("") @db.VarChar(20)
+  check_date Int    @default(0) @db.UnsignedInt
+  signdate   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_store_count_site {
+  uid     Int    @id @default(autoincrement()) @db.UnsignedInt
+  vendor  String @default("") @db.VarChar(50)
+  year    Int    @default(0) @db.UnsignedInt
+  month   Int    @default(0) @db.UnsignedTinyInt
+  day     Int    @default(0) @db.UnsignedTinyInt
+  content String @default("") @db.VarChar(50)
+  count   Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_td_money {
+  uid        Int    @id @default(autoincrement()) @db.UnsignedInt
+  member_id  String @unique(map: "uk_member_id") @db.VarChar(50)
+  balance    BigInt @default(0)
+  created_at Int    @default(0) @db.UnsignedInt
+  updated_at Int    @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_td_money_charge {
+  uid            Int                           @id @default(autoincrement()) @db.UnsignedInt
+  member_id      String                        @db.VarChar(50)
+  amount         BigInt
+  status         mallRN_td_money_charge_status @default(PENDING)
+  depositor_name String                        @default("") @db.VarChar(50)
+  memo           String                        @default("") @db.VarChar(200)
+  created_at     Int                           @default(0) @db.UnsignedInt
+  approved_at    Int                           @default(0) @db.UnsignedInt
+  admin_id       String                        @default("") @db.VarChar(50)
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([member_id], map: "idx_member_id")
+  @@index([status], map: "idx_status")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_td_money_log {
+  uid           Int                      @id @default(autoincrement()) @db.UnsignedInt
+  member_id     String                   @db.VarChar(50)
+  type          mallRN_td_money_log_type
+  amount        BigInt
+  balance_after BigInt
+  ref_table     String                   @default("") @db.VarChar(50)
+  ref_uid       Int                      @default(0) @db.UnsignedInt
+  content       String                   @default("") @db.VarChar(200)
+  created_at    Int                      @default(0) @db.UnsignedInt
+
+  @@index([created_at], map: "idx_created_at")
+  @@index([member_id], map: "idx_member_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_toss_prepare {
+  uid            Int       @id @default(autoincrement())
+  order_id       String    @unique(map: "uk_order_id") @db.VarChar(80)
+  order_num      String    @default("") @db.VarChar(40)
+  cart_id        String    @default("") @db.VarChar(64)
+  member_id      String    @default("") @db.VarChar(80)
+  form_json      String?   @db.MediumText
+  raw_json       String?   @db.MediumText
+  amount         Int       @default(0)
+  payload        String?   @db.MediumText
+  status         Int       @default(0) @db.TinyInt
+  payment_key    String    @default("") @db.VarChar(200)
+  approved_at    Int       @default(0)
+  approved_at_ts Int       @default(0)
+  payment_status String    @default("") @db.VarChar(32)
+  payment_method String    @default("") @db.VarChar(32)
+  easy_provider  String    @default("") @db.VarChar(32)
+  confirm_json   String?   @db.MediumText
+  signdate       Int       @default(0)
+  created_at     DateTime  @default(now()) @db.DateTime(0)
+  updated_at     DateTime? @db.DateTime(0)
+
+  @@index([approved_at_ts], map: "idx_approved_at_ts")
+  @@index([cart_id], map: "idx_cart_id")
+  @@index([easy_provider], map: "idx_easy_provider")
+  @@index([member_id], map: "idx_member_id")
+  @@index([order_num], map: "idx_order_num")
+  @@index([payment_method], map: "idx_payment_method")
+  @@index([signdate], map: "idx_signdate")
+  @@index([status], map: "idx_status")
+}
+
+model mallRN_toss_prepare_bak_20251219 {
+  uid         Int     @id @default(autoincrement())
+  order_id    String  @unique(map: "uk_order_id") @db.VarChar(80)
+  cart_id     String  @db.VarChar(64)
+  member_id   String  @db.VarChar(80)
+  amount      Int     @default(0)
+  payload     String? @db.MediumText
+  status      Int     @default(0) @db.TinyInt
+  payment_key String  @default("") @db.VarChar(200)
+  approved_at Int     @default(0)
+  signdate    Int     @default(0)
+
+  @@index([cart_id], map: "idx_cart_id")
+  @@index([member_id], map: "idx_member_id")
+  @@index([order_id], map: "idx_order_id")
+}
+
+model mallRN_toss_prepare_clone {
+  uid         Int       @id @default(autoincrement())
+  order_id    String    @unique(map: "uk_order_id") @db.VarChar(80)
+  order_num   String    @default("") @db.VarChar(40)
+  cart_id     String    @default("") @db.VarChar(64)
+  member_id   String    @default("") @db.VarChar(80)
+  form_json   String?   @db.MediumText
+  raw_json    String?   @db.MediumText
+  amount      Int       @default(0)
+  payload     String?   @db.MediumText
+  status      Int       @default(0) @db.TinyInt
+  payment_key String    @default("") @db.VarChar(200)
+  approved_at Int       @default(0)
+  signdate    Int       @default(0)
+  created_at  DateTime  @default(now()) @db.DateTime(0)
+  updated_at  DateTime? @db.DateTime(0)
+
+  @@index([cart_id], map: "idx_cart_id")
+  @@index([member_id], map: "idx_member_id")
+  @@index([order_num], map: "idx_order_num")
+  @@index([signdate], map: "idx_signdate")
+  @@index([status], map: "idx_status")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_vendor {
+  uid             Int                      @id @default(autoincrement()) @db.UnsignedInt
+  auth            mallRN_vendor_auth       @default(R)
+  sell            mallRN_vendor_sell       @default(R)
+  delivery_type   Int                      @default(0) @db.UnsignedTinyInt
+  id              String                   @default("") @db.VarChar(50)
+  passwd          String                   @default("") @db.VarChar(50)
+  comp_name       String                   @default("") @db.VarChar(100)
+  comp_owner      String                   @default("") @db.VarChar(20)
+  comp_license_no String                   @default("") @db.VarChar(50)
+  comp_postcode   String                   @default("") @db.VarChar(10)
+  comp_address1   String                   @default("") @db.VarChar(100)
+  comp_address2   String                   @default("") @db.VarChar(100)
+  comp_type       String                   @default("") @db.VarChar(100)
+  comp_item       String                   @default("") @db.VarChar(100)
+  comp_email      String                   @default("") @db.VarChar(100)
+  comp_tel        String                   @default("") @db.VarChar(20)
+  comp_fax        String                   @default("") @db.VarChar(20)
+  cont_name       String                   @default("") @db.VarChar(100)
+  cont_cell       String                   @default("") @db.VarChar(20)
+  cont_email      String                   @default("") @db.VarChar(50)
+  cont_part       String                   @default("") @db.VarChar(50)
+  cont_position   String                   @default("") @db.VarChar(50)
+  goods_auth      mallRN_vendor_goods_auth @default(A)
+  commission      Float                    @default(0.00) @db.Float
+  bank_name       String                   @default("") @db.VarChar(20)
+  bank_num        String                   @default("") @db.VarChar(20)
+  bank_owner      String                   @default("") @db.VarChar(20)
+  account_cycle   Int                      @default(1) @db.UnsignedInt
+  memo            String                   @db.Text
+  image1          String                   @default("") @db.VarChar(100)
+  image2          String                   @default("") @db.VarChar(100)
+  fail_cnts       Int                      @default(0) @db.UnsignedInt
+  fail_time       Int                      @default(0) @db.UnsignedInt
+  login_time      Int                      @default(0) @db.UnsignedInt
+  signdate        Int                      @default(0) @db.UnsignedInt
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_vendor_configuration {
+  uid                           Int                                       @id @default(autoincrement()) @db.UnsignedInt
+  vendor                        String                                    @default("") @db.VarChar(50)
+  basic_name                    String                                    @default("") @db.VarChar(50)
+  basic_cs_time1                String                                    @default("") @db.VarChar(50)
+  basic_cs_time2                String                                    @default("") @db.VarChar(50)
+  basic_cs_time3                String                                    @default("") @db.VarChar(50)
+  basic_cs_time4                String                                    @default("") @db.VarChar(50)
+  comp_rtn_postcode             String                                    @default("") @db.VarChar(10)
+  comp_rtn_address1             String                                    @default("") @db.VarChar(100)
+  comp_rtn_address2             String                                    @default("") @db.VarChar(100)
+  delivery_type                 mallRN_vendor_configuration_delivery_type @default(P)
+  delivery_d_price              Int                                       @default(0) @db.UnsignedInt
+  delivery_p_type               String                                    @default("order") @db.VarChar(20)
+  delivery_p_price1             Int                                       @default(0) @db.UnsignedInt
+  delivery_p_price2             Int                                       @default(0) @db.UnsignedInt
+  delivery_info                 String                                    @db.Text
+  delivery_im_areas1_used       Int                                       @default(0) @db.UnsignedTinyInt
+  delivery_im_areas1_price      Int                                       @default(0) @db.UnsignedInt
+  delivery_im_areas2_used       Int                                       @default(0) @db.UnsignedTinyInt
+  delivery_im_areas2_price      Int                                       @default(0) @db.UnsignedInt
+  goods_option_info             String                                    @db.Text
+  goods_brand_info              String                                    @db.Text
+  goods_make_info               String                                    @db.Text
+  goods_origin_info             String                                    @db.Text
+  goods_delivery_info           String                                    @db.Text
+  goods_refund_info             String                                    @db.Text
+  goods_exchange_info           String                                    @db.Text
+  goods_as_info                 String                                    @db.Text
+  design_main_display1          Int                                       @default(0) @db.UnsignedTinyInt
+  design_main_display2          Int                                       @default(0) @db.UnsignedTinyInt
+  design_main_display3          Int                                       @default(0) @db.UnsignedTinyInt
+  design_main_custom_code       Int                                       @default(0) @db.UnsignedTinyInt
+  design_main_custom_code_image String                                    @db.Text
+  design_main_custom_code_info  String                                    @db.Text
+  design_main_display_order     String                                    @db.Text
+  push_yn                       mallRN_vendor_configuration_push_yn       @default(N)
+  token_pc                      String                                    @default("") @db.VarChar(250)
+  token_mobile                  String                                    @default("") @db.VarChar(250)
+  widget_info                   String                                    @db.Text
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_vendor_fee_policy {
+  uid              Int                                   @id @default(autoincrement()) @db.UnsignedInt
+  vendor_grade     mallRN_vendor_fee_policy_vendor_grade
+  fee_rate         Decimal                               @db.Decimal(5, 2)
+  is_startdeal     Boolean                               @default(false)
+  startdeal_months Int                                   @default(0)
+  note             String?                               @db.VarChar(255)
+  created_at       Int                                   @db.UnsignedInt
+  updated_at       Int                                   @db.UnsignedInt
+
+  @@unique([vendor_grade, is_startdeal], map: "uq_grade_startdeal")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_vendor_grade_month {
+  uid              BigInt  @id @default(autoincrement()) @db.UnsignedBigInt
+  vendor_id        String  @db.VarChar(50)
+  year_month       String  @db.Char(7)
+  prev_month_sales Int     @default(0) @db.UnsignedInt
+  grade_code       String  @db.VarChar(30)
+  is_startdeal     Boolean @default(false)
+  startdeal_until  String? @db.Char(7)
+  decided_at       Int     @default(0) @db.UnsignedInt
+
+  @@unique([vendor_id, year_month], map: "uq_vendor_month")
+  @@index([year_month, grade_code], map: "idx_month_grade")
+  @@index([vendor_id], map: "idx_vendor")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mallRN_vendor_log {
+  uid      Int    @id @default(autoincrement()) @db.UnsignedInt
+  id       String @default("") @db.VarChar(50)
+  content  String @default("") @db.VarChar(250)
+  type     Int    @default(0) @db.UnsignedTinyInt
+  acc_ip   String @default("") @db.VarChar(50)
+  signdate Int    @default(0) @db.UnsignedInt
+}
+
+enum mallRN_reward_log_owner_type {
+  member
+  vendor
+}
+
+enum mallRN_reward_wallet_owner_type {
+  member
+  vendor
+}
+
+enum mallRN_vendor_auth {
+  R
+  Y
+  N
+}
+
+enum mallRN_vendor_fee_policy_vendor_grade {
+  general
+  sprout
+  power
+}
+
+enum mallRN_admin_configuration_push_yn {
+  Y
+  N
+}
+
+enum mallRN_exhibition_discount_yn {
+  N
+  Y
+}
+
+enum mallRN_reward_policy_target_type {
+  member
+  vendor
+}
+
+enum mallRN_reward_policy_rule_rule_kind {
+  grade
+  booster
+  fixed
+}
+
+enum mallRN_reward_policy_rule_log_action {
+  update
+}
+
+enum mallRN_td_money_log_type {
+  CHARGE
+  USE
+  REFUND
+  ADJUST
+}
+
+enum mallRN_vendor_sell {
+  A
+  R
+  N
+}
+
+enum mallRN_favorite_store_mobile {
+  Y
+  N
+}
+
+enum mallRN_reward_policy_channel {
+  normal
+  dd09
+  supplier
+}
+
+enum mallRN_td_money_charge_status {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+enum mallRN_coupon_manager_discount_type {
+  P
+  W
+}
+
+enum mallRN_favorite_goods_mobile {
+  Y
+  N
+}
+
+enum mallRN_goods_view_mobile {
+  Y
+  N
+}
+
+enum mallRN_order_cancel_cp_log_pay_type {
+  B
+  C
+  R
+  V
+  H
+  M
+}
+
+enum mallRN_member_withdrawal_mobile {
+  Y
+  N
+}
+
+enum mallRN_reward_policy_base_type {
+  margin
+  paid
+}
+
+enum mallRN_order_cash_receipts_pay_type {
+  B
+  C
+  R
+  V
+  H
+  M
+}
+
+enum mallRN_reward_log_action {
+  create
+  cancel
+  pay
+  adjust
+}
+
+enum mallRN_vendor_configuration_delivery_type {
+  F
+  D
+  P
+}
+
+enum mallRN_member_birth_sl {
+  S
+  L
+  N
+}
+
+enum mallRN_member_bak_20251219_birth_sl {
+  S
+  L
+  N
+}
+
+enum mallRN_member_sleep_birth_sl {
+  S
+  L
+  N
+}
+
+enum mallRN_member_gender {
+  M
+  F
+  N
+}
+
+enum mallRN_member_bak_20251219_gender {
+  M
+  F
+  N
+}
+
+enum mallRN_member_sleep_gender {
+  M
+  F
+  N
+}
+
+enum mallRN_member_marry {
+  M
+  S
+  N
+}
+
+enum mallRN_member_bak_20251219_marry {
+  M
+  S
+  N
+}
+
+enum mallRN_member_sleep_marry {
+  M
+  S
+  N
+}
+
+enum mallRN_order_sales_mobile {
+  Y
+  N
+}
+
+enum mallRN_reward_good_reward_status {
+  reserved
+  paid
+  cancelled
+}
+
+enum mallRN_member_bak_20251219_mailling {
+  Y
+  N
+}
+
+enum mallRN_member_sleep_mailling {
+  Y
+  N
+}
+
+enum mallRN_order_info_pay_type {
+  B
+  C
+  R
+  V
+  H
+  M
+}
+
+enum mallRN_member_mailling {
+  Y
+  N
+}
+
+enum mallRN_member_tmp_birth_sl {
+  S
+  L
+  N
+}
+
+enum mallRN_order_info_pay_status {
+  A
+  B
+  C
+  D
+}
+
+enum mallRN_member_bak_20251219_sms {
+  Y
+  N
+}
+
+enum mallRN_member_sleep_sms {
+  Y
+  N
+}
+
+enum mallRN_member_tmp_gender {
+  M
+  F
+  N
+}
+
+enum mallRN_order_sales_pay_type {
+  B
+  C
+  R
+  V
+  H
+  M
+}
+
+enum mallRN_member_sms {
+  Y
+  N
+}
+
+enum mallRN_member_tmp_marry {
+  M
+  S
+  N
+}
+
+enum mallRN_vendor_goods_auth {
+  A
+  P
+}
+
+enum mallRN_member_tmp_mailling {
+  Y
+  N
+}
+
+enum mallRN_member_tmp_sms {
+  Y
+  N
+}
+
+enum mallRN_order_info_mobile {
+  Y
+  N
+}
+
+enum mallRN_vendor_configuration_push_yn {
+  Y
+  N
+}
+
+enum mallRN_member_bak_20251219_mobile {
+  Y
+  N
+}
+
+enum mallRN_member_sleep_mobile {
+  Y
+  N
+}
+
+enum mallRN_member_bak_20251219_auth {
+  Y
+  N
+}
+
+enum mallRN_member_sleep_auth {
+  Y
+  N
+}
+
+enum mallRN_member_tmp_mobile {
+  Y
+  N
+}
+
+enum mallRN_member_tmp_auth {
+  Y
+  N
+}
+
+enum mallRN_member_mobile {
+  Y
+  N
+}
+
+enum mallRN_member_tmp_buyer_auth {
+  R
+  Y
+  N
+}
+
+enum mallRN_member_auth {
+  Y
+  N
+}
+
+enum mallRN_configuration_delivery_type {
+  F
+  D
+  P
+}
+
+enum mallRN_configuration_member_auth {
+  A
+  P
+}
+
+enum mallRN_configuration_member_mileage_yn {
+  Y
+  N
+}
+
+enum mallRN_configuration_member_mileage_validity_yn {
+  Y
+  N
+}
+
+enum mallRN_configuration_member_mileage_validity_type {
+  D
+  M
+  Y
+}
+
+enum mallRN_configuration_member_admin_auth {
+  N
+  E
+  H
+}
+
+enum mallRN_goods_auth_ck {
+  N
+  Y
+}
+
+enum mallRN_goods_backup_auth_ck {
+  N
+  Y
+}
+
+enum mallRN_configuration_order_tracker_yn {
+  Y
+  N
+}
+
+enum mallRN_configuration_sms_yn {
+  Y
+  N
+}
+
+enum mallRN_configuration_mobile_yn {
+  Y
+  N
 }

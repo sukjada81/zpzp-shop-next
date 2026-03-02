@@ -62,16 +62,12 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
     return (
         <div className="mt-2">
             <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border)] shadow-sm bg-[color:var(--surface)]">
-                {/* ✅ 브랜드 톤앤매너: 그라데이션 제거, 깔끔한 솔리드/소프트 배경 */}
                 <Link
                     href={s.href}
                     className="block"
-                    style={{
-                        background: "var(--accent-soft)",
-                    }}
+                    style={{ background: "var(--accent-soft)" }}
                 >
                     <div className="px-4 py-4">
-                        {/* top line: tag only (tenant/DAICLO 제거) */}
                         <div className="flex items-start justify-between gap-3">
               <span
                   className="inline-flex items-center rounded-full px-3 py-1 text-xs font-extrabold text-white"
@@ -79,11 +75,9 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
               >
                 {s.tag ?? "자세히 보기"}
               </span>
-                            {/* 오른쪽 정보 제거 */}
                             <div />
                         </div>
 
-                        {/* copy */}
                         <div className="mt-2">
                             <div className="text-base font-extrabold text-[color:var(--fg)] leading-snug">
                                 {s.title}
@@ -91,22 +85,24 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
                             <div className="mt-1 text-xs text-[color:var(--muted)]">{s.sub}</div>
                         </div>
 
-                        {/* price line */}
                         {(s.strongLeft || s.strongRight) && (
                             <div className="mt-2 flex items-center gap-2 text-sm">
                                 {s.strongLeft ? (
-                                    <span className="font-extrabold text-[color:var(--brand)]">{s.strongLeft}</span>
+                                    <span className="font-extrabold text-[color:var(--brand)]">
+                    {s.strongLeft}
+                  </span>
                                 ) : null}
                                 <span className="text-[color:var(--muted)]/40">|</span>
                                 {s.strongRight ? (
-                                    <span className="font-extrabold text-[color:var(--fg)]">{s.strongRight}</span>
+                                    <span className="font-extrabold text-[color:var(--fg)]">
+                    {s.strongRight}
+                  </span>
                                 ) : null}
                             </div>
                         )}
                     </div>
                 </Link>
 
-                {/* dots */}
                 <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2">
                     {slides.map((_, i) => (
                         <button

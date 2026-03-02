@@ -27,19 +27,40 @@ type Dash = {
     }>;
 };
 
-async function getOrigin() {
-    const h = await headers(); // ✅ Next 16.1.x: Promise 반환 케이스 대응
-    const host = h.get("host") ?? "localhost:3000";
-    const proto = h.get("x-forwarded-proto") ?? "http";
-    return `${proto}://${host}`;
+async function getOriginAndCookie() {
+    // Next 16/Turbopack 환경에서 headers()가 Promise/동기 혼재 케이스 방어
+    const h: any = await Promise.resolve(headers() as any);
+
+    const xfProto = (h?.get?.("x-forwarded-proto") || "").split(",")[0].trim();
+    const xfHost = (h?.get?.("x-forwarded-host") || "").split(",")[0].trim();
+    const host = (h?.get?.("host") || "localhost:3000").trim();
+
+    const proto = xfProto || "http";
+    const hostname = xfHost || host;
+
+    const origin = `${proto}://${hostname}`;
+    const cookie = (h?.get?.("cookie") || "").toString();
+
+    return { origin, cookie };
 }
 
 async function getDash(tenant: string): Promise<Dash> {
-    const origin = await getOrigin();
-    const res = await fetch(
-        `${origin}/api/admin/dashboard?tenant=${encodeURIComponent(tenant)}`,
-        { cache: "no-store" }
-    );
+    const { origin, cookie } = await getOriginAndCookie();
+
+    const url = new URL(`/api/admin/dashboard`, origin);
+    url.searchParams.set("tenant", tenant || "all");
+
+    const res = await fetch(url.toString(), {
+        cache: "no-store",
+        // ✅ Server Component → 내부 API 호출 시 쿠키를 직접 실어줘야 세션 유지됨
+        headers: cookie ? { cookie } : undefined,
+    });
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`ADMIN_DASH_FETCH_FAILED:${res.status}:${text || "null"}`);
+    }
+
     return res.json();
 }
 
@@ -56,30 +77,16 @@ export default async function AdminDashboardPage({
             <div className="dad-card p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="min-w-0">
-                        <div className="text-lg font-extrabold text-[var(--dad-ink)]">
-                            대시보드
-                        </div>
+                        <div className="text-lg font-extrabold text-[var(--dad-ink)]">대시보드</div>
                         <div className="text-sm font-bold text-[var(--dad-muted)]">
                             통합 관리자 / tenant 기준으로 데이터가 분기됩니다.
                         </div>
                     </div>
 
                     <div className="sm:ml-auto flex items-center gap-2">
-                        <FilterPill
-                            active={tenant === "all"}
-                            href="/admin/dashboard?tenant=all"
-                            label="전체"
-                        />
-                        <FilterPill
-                            active={tenant === "a"}
-                            href="/admin/dashboard?tenant=a"
-                            label="A 지점"
-                        />
-                        <FilterPill
-                            active={tenant === "b"}
-                            href="/admin/dashboard?tenant=b"
-                            label="B 지점"
-                        />
+                        <FilterPill active={tenant === "all"} href="/admin/dashboard?tenant=all" label="전체" />
+                        <FilterPill active={tenant === "a"} href="/admin/dashboard?tenant=a" label="A 지점" />
+                        <FilterPill active={tenant === "b"} href="/admin/dashboard?tenant=b" label="B 지점" />
                     </div>
                 </div>
             </div>
@@ -102,12 +109,8 @@ export default async function AdminDashboardPage({
             <div className="dad-card p-5">
                 <div className="flex items-center justify-between">
                     <div>
-                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">
-                            최근 주문
-                        </div>
-                        <div className="text-xs font-bold text-[var(--dad-muted)]">
-                            최근 20건
-                        </div>
+                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">최근 주문</div>
+                        <div className="text-xs font-bold text-[var(--dad-muted)]">최근 20건</div>
                     </div>
                     <Link
                         href="/admin/orders"
@@ -132,23 +135,14 @@ export default async function AdminDashboardPage({
                         </thead>
                         <tbody>
                         {(data?.recentOrders || []).map((o) => (
-                            <tr
-                                key={String(o.id)}
-                                className="border-b border-[var(--dad-border)]"
-                            >
+                            <tr key={String(o.id)} className="border-b border-[var(--dad-border)]">
                                 <td className="py-3 pr-3 font-bold text-[var(--dad-ink)]">
                                     {o.tenant?.name} ({o.tenant?.slug})
                                 </td>
-                                <td className="py-3 pr-3 font-extrabold text-[var(--dad-ink)]">
-                                    {o.orderNo}
-                                </td>
+                                <td className="py-3 pr-3 font-extrabold text-[var(--dad-ink)]">{o.orderNo}</td>
                                 <td className="py-3 pr-3">
-                                    <div className="font-bold text-[var(--dad-ink)]">
-                                        {o.buyerName}
-                                    </div>
-                                    <div className="text-xs font-bold text-[var(--dad-muted)]">
-                                        {o.buyerPhone}
-                                    </div>
+                                    <div className="font-bold text-[var(--dad-ink)]">{o.buyerName}</div>
+                                    <div className="text-xs font-bold text-[var(--dad-muted)]">{o.buyerPhone}</div>
                                 </td>
                                 <td className="py-3 pr-3">
                                     <Badge>{o.status}</Badge>
@@ -167,10 +161,7 @@ export default async function AdminDashboardPage({
 
                         {(data?.recentOrders || []).length === 0 && (
                             <tr>
-                                <td
-                                    colSpan={7}
-                                    className="py-8 text-center text-sm font-bold text-[var(--dad-muted)]"
-                                >
+                                <td colSpan={7} className="py-8 text-center text-sm font-bold text-[var(--dad-muted)]">
                                     주문 데이터가 없습니다.
                                 </td>
                             </tr>
@@ -218,15 +209,11 @@ function Kpi({
 }) {
     return (
         <div className="dad-card p-5">
-            <div className="text-xs font-extrabold text-[var(--dad-muted)]">
-                {title}
-            </div>
+            <div className="text-xs font-extrabold text-[var(--dad-muted)]">{title}</div>
             <div className="mt-2 text-2xl font-extrabold text-[var(--dad-ink)]">
                 {value}
                 {suffix ? (
-                    <span className="ml-1 text-base font-extrabold text-[var(--dad-muted)]">
-            {suffix}
-          </span>
+                    <span className="ml-1 text-base font-extrabold text-[var(--dad-muted)]">{suffix}</span>
                 ) : null}
             </div>
         </div>

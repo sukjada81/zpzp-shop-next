@@ -1,18 +1,76 @@
+// apps/api/src/common/guard.ts
 import type { FastifyReply, FastifyRequest } from "fastify";
 
+function getSession(req: FastifyRequest): any {
+    return (req as any).session;
+}
+
+function isLoggedIn(req: FastifyRequest): boolean {
+    const s = getSession(req);
+    return !!(s?.admin || s?.adminUserId || s?.user?.id);
+}
+
+function isSuperAdmin(req: FastifyRequest): boolean {
+    const s = getSession(req);
+    return !!(s?.admin?.is_super_admin || s?.user?.is_super_admin);
+}
+
+export type RequireAdminOptions = {
+    /** 통합 관리자만 허용 */
+    superOnly?: boolean;
+};
+
 /**
- * MVP guard:
- * - 아직 세션/토큰 인증 전이므로, 일단 "관리자 키" 같은 임시 방식을 두지 않고
- *   public API만 먼저 열어두는 게 안전합니다.
- * - admin API는 Phase 4(인증)에서 붙입니다.
- *
- * 필요 시 임시로 header 기반 관리자 인증을 추가할 수 있음:
- *   X-Admin-Key: ...
+ * ✅ Admin 가드
+ * - 사용 형태 1) preHandler: requireAdmin
+ * - 사용 형태 2) app.addHook("preHandler", requireAdmin({ superOnly: true }))
  */
-export function requireTenant(req: FastifyRequest, reply: FastifyReply) {
-    if (!req.tenantId) {
-        reply.code(400).send({ ok: false, error: "TENANT_NOT_RESOLVED" });
-        return false;
-    }
-    return true;
+export function requireAdmin(
+    opts?: RequireAdminOptions
+): (req: FastifyRequest, reply: FastifyReply) => Promise<void> {
+    return async (req: FastifyRequest, reply: FastifyReply) => {
+        if (!isLoggedIn(req)) {
+            reply.code(401).send({ ok: false, message: "ADMIN_UNAUTHORIZED" });
+            return;
+        }
+        if (opts?.superOnly && !isSuperAdmin(req)) {
+            reply.code(403).send({ ok: false, message: "ADMIN_FORBIDDEN" });
+            return;
+        }
+    };
+}
+
+export type RequireTenantOptions = {
+    /** tenantId 체크를 완화하고 싶을 때 */
+    allowMissingTenant?: boolean;
+};
+
+/**
+ * ✅ Tenant 가드 (public/seller 등에서 사용 가능)
+ */
+export function requireTenant(
+    opts?: RequireTenantOptions
+): (req: FastifyRequest, reply: FastifyReply) => Promise<void> {
+    return async (req: FastifyRequest, reply: FastifyReply) => {
+        const s = getSession(req);
+
+        if (!isLoggedIn(req)) {
+            reply.code(401).send({ ok: false, message: "UNAUTHORIZED" });
+            return;
+        }
+
+        if (!opts?.allowMissingTenant) {
+            if (!s?.tenantId && !s?.tenant?.id) {
+                reply.code(403).send({ ok: false, message: "TENANT_FORBIDDEN" });
+                return;
+            }
+        }
+    };
+}
+
+/**
+ * (옵션) 슈퍼관리자 전용 (별도 사용하고 싶을 때)
+ */
+export function requireSuperAdmin() {
+    return requireAdmin({ superOnly: true });
 }

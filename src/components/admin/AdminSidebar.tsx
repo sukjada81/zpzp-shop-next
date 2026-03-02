@@ -1,12 +1,14 @@
 // src/components/admin/AdminSidebar.tsx
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAdminUiStore } from "@/lib/admin/adminUiStore";
 
 const items = [
     { label: "대시보드", href: "/admin/dashboard", icon: "📊" },
-    { label: "지점 관리", href: "/admin/route.ts", icon: "🏬" },
+    // ✅ FIX: route.ts 파일 경로가 아니라 실제 페이지 라우트로 이동해야 함
+    { label: "지점 관리", href: "/admin/tenant", icon: "🏬" },
     { label: "상품", href: "/admin/products", icon: "🧾" },
     { label: "주문", href: "/admin/orders", icon: "📦" },
     { label: "포인트", href: "/admin/points", icon: "🪙" },
@@ -46,10 +48,12 @@ export default function AdminSidebar() {
                     <div className="mt-4 space-y-1">
                         {items.map((it) => {
                             const active = pathname === it.href || pathname.startsWith(it.href + "/");
+
                             return (
-                                <a
+                                <Link
                                     key={it.href}
                                     href={it.href}
+                                    onClick={closeSidebar}
                                     className={[
                                         "flex items-center justify-between rounded-2xl px-3 py-2 text-sm font-extrabold transition",
                                         active
@@ -62,7 +66,7 @@ export default function AdminSidebar() {
                       {it.label}
                   </span>
                                     <span className={active ? "opacity-80" : "opacity-30"}>›</span>
-                                </a>
+                                </Link>
                             );
                         })}
                     </div>
@@ -70,12 +74,13 @@ export default function AdminSidebar() {
                     <div className="mt-4 rounded-2xl border border-[var(--dad-border)] bg-white/70 p-3">
                         <div className="text-xs font-semibold text-[var(--dad-muted)]">Quick</div>
                         <div className="mt-2 grid grid-cols-2 gap-2">
-                            <a className="dad-btn dad-btn-ghost px-3 py-2 text-xs text-center" href="/admin/tenants">
+                            {/* ✅ Quick도 실제 존재 라우트로 */}
+                            <Link className="dad-btn dad-btn-ghost px-3 py-2 text-xs text-center" href="/admin/tenant" onClick={closeSidebar}>
                                 지점
-                            </a>
-                            <a className="dad-btn dad-btn-primary px-3 py-2 text-xs text-center" href="/admin/dashboard">
+                            </Link>
+                            <Link className="dad-btn dad-btn-primary px-3 py-2 text-xs text-center" href="/admin/dashboard" onClick={closeSidebar}>
                                 현황
-                            </a>
+                            </Link>
                         </div>
                     </div>
                 </div>

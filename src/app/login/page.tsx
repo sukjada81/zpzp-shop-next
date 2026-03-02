@@ -1,20 +1,23 @@
+// src/app/login/page.tsx
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
-
 export default function LoginPage() {
-    const params = useParams<{ tenant?: string }>();
-    const sp = useSearchParams();
+    const sp =
+        typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search)
+            : null;
 
-    const tenant = (params?.tenant as string) || ""; // ✅ 경로에서 tenant 추출
-    const returnTo = sp.get("returnTo") || "/home";   // ✅ 기본은 home
+    const tenant = sp?.get("tenant") || "";
+    const returnTo = sp?.get("returnTo") || "/select-tenant";
 
     return (
         <main className="min-h-dvh flex flex-col items-center justify-center px-6">
             <div className="w-full max-w-[420px] flex flex-col items-center">
                 <div className="mb-6 text-center">
                     <div className="text-xl font-extrabold tracking-wide">매장 로그인</div>
-                    <div className="mt-2 text-sm text-slate-500">카카오 계정으로 간편하게 시작하세요.</div>
+                    <div className="mt-2 text-sm text-slate-500">
+                        카카오 계정으로 간편하게 시작하세요.
+                    </div>
                 </div>
 
                 <div className="w-full rounded-2xl border border-slate-200 bg-white p-4">

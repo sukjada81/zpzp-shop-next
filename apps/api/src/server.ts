@@ -12,6 +12,9 @@ import { adminDashboardRoutes } from "./modules/admin/dashboard.routes.js";
 import { adminOrdersRoutes } from "./modules/admin/orders.routes.js";
 import { adminProductsRoutes } from "./modules/admin/products.routes.js";
 
+// ✅ 추가: /admin/v1/* 통합 라우트(tenants 포함)
+import { adminRoutes } from "./modules/admin/admin.routes.js";
+
 const app = Fastify({ logger: true });
 
 /**
@@ -41,6 +44,10 @@ await adminAuthRoutes(app);
 await adminDashboardRoutes(app);
 await adminOrdersRoutes(app);
 await adminProductsRoutes(app);
+
+// ✅ 추가: /admin/v1/tenants, /admin/v1/dashboard, /admin/v1/products, /admin/v1/orders, /admin/v1/points 등
+// (BFF가 /admin/v1/* 를 호출 중이므로 반드시 필요)
+await adminRoutes(app);
 
 // ✅ tenant prefix 아래 public API
 app.register(

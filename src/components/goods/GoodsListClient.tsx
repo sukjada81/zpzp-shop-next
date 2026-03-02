@@ -2,8 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export type GoodsListItem = {
     id: string;
@@ -17,9 +17,17 @@ export type GoodsListItem = {
 
 const TABS = [
     { key: "today", label: "오늘의 공구" },
+    { key: "pickup", label: "바로 픽업 가능" },
+    { key: "ongoing", label: "진행 중인 공구" },
     { key: "limited", label: "오늘의 한정특가" },
     { key: "event", label: "이벤트" },
 ] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
+function isTabKey(x: string | null): x is TabKey {
+    return !!x && (TABS as readonly { key: string }[]).some((t) => t.key === x);
+}
 
 export default function GoodsListClient(props: {
     tenant: string;
@@ -27,33 +35,76 @@ export default function GoodsListClient(props: {
 }) {
     const { tenant, initialItems } = props;
     const router = useRouter();
+    const sp = useSearchParams();
 
+    const tabFromUrl = sp?.get("tab");
     const [q, setQ] = useState("");
-    const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("today");
+    const [tab, setTab] = useState<TabKey>(isTabKey(tabFromUrl) ? tabFromUrl : "today");
+
+    // ✅ URL의 tab이 바뀌면(직접 입력/뒤로가기) 상태도 동기화
+    useEffect(() => {
+        const t = sp?.get("tab");
+        if (isTabKey(t)) setTab(t);
+    }, [sp]);
 
     const filtered = useMemo(() => {
         const qq = q.trim().toLowerCase();
 
         const tabFilter = (it: GoodsListItem) => {
+            const left = it.metaLeft ?? "";
+            const right = it.metaRight ?? "";
+            const title = it.title ?? "";
+            const badgeL = it.badgeLeft ?? "";
+            const badgeR = it.badgeRight ?? "";
+
             if (tab === "today") return true;
-            if (tab === "limited") return (it.badgeRight ?? "").includes("한정") || it.title.includes("한정");
-            if (tab === "event") return (it.badgeLeft ?? "").includes("이벤트") || it.title.includes("이벤트");
+
+            // ✅ 픽업: metaRight에 "픽업"이 들어가는 규칙(현재 홈에서 쓰는 기준과 동일)
+            if (tab === "pickup") return right.includes("픽업") || title.includes("픽업");
+
+            // ✅ 진행중: 배지/타이틀/메타 중 "진행" 또는 "D-" 같은 힌트가 있으면 포함 (필요 시 규칙 더 정교화 가능)
+            if (tab === "ongoing") {
+                return (
+                    badgeL.includes("진행") ||
+                    badgeR.includes("진행") ||
+                    left.includes("D-") ||
+                    right.includes("D-") ||
+                    title.includes("진행")
+                );
+            }
+
+            if (tab === "limited") return badgeR.includes("한정") || title.includes("한정");
+            if (tab === "event") return badgeL.includes("이벤트") || title.includes("이벤트");
             return true;
         };
 
         return (initialItems ?? [])
             .filter(tabFilter)
-            .filter((it) => (qq ? it.title.toLowerCase().includes(qq) : true));
+            .filter((it) => (qq ? (it.title ?? "").toLowerCase().includes(qq) : true));
     }, [initialItems, q, tab]);
 
-    // ✅ 상단 문구는 탭에 따라 바뀌게(원하면 고정도 가능)
     const headerTitle =
-        tab === "today" ? "오늘의 공구" : tab === "limited" ? "오늘의 한정특가" : "이벤트";
+        tab === "today"
+            ? "오늘의 공구"
+            : tab === "pickup"
+                ? "바로 픽업 가능"
+                : tab === "ongoing"
+                    ? "진행 중인 공구"
+                    : tab === "limited"
+                        ? "오늘의 한정특가"
+                        : "이벤트";
+
     const headerDesc = "현재 예약 가능한 공동구매 상품입니다.";
+
+    function onChangeTab(next: TabKey) {
+        setTab(next);
+        // ✅ URL도 같이 업데이트해서 공유/뒤로가기 안정화
+        router.replace(`/${tenant}/goods?tab=${next}`);
+    }
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24">
-            {/* ✅ 헤더바 아래 섹션 (요청 UI) */}
+            {/* 상단 */}
             <section className="pt-3">
                 <div className="flex items-start gap-3">
                     <button
@@ -66,13 +117,33 @@ export default function GoodsListClient(props: {
                     </button>
 
                     <div className="min-w-0">
-                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">
-                            {headerTitle}
-                        </div>
-                        <div className="mt-1 text-[13px] font-semibold text-[color:var(--muted)] leading-snug">
-                            {headerDesc}
-                        </div>
+                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">{headerTitle}</div>
+                        <div className="mt-1 text-[13px] font-semibold text-[color:var(--muted)] leading-snug">{headerDesc}</div>
                     </div>
+                </div>
+            </section>
+
+            {/* ✅ 탭 */}
+            <section className="mt-4">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                    {TABS.map((t) => {
+                        const active = t.key === tab;
+                        return (
+                            <button
+                                key={t.key}
+                                type="button"
+                                onClick={() => onChangeTab(t.key)}
+                                className={[
+                                    "shrink-0 rounded-full px-3 py-2 text-xs font-extrabold border",
+                                    active
+                                        ? "bg-[color:var(--brand)] text-white border-[color:var(--brand)]"
+                                        : "bg-white text-[color:var(--muted)] border-[color:var(--border)]",
+                                ].join(" ")}
+                            >
+                                {t.label}
+                            </button>
+                        );
+                    })}
                 </div>
             </section>
 
@@ -98,18 +169,14 @@ export default function GoodsListClient(props: {
                         ) : null}
                     </div>
                 </div>
-
             </section>
 
             {/* 리스트 */}
             <section className="mt-5">
                 {filtered.length === 0 ? (
-                    // ✅ “홈으로 →” 같은 버튼 없이, 리스트 영역만 깔끔하게(요청)
                     <div className="rounded-2xl border border-[color:var(--border)] bg-white p-6 text-center shadow-sm">
                         <div className="text-[15px] font-extrabold text-[color:var(--fg)]">상품이 없습니다</div>
-                        <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">
-                            아직 등록된 공동구매 상품이 없어요.
-                        </div>
+                        <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">조건에 맞는 상품이 없어요.</div>
                     </div>
                 ) : (
                     <div className="grid grid-cols-2 gap-3">

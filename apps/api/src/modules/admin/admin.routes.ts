@@ -9,6 +9,7 @@ type TenantRow = {
     status: string;
     primaryDomain: string | null;
     timezone: string;
+    themeJson: string | null;
 };
 
 type TenantMini = { slug: string; name: string };
@@ -64,7 +65,41 @@ type TenantsResponse = {
         status: string;
         primaryDomain: string | null;
         timezone: string;
+        themeJson: any | null; // JSON으로 파싱된 값
     }>;
+};
+
+type TenantDetailResponse = {
+    ok: true;
+    tenant: {
+        id: string;
+        slug: string;
+        name: string;
+        status: string;
+        primaryDomain: string | null;
+        timezone: string;
+        themeJson: any | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+type TenantCreateBody = {
+    slug: string;
+    name: string;
+    status?: string;
+    primaryDomain?: string | null;
+    timezone?: string;
+    themeJson?: any | null; // object/string 모두 허용
+};
+
+type TenantUpdateBody = {
+    slug: string;
+    name: string;
+    status?: string;
+    primaryDomain?: string | null;
+    timezone?: string;
+    themeJson?: any | null; // object/string 모두 허용
 };
 
 type DashboardQuery = { tenant?: string };
@@ -134,6 +169,38 @@ function parsePageSize(q?: string) {
     return clampInt(Number.isFinite(n) ? n : 20, 5, 100);
 }
 
+function safeParseJson(raw: string | null): any | null {
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        // DB에 저장된 값이 JSON이 아닐 경우(혹시나) 그대로 string로 반환하지 않고 null 처리
+        return null;
+    }
+}
+
+function normalizeThemeJson(input: any): string | null {
+    if (input == null) return null;
+    if (typeof input === "string") {
+        const s = input.trim();
+        if (!s) return null;
+        // string이 JSON인지 검증
+        try {
+            JSON.parse(s);
+            return s;
+        } catch {
+            // JSON이 아니면 저장 거부(정책)
+            throw new Error("THEME_JSON_INVALID");
+        }
+    }
+    // object/array 등 -> stringify
+    try {
+        return JSON.stringify(input);
+    } catch {
+        throw new Error("THEME_JSON_INVALID");
+    }
+}
+
 async function resolveTenantScope(
     prisma: any,
     qTenant: string
@@ -146,7 +213,6 @@ async function resolveTenantScope(
             select: { id: true, slug: true, name: true },
         });
         if (!tenant) {
-            // tenant not found -> single scope로 만들 수 없으니 all로 처리
             return { tenantWhere: {}, tenantInfo: { scope: "all" } };
         }
         return {
@@ -155,7 +221,6 @@ async function resolveTenantScope(
         };
     }
 
-    // TODO(권한): super_admin만 all 허용
     return { tenantWhere: {}, tenantInfo: { scope: "all" } };
 }
 
@@ -172,6 +237,16 @@ async function buildTenantMap(prisma: any, tenantIds: bigint[]): Promise<Map<str
     return map;
 }
 
+function badRequest(reply: FastifyReply, message: string) {
+    return reply.code(400).send({ ok: false, message });
+}
+function conflict(reply: FastifyReply, message: string) {
+    return reply.code(409).send({ ok: false, message });
+}
+function notFound(reply: FastifyReply, message: string) {
+    return reply.code(404).send({ ok: false, message });
+}
+
 export async function adminRoutes(app: FastifyInstance) {
     const prisma = (app as unknown as { prisma?: any }).prisma;
     if (!prisma) {
@@ -180,7 +255,7 @@ export async function adminRoutes(app: FastifyInstance) {
     }
 
     // ---------------------------
-    // GET /admin/v1/route.ts
+    // GET /admin/v1/tenants
     // ---------------------------
     app.get(
         "/admin/v1/tenants",
@@ -194,6 +269,7 @@ export async function adminRoutes(app: FastifyInstance) {
                     status: true,
                     primaryDomain: true,
                     timezone: true,
+                    themeJson: true,
                 },
             });
 
@@ -206,7 +282,235 @@ export async function adminRoutes(app: FastifyInstance) {
                     status: t.status,
                     primaryDomain: t.primaryDomain,
                     timezone: t.timezone,
+                    themeJson: safeParseJson(t.themeJson),
                 })),
+            });
+        }
+    );
+
+    // ---------------------------
+    // GET /admin/v1/tenants/:id (상세)
+    // ---------------------------
+    app.get(
+        "/admin/v1/tenants/:id",
+        async (
+            req: FastifyRequest<{ Params: { id: string } }>,
+            reply: FastifyReply
+        ): Promise<TenantDetailResponse> => {
+            const idStr = req.params.id;
+            if (!idStr) return badRequest(reply, "TENANT_ID_REQUIRED") as any;
+
+            let id: bigint;
+            try {
+                id = BigInt(idStr);
+            } catch {
+                return badRequest(reply, "TENANT_ID_INVALID") as any;
+            }
+
+            const t: (TenantRow & { createdAt: Date; updatedAt: Date }) | null = await prisma.tenant.findUnique({
+                where: { id },
+                select: {
+                    id: true,
+                    slug: true,
+                    name: true,
+                    status: true,
+                    primaryDomain: true,
+                    timezone: true,
+                    themeJson: true,
+                    createdAt: true,
+                    updatedAt: true,
+                },
+            });
+
+            if (!t) return notFound(reply, "TENANT_NOT_FOUND") as any;
+
+            return reply.send({
+                ok: true,
+                tenant: {
+                    id: String(t.id),
+                    slug: t.slug,
+                    name: t.name,
+                    status: t.status,
+                    primaryDomain: t.primaryDomain,
+                    timezone: t.timezone,
+                    themeJson: safeParseJson(t.themeJson),
+                    createdAt: t.createdAt.toISOString(),
+                    updatedAt: t.updatedAt.toISOString(),
+                },
+            });
+        }
+    );
+
+    // ---------------------------
+    // POST /admin/v1/tenants (생성)
+    // ---------------------------
+    app.post(
+        "/admin/v1/tenants",
+        async (
+            req: FastifyRequest<{ Body: TenantCreateBody }>,
+            reply: FastifyReply
+        ) => {
+            const body = req.body || ({} as any);
+
+            const slug = String(body.slug ?? "").trim();
+            const name = String(body.name ?? "").trim();
+            const status = String(body.status ?? "active").trim();
+            const primaryDomain = body.primaryDomain != null ? String(body.primaryDomain).trim() : null;
+            const timezone = String(body.timezone ?? "Asia/Seoul").trim();
+
+            if (!slug) return badRequest(reply, "SLUG_REQUIRED");
+            if (!name) return badRequest(reply, "NAME_REQUIRED");
+
+            // slug 중복 체크
+            const dupSlug = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+            if (dupSlug) return conflict(reply, "SLUG_ALREADY_EXISTS");
+
+            // primaryDomain unique (스키마에 unique)
+            if (primaryDomain) {
+                const dupDomain = await prisma.tenant.findUnique({
+                    where: { primaryDomain },
+                    select: { id: true },
+                });
+                if (dupDomain) return conflict(reply, "PRIMARY_DOMAIN_ALREADY_EXISTS");
+            }
+
+            let themeJsonStr: string | null = null;
+            try {
+                themeJsonStr = normalizeThemeJson(body.themeJson);
+            } catch (e: any) {
+                if (String(e?.message) === "THEME_JSON_INVALID") return badRequest(reply, "THEME_JSON_INVALID");
+                return badRequest(reply, "THEME_JSON_INVALID");
+            }
+
+            const created = await prisma.tenant.create({
+                data: {
+                    slug,
+                    name,
+                    status,
+                    primaryDomain: primaryDomain || null,
+                    timezone,
+                    themeJson: themeJsonStr,
+                },
+                select: {
+                    id: true,
+                    slug: true,
+                    name: true,
+                    status: true,
+                    primaryDomain: true,
+                    timezone: true,
+                    themeJson: true,
+                },
+            });
+
+            return reply.send({
+                ok: true,
+                tenant: {
+                    id: String(created.id),
+                    slug: created.slug,
+                    name: created.name,
+                    status: created.status,
+                    primaryDomain: created.primaryDomain,
+                    timezone: created.timezone,
+                    themeJson: safeParseJson(created.themeJson),
+                },
+            });
+        }
+    );
+
+    // ---------------------------
+    // PUT /admin/v1/tenants/:id (수정)
+    // ---------------------------
+    app.put(
+        "/admin/v1/tenants/:id",
+        async (
+            req: FastifyRequest<{ Params: { id: string }; Body: TenantUpdateBody }>,
+            reply: FastifyReply
+        ) => {
+            const idStr = req.params.id;
+            if (!idStr) return badRequest(reply, "TENANT_ID_REQUIRED");
+
+            let id: bigint;
+            try {
+                id = BigInt(idStr);
+            } catch {
+                return badRequest(reply, "TENANT_ID_INVALID");
+            }
+
+            const body = req.body || ({} as any);
+
+            const slug = String(body.slug ?? "").trim();
+            const name = String(body.name ?? "").trim();
+            const status = String(body.status ?? "active").trim();
+            const primaryDomain = body.primaryDomain != null ? String(body.primaryDomain).trim() : null;
+            const timezone = String(body.timezone ?? "Asia/Seoul").trim();
+
+            if (!slug) return badRequest(reply, "SLUG_REQUIRED");
+            if (!name) return badRequest(reply, "NAME_REQUIRED");
+
+            const current: { id: bigint; slug: string; primaryDomain: string | null } | null = await prisma.tenant.findUnique({
+                where: { id },
+                select: { id: true, slug: true, primaryDomain: true },
+            });
+            if (!current) return notFound(reply, "TENANT_NOT_FOUND");
+
+            // slug 변경 시 중복 체크
+            if (slug !== current.slug) {
+                const dupSlug = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+                if (dupSlug) return conflict(reply, "SLUG_ALREADY_EXISTS");
+            }
+
+            // primaryDomain 변경 시 unique 체크
+            if (primaryDomain !== (current.primaryDomain ?? null)) {
+                if (primaryDomain) {
+                    const dupDomain = await prisma.tenant.findUnique({
+                        where: { primaryDomain },
+                        select: { id: true },
+                    });
+                    if (dupDomain && String(dupDomain.id) !== String(id)) return conflict(reply, "PRIMARY_DOMAIN_ALREADY_EXISTS");
+                }
+            }
+
+            let themeJsonStr: string | null | undefined = undefined;
+            if ("themeJson" in body) {
+                try {
+                    themeJsonStr = normalizeThemeJson(body.themeJson);
+                } catch (e: any) {
+                    return badRequest(reply, "THEME_JSON_INVALID");
+                }
+            }
+
+            const updated = await prisma.tenant.update({
+                where: { id },
+                data: {
+                    slug,
+                    name,
+                    status,
+                    primaryDomain: primaryDomain || null,
+                    timezone,
+                    ...(themeJsonStr === undefined ? {} : { themeJson: themeJsonStr }),
+                },
+                select: {
+                    id: true,
+                    slug: true,
+                    name: true,
+                    status: true,
+                    primaryDomain: true,
+                    timezone: true,
+                    themeJson: true,
+                },
+            });
+
+            return reply.send({
+                ok: true,
+                tenant: {
+                    id: String(updated.id),
+                    slug: updated.slug,
+                    name: updated.name,
+                    status: updated.status,
+                    primaryDomain: updated.primaryDomain,
+                    timezone: updated.timezone,
+                    themeJson: safeParseJson(updated.themeJson),
+                },
             });
         }
     );
@@ -315,7 +619,7 @@ export async function adminRoutes(app: FastifyInstance) {
     );
 
     // ---------------------------
-    // GET /admin/v1/page.tsx?tenant=all|slug&page&pageSize&q&status
+    // GET /admin/v1/products?tenant=all|slug&page&pageSize&q&status
     // ---------------------------
     app.get(
         "/admin/v1/products",
@@ -402,7 +706,6 @@ export async function adminRoutes(app: FastifyInstance) {
 
     // ---------------------------
     // GET /admin/v1/orders?tenant=all|slug&page&pageSize&q&status
-    // q: buyerName/orderNo/phone 부분검색
     // ---------------------------
     app.get(
         "/admin/v1/orders",
@@ -492,7 +795,6 @@ export async function adminRoutes(app: FastifyInstance) {
 
     // ---------------------------
     // GET /admin/v1/points?tenant=all|slug&page&pageSize&q&status
-    // q: reason/type
     // ---------------------------
     app.get(
         "/admin/v1/points",

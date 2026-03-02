@@ -14,13 +14,82 @@ function normalizeTenant(raw: unknown) {
     return t;
 }
 
+/**
+ * Prefer x-forwarded-host (behind proxy/tunnel), fallback to host.
+ * Return host without port.
+ */
 function getHostOnly(req: FastifyRequest) {
-    const host = (req.headers["host"] ?? "").toString();
-    return host.split(":")[0]; // remove port
+    const xfHost = (req.headers["x-forwarded-host"] ?? "").toString().trim();
+    const host = (req.headers["host"] ?? "").toString().trim();
+
+    // x-forwarded-host can be a comma-separated list: client, proxy1, proxy2...
+    const picked = (xfHost || host).split(",")[0]?.trim() ?? "";
+    return picked.split(":")[0]; // remove port
 }
 
 function isIp(host: string) {
     return /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+}
+
+/**
+ * Tunnels / dev share domains where host-first tenant parsing is wrong.
+ * Add more if you use other tunnel services.
+ */
+function isTunnelDomain(hostOnly: string) {
+    const h = hostOnly.toLowerCase();
+
+    const blockedSuffixes = [
+        // ngrok
+        "ngrok-free.dev",
+        "ngrok-free.app",
+        "ngrok.app",
+        "ngrok.io",
+        // cloudflare tunnel
+        "trycloudflare.com",
+        // localtunnel
+        "loca.lt",
+        "localtunnel.me",
+    ];
+
+    return blockedSuffixes.some((suffix) => h === suffix || h.endsWith(`.${suffix}`));
+}
+
+/**
+ * Extract subdomain slug from host based on TENANT_BASE_DOMAIN if set.
+ * Example:
+ *  - TENANT_BASE_DOMAIN=example.com
+ *  - a.example.com -> "a"
+ *
+ * Without TENANT_BASE_DOMAIN, we use a conservative heuristic:
+ *  - only parse if host has at least 3 labels (a.b.c)
+ *  - and not tunnel/local/ip/localhost
+ */
+function resolveSlugFromHost(hostOnly: string) {
+    const h = (hostOnly || "").toLowerCase().trim();
+    if (!h) return "";
+
+    // localhost / ip / tunnel domains should not be interpreted as tenant subdomain
+    if (h === "localhost" || isIp(h) || isTunnelDomain(h)) return "";
+
+    const baseDomain = (process.env.TENANT_BASE_DOMAIN ?? "").toLowerCase().trim();
+
+    // If base domain is configured, only parse when host ends with it
+    if (baseDomain) {
+        if (h === baseDomain) return "";
+        if (!h.endsWith(`.${baseDomain}`)) return "";
+
+        // Take the left-most label before baseDomain
+        const rest = h.slice(0, -(baseDomain.length + 1)); // remove ".baseDomain"
+        const firstLabel = rest.split(".")[0] ?? "";
+        return normalizeTenant(firstLabel);
+    }
+
+    // Fallback heuristic (no base domain configured)
+    const parts = h.split(".");
+    // ex) a.example.com => ["a","example","com"] (>=3)
+    if (parts.length >= 3) return normalizeTenant(parts[0]);
+
+    return "";
 }
 
 export async function tenantPlugin(app: FastifyInstance) {
@@ -41,13 +110,7 @@ export async function tenantPlugin(app: FastifyInstance) {
         // ✅ 1) host 기반 (운영: subdomain)
         if (mode === "host-first" || mode === "host") {
             const hostOnly = getHostOnly(request);
-
-            // localhost / IP 접속이면 subdomain tenant 해석 불가
-            if (hostOnly && hostOnly !== "localhost" && !isIp(hostOnly)) {
-                const parts = hostOnly.split(".");
-                // ex) a.example.com => a
-                if (parts.length >= 3) slug = normalizeTenant(parts[0]);
-            }
+            slug = resolveSlugFromHost(hostOnly);
         }
 
         // ✅ 2) path param fallback: /:tenant/...

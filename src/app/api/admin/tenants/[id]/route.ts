@@ -1,4 +1,4 @@
-// src/app/api/admin/tenants/route.ts
+// src/app/api/admin/tenants/[id]/route.ts
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 
@@ -6,11 +6,11 @@ function baseApi() {
     return process.env.API_BASE_URL || "http://127.0.0.1:4000";
 }
 
-export async function GET(req: Request) {
+export async function GET(_req: Request, ctx: { params: { id: string } }) {
     const cookie = (await headers()).get("cookie") || "";
+    const id = ctx.params.id;
 
-    const upstream = new URL("/admin/v1/tenants", baseApi());
-
+    const upstream = new URL(`/admin/v1/tenants/${encodeURIComponent(id)}`, baseApi());
     const res = await fetch(upstream.toString(), {
         method: "GET",
         headers: { cookie, accept: "application/json" },
@@ -21,13 +21,14 @@ export async function GET(req: Request) {
     return NextResponse.json(data, { status: res.status });
 }
 
-export async function POST(req: Request) {
+export async function PUT(req: Request, ctx: { params: { id: string } }) {
     const cookie = (await headers()).get("cookie") || "";
+    const id = ctx.params.id;
     const body = await req.json().catch(() => ({}));
 
-    const upstream = new URL("/admin/v1/tenants", baseApi());
+    const upstream = new URL(`/admin/v1/tenants/${encodeURIComponent(id)}`, baseApi());
     const res = await fetch(upstream.toString(), {
-        method: "POST",
+        method: "PUT",
         headers: {
             cookie,
             accept: "application/json",

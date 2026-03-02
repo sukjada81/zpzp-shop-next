@@ -1,6 +1,7 @@
 // src/app/(site)/[tenant]/(app)/home/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
 
@@ -28,6 +29,27 @@ type PublicProductsResponse = {
         metaRight?: string;
     }>;
 };
+
+/**
+ * Next.js 16/Turbopack 환경에서 headers()가 Promise로 동작하는 케이스가 있어
+ * Promise.resolve(headers())로 안전하게 처리합니다.
+ * (동기/비동기 모두 커버)
+ */
+async function getRequestOrigin() {
+    const h = await Promise.resolve(headers() as any);
+
+    const xfProto = (h?.get?.("x-forwarded-proto") || "").split(",")[0].trim();
+    const xfHost = (h?.get?.("x-forwarded-host") || "").split(",")[0].trim();
+    const host = (h?.get?.("host") || "").trim();
+
+    const proto = xfProto || "http";
+    const hostname = xfHost || host;
+
+    // hostname이 비어있으면 마지막 fallback
+    if (!hostname) return "http://localhost:3000";
+
+    return `${proto}://${hostname}`;
+}
 
 async function fetchProducts(tenant: string) {
     const baseUrl =
@@ -69,19 +91,19 @@ export default async function HomePage({
 
     const todaySection: GridSection = {
         title: "오늘의 공구",
-        href: `/${tenant}/goods`,
+        href: `/${tenant}/goods?tab=today`,
         items: toCardItems(products.slice(0, 4)),
     };
 
     const pickupSection: GridSection = {
         title: "바로 픽업 가능",
-        href: `/${tenant}/goods`,
+        href: `/${tenant}/goods?tab=pickup`,
         items: toCardItems(pickup.slice(0, 4)),
     };
 
     const ongoingSection: GridSection = {
         title: "진행 중인 공구",
-        href: `/${tenant}/goods`,
+        href: `/${tenant}/goods?tab=ongoing`,
         items: toCardItems(products.slice(0, 6)),
     };
 
@@ -99,27 +121,17 @@ export default async function HomePage({
             <SectionTitle title={ongoingSection.title} href={ongoingSection.href} />
             <Grid2 tenant={tenant} items={ongoingSection.items} emptyText="진행 중인 공구가 없습니다." />
 
-            {/* ✅ 프로모 카드: 그라데이션 제거 + 문구 짧게 */}
             <section className="mt-6">
                 <div className="rounded-2xl overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
-                    <div
-                        className="h-[230px] relative"
-                        style={{
-                            background: "var(--brand)",
-                        }}
-                    >
+                    <div className="h-[230px] relative" style={{ background: "var(--brand)" }}>
                         <div className="absolute inset-0 p-5 text-white">
-                            <div className="text-[22px] font-extrabold leading-tight">
-                                장기렌트/리스
-                            </div>
+                            <div className="text-[22px] font-extrabold leading-tight">장기렌트/리스</div>
                             <div className="mt-2 text-sm font-bold opacity-95">빠르게 견적 받아보세요</div>
 
                             <div className="absolute bottom-4 left-4 right-4">
                                 <div className="rounded-2xl bg-white/90 p-3 text-[color:var(--fg)]">
                                     <div className="text-xs font-bold">신차 장기렌트/리스</div>
-                                    <div className="mt-1 text-[11px] text-[color:var(--muted)]">
-                                        상담 신청 후 안내드립니다.
-                                    </div>
+                                    <div className="mt-1 text-[11px] text-[color:var(--muted)]">상담 신청 후 안내드립니다.</div>
                                     <button
                                         type="button"
                                         className="mt-3 w-full rounded-xl py-3 text-sm font-extrabold text-white active:scale-[0.99]"
@@ -182,9 +194,7 @@ function Grid2({
                     </div>
 
                     <div className="p-3">
-                        <div className="line-clamp-2 text-[13px] font-extrabold text-[color:var(--fg)]">
-                            {it.title}
-                        </div>
+                        <div className="line-clamp-2 text-[13px] font-extrabold text-[color:var(--fg)]">{it.title}</div>
 
                         <div className="mt-2 flex items-center justify-between">
                             <div className="text-[15px] font-extrabold tabular-nums text-[color:var(--fg)]">

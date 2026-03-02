@@ -38,13 +38,24 @@ function isSafeReturnTo(path: string) {
     return path.startsWith("/") && !path.startsWith("//");
 }
 
+function getRequestOrigin(req: NextRequest) {
+    const xfProto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim();
+    const xfHost = (req.headers.get("x-forwarded-host") || "").split(",")[0].trim();
+    const host = (req.headers.get("host") || "").trim();
+
+    const proto = xfProto || "http";
+    const hostname = xfHost || host;
+
+    if (!hostname) return "http://localhost:3000";
+    return `${proto}://${hostname}`;
+}
+
 export async function GET(req: NextRequest) {
     const url = req.nextUrl;
 
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
 
-    // ✅ 카카오가 code 없이 error로 돌아오는 케이스 처리
     const err = url.searchParams.get("error");
     const errDesc = url.searchParams.get("error_description");
 
@@ -64,19 +75,16 @@ export async function GET(req: NextRequest) {
     const returnTo = v.payload.returnTo || "/home";
     const safeReturnTo = isSafeReturnTo(returnTo) ? returnTo : "/home";
 
-    // ✅ 1차(auto=1, prompt=none)에서 consent_required/login_required 등이 오면
-    //    자동으로 일반 로그인(auto=0)으로 재시도 → 사용자가 동의 화면에서 진행
+    const origin = getRequestOrigin(req);
+
+    // ✅ code 없이 error로 돌아오는 케이스: 일반 로그인으로 재시도
     if (!code && err) {
-        const retry = new URL("/api/auth/kakao/login", url.origin);
+        const retry = new URL("/api/auth/kakao/login", origin);
         retry.searchParams.set("tenant", tenant);
         retry.searchParams.set("returnTo", safeReturnTo);
-        // auto를 빼면(=auto=0) prompt=none 없이 정상 동의 화면으로 진행됨
-        // retry.searchParams.set("auto","0");
-
         return NextResponse.redirect(retry, { status: 302 });
     }
 
-    // 여기부터는 code가 있어야 정상
     if (!code) {
         return NextResponse.json(
             {
@@ -96,9 +104,9 @@ export async function GET(req: NextRequest) {
         const redirectPath = tenant ? `/${tenant}${safeReturnTo}` : safeReturnTo;
         const redirectTo = redirectPath.replace("//", "/");
 
-        const res = NextResponse.redirect(new URL(redirectTo, url.origin), { status: 302 });
-        res.cookies.set("mockLogin", "1", { httpOnly: true, path: "/" });
-        res.cookies.set("mockTenant", tenant, { httpOnly: true, path: "/" });
+        const res = NextResponse.redirect(new URL(redirectTo, origin), { status: 302 });
+        res.cookies.set("mockLogin", "1", { httpOnly: true, path: "/", sameSite: "lax" });
+        res.cookies.set("mockTenant", tenant, { httpOnly: true, path: "/", sameSite: "lax" });
         return res;
     }
 

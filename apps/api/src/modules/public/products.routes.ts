@@ -41,7 +41,7 @@ type ImageItem = { key: string; label?: string };
  */
 function normalizeImagesFromLongText(
     imagesJsonText: string | null | undefined,
-    thumbnailUrl?: string | null,
+    thumbnailUrl?: string | null
 ): ImageItem[] {
     const out: ImageItem[] = [];
 
@@ -72,7 +72,7 @@ function normalizeImagesFromLongText(
                     }
                 }
             } catch {
-                // JSON 아닌 텍스트면 무시 (또는 추후 파서 확장)
+                // JSON 아닌 텍스트면 무시
             }
         }
     }
@@ -134,12 +134,14 @@ type ProductDetailResponse = {
 };
 
 export async function publicProductRoutes(app: FastifyInstance) {
+    // ✅ 이 모듈의 모든 public products 라우트는 tenant 세션/컨텍스트 필요
+    // (tenantId/tenantSlug가 플러그인에서 세팅된다는 전제)
+    app.addHook("preHandler", requireTenant());
+
     // GET /:tenant/v1/public/products
     app.get<{ Querystring: ProductsQuery }>("/v1/public/products", async (req, reply) => {
-        if (!requireTenant(req, reply)) return;
-
-        // ✅ tenantSlug는 string | null | undefined 로 잡힐 수 있어 null -> undefined로 정규화
-        const tenantSlug: string | undefined = req.tenantSlug ?? undefined;
+        // tenantSlug는 string | null | undefined 로 잡힐 수 있어 null -> undefined로 정규화
+        const tenantSlug: string | undefined = (req as any).tenantSlug ?? undefined;
 
         const q = z
             .object({
@@ -150,7 +152,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
             .parse(req.query);
 
         const where: Prisma.ProductWhereInput = {
-            tenantId: req.tenantId!,
+            tenantId: (req as any).tenantId!,
             status: "active",
             ...(q.q
                 ? {
@@ -187,10 +189,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
 
     // GET /:tenant/v1/public/products/:id
     app.get<{ Params: { id: string } }>("/v1/public/products/:id", async (req, reply) => {
-        if (!requireTenant(req, reply)) return;
-
-        // ✅ tenantSlug null 방지
-        const tenantSlug: string | undefined = req.tenantSlug ?? undefined;
+        const tenantSlug: string | undefined = (req as any).tenantSlug ?? undefined;
 
         const params = z.object({ id: z.string() }).parse(req.params);
 
@@ -203,7 +202,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
         }
 
         const p = await app.prisma.product.findFirst({
-            where: { id: idBig, tenantId: req.tenantId!, status: "active" },
+            where: { id: idBig, tenantId: (req as any).tenantId!, status: "active" },
             include: {
                 options: { orderBy: { sortOrder: "asc" } },
             },
@@ -214,10 +213,10 @@ export async function publicProductRoutes(app: FastifyInstance) {
             return;
         }
 
-        // ✅ images_json(LONGTEXT) + thumbnail_url 기반으로 구성
-        const images = normalizeImagesFromLongText(p.imagesJson as any, p.thumbnailUrl);
+        // images_json(LONGTEXT) + thumbnail_url 기반으로 구성
+        const images = normalizeImagesFromLongText((p as any).imagesJson as any, (p as any).thumbnailUrl);
 
-        const options: ProductDetailResponse["product"]["options"] = (p.options ?? []).map((o) => {
+        const options: ProductDetailResponse["product"]["options"] = ((p as any).options ?? []).map((o: any) => {
             const stock = o.stockQty ?? null;
             const soldout = !o.isActive || stock === 0;
 
@@ -231,17 +230,14 @@ export async function publicProductRoutes(app: FastifyInstance) {
         });
 
         const product: ProductDetailResponse["product"] = {
-            id: toId(p.id),
-            title: p.title,
-            price: toNumber(p.basePrice, 0),
-
-            // ✅ 핵심: 상세설명 내려주기
-            description: p.description ?? null,
-
+            id: toId((p as any).id),
+            title: (p as any).title,
+            price: toNumber((p as any).basePrice, 0),
+            description: (p as any).description ?? null,
             badges: undefined,
             meta: {
-                timeLeft: calcTimeLeft(p.saleEndAt),
-                pickup: p.pickupOnly ? "픽업 상품" : undefined,
+                timeLeft: calcTimeLeft((p as any).saleEndAt),
+                pickup: (p as any).pickupOnly ? "픽업 상품" : undefined,
             },
             images: images.map((x, idx) => ({
                 key: x.key,
