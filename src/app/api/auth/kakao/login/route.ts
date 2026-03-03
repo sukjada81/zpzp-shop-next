@@ -6,11 +6,7 @@ export const runtime = "nodejs";
 
 function base64url(input: Buffer | string) {
     const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
-    return buf
-        .toString("base64")
-        .replace(/=/g, "")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
+    return buf.toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 function signState(payloadJson: string, secret: string) {
@@ -31,17 +27,16 @@ function getRequestOrigin(req: NextRequest) {
 }
 
 /**
- * ✅ Kakao Redirect URI는 "메인 도메인 1개"로 고정한다.
- * 운영: https://discountallday.kr
- * 로컬: 요청 origin을 그대로 사용(테스트 편의)
+ * ✅ Kakao Redirect URI base는 auth.discountallday.kr 로 고정(운영)
+ * - MAIN_ORIGIN=https://auth.discountallday.kr
+ * - 로컬은 현재 origin 사용
  */
 function getKakaoRedirectBase(req: NextRequest) {
-    const isProd = process.env.NODE_ENV === "production";
-    const MAIN_ORIGIN = process.env.MAIN_ORIGIN || "https://discountallday.kr";
+    // ✅ 환경이 dev여도 MAIN_ORIGIN이 있으면 그걸 무조건 사용
+    const MAIN_ORIGIN = process.env.MAIN_ORIGIN;
+    if (MAIN_ORIGIN) return MAIN_ORIGIN;
 
-    if (isProd) return MAIN_ORIGIN;
-
-    // dev/local: 현재 origin 사용
+    // fallback (로컬에서 MAIN_ORIGIN 안 둔 경우만)
     return getRequestOrigin(req);
 }
 
@@ -51,7 +46,6 @@ export async function GET(req: NextRequest) {
     const tenant = url.searchParams.get("tenant") || "";
     const returnTo = url.searchParams.get("returnTo") || "/home";
 
-    // ✅ auto=1 → prompt=none
     const auto = url.searchParams.get("auto") === "1";
 
     const KAKAO_CLIENT_ID = process.env.KAKAO_CLIENT_ID;
@@ -64,7 +58,6 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    // ✅ redirect_uri를 메인 도메인으로 고정 (운영 확장에 필수)
     const base = getKakaoRedirectBase(req);
     const redirectUri = new URL("/api/auth/kakao/callback", base).toString();
 

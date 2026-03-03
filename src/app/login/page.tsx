@@ -5,14 +5,12 @@ function getTenantFromHost(host: string) {
     const h = (host || "").toLowerCase().split(":")[0];
     if (!h) return "";
 
-    // allow seller01.localhost for local dev
     if (h.endsWith(".localhost")) {
         const sub = h.split(".")[0];
         if (["www", "admin", "auth", "api"].includes(sub)) return "";
         return sub;
     }
 
-    // ignore localhost / ip
     if (h === "localhost") return "";
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return "";
 
@@ -21,17 +19,14 @@ function getTenantFromHost(host: string) {
 
     const sub = parts[0];
     if (["www", "admin", "auth", "api"].includes(sub)) return "";
-
     return sub;
 }
 
 export default function LoginPage() {
     const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
 
-    // 1) returnTo: 서브도메인 방식 기본은 /home 이 자연스러움
     const returnTo = sp?.get("returnTo") || "/home";
 
-    // 2) tenant: 쿼리 우선, 없으면 Host에서 추출
     const tenantFromQuery = sp?.get("tenant") || "";
     const tenantFromHost = typeof window !== "undefined" ? getTenantFromHost(window.location.host) : "";
     const tenant = tenantFromQuery || tenantFromHost;
@@ -55,11 +50,16 @@ export default function LoginPage() {
                     type="button"
                     className="mt-5 w-full rounded-xl bg-[var(--kakao)] py-4 font-bold text-black shadow-sm active:scale-[0.99]"
                     onClick={() => {
-                        // tenant가 비어있으면(예: localhost 접속) 기존 플로우 유지 가능
+                        // tenant가 없으면 지점선택으로 유도(운영 메인 도메인에서 들어온 케이스)
+                        if (!tenant) {
+                            window.location.href = "/select-tenant";
+                            return;
+                        }
+
+                        // ✅ 버튼 클릭은 일반 로그인: auto=1 제거
                         const qs =
                             `tenant=${encodeURIComponent(tenant)}` +
-                            `&returnTo=${encodeURIComponent(returnTo)}` +
-                            `&auto=1`;
+                            `&returnTo=${encodeURIComponent(returnTo)}`;
 
                         window.location.href = `/api/auth/kakao/login?${qs}`;
                     }}

@@ -1,3 +1,4 @@
+// src/app/(site)/[tenant]/(auth)/login/page.tsx
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
@@ -6,8 +7,8 @@ export default function LoginPage() {
     const params = useParams<{ tenant?: string }>();
     const sp = useSearchParams();
 
-    const tenant = (params?.tenant as string) || ""; // ✅ 경로에서 tenant 추출
-    const returnTo = sp.get("returnTo") || "/home";   // ✅ 기본은 home
+    const tenant = (params?.tenant as string) || "";
+    const returnTo = sp.get("returnTo") || "/home";
 
     return (
         <main className="min-h-dvh flex flex-col items-center justify-center px-6">
@@ -28,10 +29,10 @@ export default function LoginPage() {
                     type="button"
                     className="mt-5 w-full rounded-xl bg-[var(--kakao)] py-4 font-bold text-black shadow-sm active:scale-[0.99]"
                     onClick={() => {
+                        // ✅ 버튼 클릭은 일반 로그인: auto=1 제거
                         const qs =
                             `tenant=${encodeURIComponent(tenant)}` +
-                            `&returnTo=${encodeURIComponent(returnTo)}` +
-                            `&auto=1`;
+                            `&returnTo=${encodeURIComponent(returnTo)}`;
 
                         window.location.href = `/api/auth/kakao/login?${qs}`;
                     }}
