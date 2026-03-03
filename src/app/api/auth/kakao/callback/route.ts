@@ -24,7 +24,7 @@ function verifyState(state: string, secret: string) {
     try {
         const payload = JSON.parse(payloadBuf.toString("utf8")) as {
             tenant?: string;
-            returnTo?: string;
+            returnTo?: string; // 절대URL 또는 상대경로
             nonce?: string;
             ts?: number;
         };
@@ -34,46 +34,51 @@ function verifyState(state: string, secret: string) {
     }
 }
 
-function isSafeReturnTo(path: string) {
-    return path.startsWith("/") && !path.startsWith("//");
+function cookieDomainForShare() {
+    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
 }
 
-function getRequestOrigin(req: NextRequest) {
+function isAbsoluteUrl(s: string) {
+    return /^https?:\/\//i.test(s);
+}
+
+function getProto(req: NextRequest) {
     const xfProto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim();
-    const xfHost = (req.headers.get("x-forwarded-host") || "").split(",")[0].trim();
-    const host = (req.headers.get("host") || "").trim();
+    return xfProto || "http";
+}
 
-    const proto = xfProto || "http";
-    const hostname = xfHost || host;
-
-    if (!hostname) return "http://localhost:3000";
-    return `${proto}://${hostname}`;
+function getPortFromHost(host: string) {
+    const m = host.match(/:(\d+)$/);
+    return m ? m[1] : "";
 }
 
 function buildTenantOrigin(req: NextRequest, tenant: string) {
-    const isProd = process.env.NODE_ENV === "production";
-    const BASE_DOMAIN = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
-
-    if (isProd) {
-        return `https://${tenant}.${BASE_DOMAIN}`;
-    }
-
-    // dev/local: 현재 요청 origin을 그대로 사용하되, host만 tenant로 바꿈
-    // (로컬에서 hosts 설정 시: tenant.discountallday.kr -> 127.0.0.1)
-    const origin = getRequestOrigin(req);
-    const u = new URL(origin);
-    u.hostname = `${tenant}.${BASE_DOMAIN}`;
-    return u.toString().replace(/\/$/, "");
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").split(",")[0].trim();
+    const port = getPortFromHost(host);
+    const proto = getProto(req);
+    const portPart = port ? `:${port}` : "";
+    return `${proto}://${tenant}.${baseDomain}${portPart}`;
 }
 
-function cookieDomainForShare() {
-    // 운영 공유 쿠키 도메인
-    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
+function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
+    const SITE_ORIGIN = process.env.SITE_ORIGIN || "http://localhost:3000";
+
+    // 1) 절대 URL이면 그대로
+    if (isAbsoluteUrl(returnTo)) return returnTo;
+
+    // 2) 상대 경로인데 tenant가 있으면 tenant origin 기준으로 붙임 (핵심)
+    const path = returnTo.startsWith("/") ? returnTo : "/select-tenant";
+    if (tenant) {
+        return new URL(path, buildTenantOrigin(req, tenant)).toString();
+    }
+
+    // 3) tenant 없으면 SITE_ORIGIN 기준
+    return new URL(path, SITE_ORIGIN).toString();
 }
 
 export async function GET(req: NextRequest) {
     const url = req.nextUrl;
-
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
 
@@ -93,49 +98,33 @@ export async function GET(req: NextRequest) {
     if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 });
 
     const tenant = (v.payload.tenant || "").trim();
-    const returnTo = v.payload.returnTo || "/select-tenant";
-    const safeReturnTo = isSafeReturnTo(returnTo) ? returnTo : "/select-tenant";
+    const returnTo = v.payload.returnTo || (process.env.SITE_ORIGIN || "http://localhost:3000") + "/select-tenant";
 
-    const origin = getRequestOrigin(req);
-
-    // code 없이 error로 돌아오는 케이스: 일반 로그인으로 재시도
     if (!code && err) {
-        const retry = new URL("/api/auth/kakao/login", origin);
+        const AUTH_ORIGIN = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "http://localhost:3000";
+        const retry = new URL("/api/auth/kakao/login", AUTH_ORIGIN);
         if (tenant) retry.searchParams.set("tenant", tenant);
-        retry.searchParams.set("returnTo", safeReturnTo);
+        retry.searchParams.set("returnTo", returnTo);
+        retry.searchParams.set("auto", "0");
         return NextResponse.redirect(retry, { status: 302 });
     }
 
     if (!code) {
-        return NextResponse.json(
-            {
-                ok: false,
-                error: "Missing code",
-                hint: "Kakao returned no code. Check error params.",
-                err,
-                errDesc,
-            },
-            { status: 400 }
-        );
+        return NextResponse.json({ ok: false, error: "Missing code", err, errDesc }, { status: 400 });
     }
 
-    // ✅ 프론트-only(MOCK_AUTH) 로그인 처리
     const MOCK_AUTH = process.env.MOCK_AUTH === "1";
     if (MOCK_AUTH) {
         const domain = cookieDomainForShare();
+        const target = safeNextUrl(req, returnTo, tenant);
 
-        // ✅ tenant 있으면 지점으로, 없으면 메인(/select-tenant)으로
-        const targetUrl = tenant
-            ? new URL(safeReturnTo, buildTenantOrigin(req, tenant))
-            : new URL("/select-tenant", getRequestOrigin(req));
-
-        const res = NextResponse.redirect(targetUrl, { status: 302 });
+        const res = NextResponse.redirect(target, { status: 302 });
 
         res.cookies.set("mockLogin", "1", {
             httpOnly: true,
             path: "/",
             sameSite: "lax",
-            secure: process.env.NODE_ENV === "production",
+            secure: false, // 로컬 http 테스트면 false
             domain,
         });
 
@@ -143,16 +132,12 @@ export async function GET(req: NextRequest) {
             httpOnly: true,
             path: "/",
             sameSite: "lax",
-            secure: process.env.NODE_ENV === "production",
+            secure: false,
             domain,
         });
 
         return res;
     }
 
-    // ✅ (나중) 실제 인증 연동 단계
-    return NextResponse.json(
-        { ok: false, error: "PHP_AUTH_NOT_CONNECTED_YET", tenant, returnTo: safeReturnTo },
-        { status: 501 }
-    );
+    return NextResponse.json({ ok: false, error: "PHP_AUTH_NOT_CONNECTED_YET", tenant, returnTo }, { status: 501 });
 }

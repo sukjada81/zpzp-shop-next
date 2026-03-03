@@ -4,9 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 function isPublicAsset(pathname: string) {
     return (
         pathname.startsWith("/_next") ||
-        pathname.startsWith("/favicon.ico") ||
-        pathname.startsWith("/robots.txt") ||
-        pathname.startsWith("/sitemap.xml")
+        pathname === "/favicon.ico" ||
+        pathname === "/robots.txt" ||
+        pathname === "/sitemap.xml"
     );
 }
 
@@ -27,23 +27,9 @@ function needsAuth(pathname: string) {
     return siteProtected.test(pathname) || sellerProtected.test(pathname);
 }
 
-function extractTenantFromPath(pathname: string) {
-    const segs = pathname.split("/").filter(Boolean);
-    if (segs[0] === "seller") return segs[1] || "";
-    return segs[0] || "";
-}
-
 function getSubdomain(host: string) {
     const h = host.split(":")[0].toLowerCase();
-
     if (!h) return null;
-
-    // allow seller01.localhost for local dev (선택)
-    if (h.endsWith(".localhost")) {
-        const sub = h.split(".")[0];
-        if (["www", "admin", "auth", "api"].includes(sub)) return null;
-        return sub;
-    }
 
     // ignore localhost / ip
     if (h === "localhost") return null;
@@ -53,18 +39,26 @@ function getSubdomain(host: string) {
     if (parts.length < 3) return null;
 
     const sub = parts[0];
-    if (["www", "admin", "auth", "api"].includes(sub)) return null;
+
+    // main/auth/admin/api 등은 tenant로 취급 금지
+    if (["www", "admin", "auth", "api", "discountallday"].includes(sub)) return null;
 
     return sub;
+}
+
+function getEnvOrigin(kind: "AUTH" | "SITE") {
+    // ✅ 표준: AUTH_ORIGIN / SITE_ORIGIN
+    // ✅ 호환: MAIN_ORIGIN (과거키)
+    if (kind === "AUTH") return process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
+    return process.env.SITE_ORIGIN || "https://discountallday.kr";
 }
 
 export async function middleware(req: NextRequest) {
     const { pathname, search } = req.nextUrl;
 
-    // 0) static/public asset
     if (isPublicAsset(pathname)) return NextResponse.next();
 
-    // 1) Admin 보호 (그대로 유지)
+    // Admin 보호 (유지)
     if (isAdminPath(pathname)) {
         if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
             return NextResponse.next();
@@ -93,64 +87,42 @@ export async function middleware(req: NextRequest) {
         }
     }
 
-    /**
-     * ✅ 서브도메인 테넌트 모드:
-     * - 외부 URL: /home, /goods, /orders ... (tenant prefix 없음)
-     * - 내부 라우트: 기존 /{tenant}/home ... 재사용
-     * - middleware에서 /{tenant} prefix를 rewrite로 붙여준다.
-     */
     const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
     const host = req.headers.get("host") ?? "";
     const subdomain = ENABLE_SUBDOMAIN_TENANT ? getSubdomain(host) : null;
 
-    // ✅ 핵심: /login 은 전역 라우트로 사용하므로 서브도메인 모드에서도 rewrite 금지
-    // (지금 404의 직접 원인: /login → /seller01/login 으로 rewrite됨)
-    if (subdomain) {
-        if (
-            pathname === "/login" ||
-            pathname.startsWith("/login/") ||
-            pathname === "/select-tenant" ||
-            pathname.startsWith("/select-tenant/")
-        ) {
-            return NextResponse.next();
-        }
-    }
+    // ✅ main/auth에서는 rewrite 자체를 하지 않는다.
+    if (!subdomain) return NextResponse.next();
 
-    // 2) 먼저 “서브도메인 → 내부 경로” 매핑을 계산(인증 판단도 이 기준으로)
-    let internalPathname = pathname;
-
-    if (subdomain) {
-        const externalPath = pathname === "/" ? "/home" : pathname;
-
-        const firstSeg = externalPath.split("/").filter(Boolean)[0] || "";
-        const alreadyPrefixed = firstSeg === subdomain;
-
-        const bypass =
-            externalPath.startsWith("/seller/") ||
-            externalPath.startsWith("/api") ||
-            externalPath.startsWith("/_next") ||
-            externalPath === "/favicon.ico" ||
-            externalPath === "/login" ||
-            externalPath.startsWith("/login/") ||
-            externalPath === "/select-tenant" ||
-            externalPath.startsWith("/select-tenant/");
-
-        if (!alreadyPrefixed && !bypass) {
-            internalPathname = `/${subdomain}${externalPath}`;
-        } else {
-            internalPathname = externalPath;
-        }
-    }
-
-    // 3) public path면 통과 (API는 여기서 빠짐)
-    if (isPublicPath(pathname)) {
+    // tenant 서브도메인에서 전역 라우트는 bypass
+    if (
+        pathname === "/login" ||
+        pathname.startsWith("/login/") ||
+        pathname === "/select-tenant" ||
+        pathname.startsWith("/select-tenant/")
+    ) {
         return NextResponse.next();
     }
 
-    // 4) 보호 경로가 아니면, 서브도메인 모드일 때만 rewrite 적용
+    // 서브도메인 외부 URL: /home => 내부 라우트 /{tenant}/home 로 rewrite
+    const externalPath = pathname === "/" ? "/home" : pathname;
+    const firstSeg = externalPath.split("/").filter(Boolean)[0] || "";
+    const alreadyPrefixed = firstSeg === subdomain;
+
+    const bypass =
+        externalPath.startsWith("/seller/") ||
+        externalPath.startsWith("/api") ||
+        externalPath.startsWith("/_next") ||
+        externalPath === "/favicon.ico";
+
+    const internalPathname = !alreadyPrefixed && !bypass ? `/${subdomain}${externalPath}` : externalPath;
+
+    if (isPublicPath(pathname)) return NextResponse.next();
+
+    // 보호 경로 아닐 때 rewrite만
     const isProtected = needsAuth(internalPathname);
     if (!isProtected) {
-        if (subdomain && internalPathname !== pathname) {
+        if (internalPathname !== pathname) {
             const url = req.nextUrl.clone();
             url.pathname = internalPathname;
             url.search = search;
@@ -159,10 +131,9 @@ export async function middleware(req: NextRequest) {
         return NextResponse.next();
     }
 
-    // 5) 인증 체크
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";
     if (mockLogin) {
-        if (subdomain && internalPathname !== pathname) {
+        if (internalPathname !== pathname) {
             const url = req.nextUrl.clone();
             url.pathname = internalPathname;
             url.search = search;
@@ -171,20 +142,14 @@ export async function middleware(req: NextRequest) {
         return NextResponse.next();
     }
 
-    // tenant 결정 (서브도메인이면 subdomain, 아니면 path에서)
-    const tenant = subdomain || extractTenantFromPath(internalPathname);
+    // ✅ 미로그인 → auth 도메인으로 보낸다.
+    const SITE_ORIGIN = getEnvOrigin("SITE");
+    const AUTH_ORIGIN = getEnvOrigin("AUTH");
 
-    // returnTo는 외부 경로 기준이 UX 좋음 (/home)
-    const externalReturnTo = (pathname === "/" ? "/home" : pathname) + (search || "");
+    const externalReturnTo = new URL("/select-tenant", SITE_ORIGIN).toString();
 
-    // ✅ 핵심: 로그인은 전역 /login 으로 보낸다 (/{tenant}/login 금지)
-    const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = "/login";
+    const loginUrl = new URL("/login", AUTH_ORIGIN);
     loginUrl.searchParams.set("returnTo", externalReturnTo);
-
-    // tenant가 꼭 필요하면 쿼리에 넣어도 되지만(디버그용),
-    // 서브도메인 방식에선 Host로 알 수 있으므로 필수는 아님
-    if (tenant) loginUrl.searchParams.set("tenant", tenant);
 
     return NextResponse.redirect(loginUrl);
 }

@@ -1,6 +1,7 @@
 // src/app/select-tenant/page.tsx
 import Link from "next/link";
 import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { getTenantList } from "@/lib/tenant/tenants";
 
 const TENANT_IMAGES: Record<string, { label?: string }> = {};
@@ -11,34 +12,37 @@ function normalizeTenant(raw: string) {
     return t;
 }
 
-function isLocalHost(currentHost: string) {
-    const hostOnly = currentHost.split(",")[0]?.trim().split(":")[0] ?? "";
-    return hostOnly === "localhost" || hostOnly.endsWith(".localhost") || currentHost.includes(":3000");
+function getHost(h: Headers) {
+    return (h.get("x-forwarded-host") || h.get("host") || "").split(",")[0].trim();
 }
 
-function buildMainLoginUrl(currentHost: string, tenant: string) {
-    const base = isLocalHost(currentHost) ? "http://discountallday.kr:3000" : "https://discountallday.kr";
-    const u = new URL("/login", base);
-    u.searchParams.set("tenant", tenant);
-    u.searchParams.set("returnTo", "/home");
-    return u.toString();
+function isLocalHost(host: string) {
+    const hostOnly = host.split(":")[0].toLowerCase();
+    return hostOnly === "localhost" || hostOnly.endsWith(".localhost") || host.includes(":3000");
 }
 
-function buildTenantHomeUrl(currentHost: string, tenant: string) {
+function buildTenantHomeUrl(host: string, tenant: string) {
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
-    if (isLocalHost(currentHost)) {
-        return `http://${tenant}.${baseDomain}:3000/home`;
-    }
+    if (isLocalHost(host)) return `http://${tenant}.${baseDomain}:3000/home`;
     return `https://${tenant}.${baseDomain}/home`;
 }
 
 export default async function SelectTenantPage() {
     const ck = await cookies();
     const h = await headers();
-    const currentHost = (h.get("x-forwarded-host") || h.get("host") || "").trim();
+    const host = getHost(h);
 
-    // ✅ 로그인 여부 (현재는 MOCK_AUTH 기준)
+    const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://discountallday.kr";
+    const AUTH_ORIGIN = process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
+
     const isLoggedIn = ck.get("mockLogin")?.value === "1";
+
+    // ✅ 로그인 전이면 select-tenant 접근 금지 → auth로 보냄
+    if (!isLoggedIn) {
+        const u = new URL("/login", AUTH_ORIGIN);
+        u.searchParams.set("returnTo", new URL("/select-tenant", SITE_ORIGIN).toString());
+        return redirect(u.toString());
+    }
 
     const tenants = getTenantList();
 
@@ -47,7 +51,9 @@ export default async function SelectTenantPage() {
             <div className="pt-7">
                 <div className="flex items-end justify-between gap-3">
                     <div className="min-w-0">
-                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">지점 선택</div>
+                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">
+                            지점 선택
+                        </div>
                         <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
                             원하시는 지점을 눌러 들어가세요.
                         </div>
@@ -59,12 +65,7 @@ export default async function SelectTenantPage() {
                         const slug = normalizeTenant(t.slug);
                         const imgLabel = TENANT_IMAGES[slug]?.label;
 
-                        // ✅ 핵심:
-                        // - 로그인 전: 메인 도메인에서 로그인으로 이동(tenant 포함)
-                        // - 로그인 후: 바로 지점 홈으로 이동
-                        const href = isLoggedIn
-                            ? buildTenantHomeUrl(currentHost, slug)
-                            : buildMainLoginUrl(currentHost, slug);
+                        const href = buildTenantHomeUrl(host, slug);
 
                         return (
                             <Link
@@ -89,9 +90,11 @@ export default async function SelectTenantPage() {
                                 <div className="p-4">
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="min-w-0">
-                                            <div className="truncate text-[16px] font-extrabold text-[color:var(--fg)]">{t.name}</div>
+                                            <div className="truncate text-[16px] font-extrabold text-[color:var(--fg)]">
+                                                {t.name}
+                                            </div>
                                             <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
-                                                {isLoggedIn ? "선택 시 해당 지점 홈으로 이동합니다." : "선택 후 로그인 화면으로 이동합니다."}
+                                                선택 시 해당 지점 홈으로 이동합니다.
                                             </div>
                                         </div>
 
@@ -100,20 +103,15 @@ export default async function SelectTenantPage() {
                                             style={{ borderColor: "var(--border)" }}
                                             aria-hidden="true"
                                         >
-                                            <span className="text-[18px]">{isLoggedIn ? "✅" : "🏢"}</span>
+                                            <span className="text-[18px]">✅</span>
                                         </div>
                                     </div>
 
                                     <div
-                                        className={[
-                                            "mt-3 rounded-xl py-2 text-center text-[12px] font-extrabold",
-                                            isLoggedIn
-                                                ? "bg-[color:var(--brand-soft)] text-[color:var(--brand)]"
-                                                : "bg-[color:var(--accent-soft)] text-[color:var(--fg)] group-hover:opacity-90",
-                                        ].join(" ")}
+                                        className="mt-3 rounded-xl py-2 text-center text-[12px] font-extrabold bg-[color:var(--brand-soft)] text-[color:var(--brand)]"
                                         style={{ border: "1px solid var(--border)" }}
                                     >
-                                        {isLoggedIn ? "홈으로 이동" : "선택"}
+                                        홈으로 이동
                                     </div>
                                 </div>
                             </Link>

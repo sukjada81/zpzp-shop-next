@@ -1,35 +1,18 @@
 // src/app/login/page.tsx
 "use client";
 
-function getTenantFromHost(host: string) {
-    const h = (host || "").toLowerCase().split(":")[0];
-    if (!h) return "";
-
-    if (h.endsWith(".localhost")) {
-        const sub = h.split(".")[0];
-        if (["www", "admin", "auth", "api"].includes(sub)) return "";
-        return sub;
-    }
-
-    if (h === "localhost") return "";
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return "";
-
-    const parts = h.split(".");
-    if (parts.length < 3) return "";
-
-    const sub = parts[0];
-    if (["www", "admin", "auth", "api"].includes(sub)) return "";
-    return sub;
-}
-
 export default function LoginPage() {
     const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
 
-    const returnTo = sp?.get("returnTo") || "/home";
+    // ✅ auth 도메인 로그인 페이지 기본 returnTo:
+    // - returnTo가 없으면 main의 /select-tenant로 보내는 게 정답
+    const defaultReturnTo =
+        (process.env.NEXT_PUBLIC_SITE_ORIGIN || "https://discountallday.kr") + "/select-tenant";
 
-    const tenantFromQuery = sp?.get("tenant") || "";
-    const tenantFromHost = typeof window !== "undefined" ? getTenantFromHost(window.location.host) : "";
-    const tenant = tenantFromQuery || tenantFromHost;
+    const returnTo = sp?.get("returnTo") || defaultReturnTo;
+
+    // tenant는 선택적으로만 받음(바로 특정 지점으로 보낼 때 쓰고, 기본 플로우는 tenant 없음)
+    const tenant = sp?.get("tenant") || "";
 
     return (
         <main className="min-h-dvh flex flex-col items-center justify-center px-6">
@@ -50,17 +33,11 @@ export default function LoginPage() {
                     type="button"
                     className="mt-5 w-full rounded-xl bg-[var(--kakao)] py-4 font-bold text-black shadow-sm active:scale-[0.99]"
                     onClick={() => {
-                        // tenant가 없으면 지점선택으로 유도(운영 메인 도메인에서 들어온 케이스)
-                        if (!tenant) {
-                            window.location.href = "/select-tenant";
-                            return;
-                        }
-
-                        // ✅ 버튼 클릭은 일반 로그인: auto=1 제거
                         const qs =
                             `tenant=${encodeURIComponent(tenant)}` +
-                            `&returnTo=${encodeURIComponent(returnTo)}`;
-
+                            `&returnTo=${encodeURIComponent(returnTo)}` +
+                            `&auto=0`;
+                        // ✅ auto=1 쓰면 login_required가 자주 뜹니다(세션 없으면 필연).
                         window.location.href = `/api/auth/kakao/login?${qs}`;
                     }}
                 >
