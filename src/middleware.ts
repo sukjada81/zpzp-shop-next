@@ -91,7 +91,7 @@ export async function middleware(req: NextRequest) {
             const url = req.nextUrl.clone(); // ✅ absolute + same-origin
             url.pathname = "/select-tenant";
             url.search = search;
-            return NextResponse.rewrite(url);
+            return NextResponse.redirect(url);
         }
 
         if (pathname === "/select-tenant" || pathname.startsWith("/select-tenant/")) {
