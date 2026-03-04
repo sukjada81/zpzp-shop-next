@@ -84,12 +84,11 @@ export async function middleware(req: NextRequest) {
     if (host.startsWith("select-tenant.")) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
-        // ✅ 핵심: 절대 URL(https://localhost:3000/...)이 섞이지 않도록
-        // rewrite는 "상대 경로"로만 수행한다.
+        // ✅ "/" 요청은 내부 선택화면으로 rewrite
+        // 핵심: 절대 URL로 rewrite 하지 않기! (localhost로 굳는 문제 방지)
         if (pathname === "/") {
-            const headers = new Headers(req.headers);
-            headers.set("x-middleware-rewrite", "/select-tenant");
-            return NextResponse.rewrite(new URL("/select-tenant", req.nextUrl), { headers });
+            // URL 객체를 만들지 말고 "경로 문자열"로 rewrite
+            return NextResponse.rewrite("/select-tenant");
         }
 
         // 선택화면 경로는 그대로 통과
@@ -97,11 +96,8 @@ export async function middleware(req: NextRequest) {
             return NextResponse.next();
         }
 
-        // 그 외는 루트로 정리(원하면 404로 둬도 됨)
-        const toRoot = req.nextUrl.clone();
-        toRoot.pathname = "/";
-        toRoot.search = "";
-        return NextResponse.redirect(toRoot);
+        // 그 외는 루트로 정리
+        return NextResponse.redirect("/");
     }
 
     // =========================
