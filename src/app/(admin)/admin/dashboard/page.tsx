@@ -84,9 +84,9 @@ export default async function AdminDashboardPage({
                     </div>
 
                     <div className="sm:ml-auto flex items-center gap-2">
-                        <FilterPill active={tenant === "all"} href="/admin/dashboard?tenant=all" label="전체" />
-                        <FilterPill active={tenant === "a"} href="/admin/dashboard?tenant=a" label="A 지점" />
-                        <FilterPill active={tenant === "b"} href="/admin/dashboard?tenant=b" label="B 지점" />
+                        <FilterPill active={tenant === "all"} href="/dashboard?tenant=all" label="전체" />
+                        <FilterPill active={tenant === "a"} href="/dashboard?tenant=a" label="A 지점" />
+                        <FilterPill active={tenant === "b"} href="/dashboard?tenant=b" label="B 지점" />
                     </div>
                 </div>
             </div>
@@ -113,7 +113,7 @@ export default async function AdminDashboardPage({
                         <div className="text-xs font-bold text-[var(--dad-muted)]">최근 20건</div>
                     </div>
                     <Link
-                        href="/admin/orders"
+                        href="/orders"
                         className="rounded-full border border-[var(--dad-border)] bg-white/70 px-4 py-2 text-sm font-extrabold text-[var(--dad-ink)]"
                     >
                         주문 전체보기 →

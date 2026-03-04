@@ -66,7 +66,7 @@ export default async function AdminProductsPage({
                     </div>
                 </div>
 
-                <a href="/admin/products/new" className="dad-btn dad-btn-primary h-10 px-4 text-sm">
+                <a href="/products/new" className="dad-btn dad-btn-primary h-10 px-4 text-sm">
                     + 상품 등록
                 </a>
             </div>
@@ -95,7 +95,7 @@ export default async function AdminProductsPage({
                         <div className="flex gap-2">
                             <a
                                 className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
-                                href={`/admin/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                                href={`/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
                                     status
                                 )}&q=${encodeURIComponent(q)}&page=${prevPage}`}
                             >
@@ -103,7 +103,7 @@ export default async function AdminProductsPage({
                             </a>
                             <a
                                 className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
-                                href={`/admin/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                                href={`/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
                                     status
                                 )}&q=${encodeURIComponent(q)}&page=${nextPage}`}
                             >

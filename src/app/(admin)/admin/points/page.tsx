@@ -30,7 +30,7 @@ export default async function AdminPointsPage({
                     <p className="mt-1 text-sm text-[var(--dad-muted)]">dad_points_ledger 통합 조회</p>
                 </div>
 
-                <a href="/admin/dashboard" className="dad-btn dad-btn-ghost inline-flex h-10 items-center justify-center px-4 text-sm">
+                <a href="/dashboard" className="dad-btn dad-btn-ghost inline-flex h-10 items-center justify-center px-4 text-sm">
                     대시보드 →
                 </a>
             </div>
@@ -125,7 +125,7 @@ export default async function AdminPointsPage({
                     </table>
                 </div>
 
-                <Pager baseHref="/admin/points" tenant={tenant} q={q} type={type} page={current} totalPages={totalPages} pageSize={pageSize} />
+                <Pager baseHref="/points" tenant={tenant} q={q} type={type} page={current} totalPages={totalPages} pageSize={pageSize} />
             </div>
         </div>
     );

@@ -13,7 +13,7 @@ export default async function AdminTenantsPage() {
                     <h1 className="text-lg font-extrabold text-[var(--dad-ink)]">지점(Tenant) 관리</h1>
                     <p className="mt-1 text-sm text-[var(--dad-muted)]">전체 지점 목록 / 상태 확인</p>
                 </div>
-                <a className="dad-btn dad-btn-primary inline-flex h-10 items-center justify-center px-4 text-sm" href="/admin/dashboard">
+                <a className="dad-btn dad-btn-primary inline-flex h-10 items-center justify-center px-4 text-sm" href="/dashboard">
                     대시보드 →
                 </a>
             </div>
@@ -55,7 +55,7 @@ export default async function AdminTenantsPage() {
                                     <td className="px-4 py-3 text-right">
                                         <a
                                             className="dad-btn dad-btn-ghost inline-flex h-9 items-center justify-center px-3 text-xs"
-                                            href={`/admin/dashboard?tenant=${encodeURIComponent(t.slug)}`}
+                                            href={`/dashboard?tenant=${encodeURIComponent(t.slug)}`}
                                         >
                                             보기 →
                                         </a>

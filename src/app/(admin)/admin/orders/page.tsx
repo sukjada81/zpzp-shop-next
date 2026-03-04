@@ -78,7 +78,7 @@ export default async function AdminOrdersPage({
                             통합 관리자 / 전체 tenant 주문을 조회/처리합니다.
                         </div>
                     </div>
-                    <a href="/admin/dashboard" className="dad-btn dad-btn-ghost px-4 py-2 text-sm">
+                    <a href="/dashboard" className="dad-btn dad-btn-ghost px-4 py-2 text-sm">
                         대시보드 →
                     </a>
                 </div>
@@ -88,7 +88,7 @@ export default async function AdminOrdersPage({
                         <a
                             key={t}
                             className={chipClass(tenant === t)}
-                            href={`/admin/orders?tenant=${encodeURIComponent(t)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&page=1`}
+                            href={`/orders?tenant=${encodeURIComponent(t)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&page=1`}
                         >
                             {t === "all" ? "전체" : `${t.toUpperCase()} 지점`}
                         </a>
@@ -96,7 +96,7 @@ export default async function AdminOrdersPage({
                 </div>
 
                 <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-                    <form className="flex w-full gap-2" action="/admin/orders" method="get">
+                    <form className="flex w-full gap-2" action="/orders" method="get">
                         <input type="hidden" name="tenant" value={tenant} />
                         <select
                             name="status"
@@ -187,7 +187,7 @@ export default async function AdminOrdersPage({
                 <div className="mt-4 flex items-center justify-between">
                     <a
                         className="dad-btn dad-btn-ghost px-4 py-2 text-sm"
-                        href={`/admin/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(
+                        href={`/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(
                             q
                         )}&page=${Math.max(1, page - 1)}`}
                     >
@@ -195,7 +195,7 @@ export default async function AdminOrdersPage({
                     </a>
                     <a
                         className="dad-btn dad-btn-ghost px-4 py-2 text-sm"
-                        href={`/admin/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(
+                        href={`/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(
                             q
                         )}&page=${Math.min(totalPages, page + 1)}`}
                     >

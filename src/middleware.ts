@@ -36,7 +36,6 @@ function getHost(req: NextRequest) {
 
 /**
  * ✅ rewrite는 "내부 라우팅(로컬 origin)" 으로만 해야 안전함.
- * - 외부 https 절대 URL로 rewrite하면 Next가 내부 프록시/페치하다가 SSL 체인 문제로 500 나는 케이스가 많음.
  */
 function makeInternalRewriteUrl(req: NextRequest, pathname: string, search: string) {
     const url = req.nextUrl.clone(); // 내부 origin(대부분 http://127.0.0.1:3000)
@@ -47,7 +46,6 @@ function makeInternalRewriteUrl(req: NextRequest, pathname: string, search: stri
 
 /**
  * ✅ redirect는 사용자 브라우저가 따라갈 "외부 origin" 이 필요.
- * (localhost로 굳는 현상 방지)
  */
 function getExternalOrigin(req: NextRequest) {
     const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
@@ -100,16 +98,75 @@ export async function middleware(req: NextRequest) {
     }
 
     // =========================
+    // 0.5) admin 서브도메인 처리
+    // - 외부 URL: https://admin.discountallday.kr/login, /dashboard, /orders ...
+    // - 내부 라우트: /admin/login, /admin/dashboard, /admin/orders ...
+    // - 세션 체크: /api/admin/session (Next route handler)
+    // =========================
+    if (host.startsWith("admin.")) {
+        if (isPublicPath(pathname)) return NextResponse.next();
+
+        // 외부에서 "/" 오면 대시보드로 (URL은 /dashboard로 정리)
+        if (pathname === "/") {
+            return NextResponse.redirect(new URL("/dashboard", externalOrigin));
+        }
+
+        // 외부 경로를 내부 /admin prefix로 매핑
+        const adminExternalPath = pathname; // /login, /dashboard, /orders ...
+        const adminInternalPath =
+            adminExternalPath.startsWith("/admin/")
+                ? adminExternalPath
+                : `/admin${adminExternalPath}`;
+
+        // 로그인 페이지는 통과 + 내부 rewrite
+        if (adminExternalPath === "/login" || adminExternalPath.startsWith("/login/")) {
+            if (adminInternalPath !== pathname) {
+                return NextResponse.rewrite(makeInternalRewriteUrl(req, adminInternalPath, search));
+            }
+            return NextResponse.next();
+        }
+
+        // 혹시 기존 /admin/login 으로 들어와도 허용
+        if (adminInternalPath === "/admin/login" || adminInternalPath.startsWith("/admin/login/")) {
+            if (adminInternalPath !== pathname) {
+                return NextResponse.rewrite(makeInternalRewriteUrl(req, adminInternalPath, search));
+            }
+            return NextResponse.next();
+        }
+
+        // ✅ 세션 체크
+        try {
+            const internalSessionUrl = new URL("/api/admin/session", req.nextUrl.origin);
+            const res = await fetch(internalSessionUrl.toString(), {
+                headers: { cookie: req.headers.get("cookie") || "" },
+                cache: "no-store",
+            });
+
+            if (!res.ok) {
+                const loginUrl = new URL("/login", externalOrigin);
+                loginUrl.searchParams.set("returnTo", `${adminExternalPath}${search || ""}`);
+                return NextResponse.redirect(loginUrl);
+            }
+
+            // 로그인됨 → 내부 rewrite
+            if (adminInternalPath !== pathname) {
+                return NextResponse.rewrite(makeInternalRewriteUrl(req, adminInternalPath, search));
+            }
+            return NextResponse.next();
+        } catch {
+            const loginUrl = new URL("/login", externalOrigin);
+            loginUrl.searchParams.set("returnTo", `${adminExternalPath}${search || ""}`);
+            return NextResponse.redirect(loginUrl);
+        }
+    }
+
+    // =========================
     // 1) select-tenant 서브도메인 처리
-    // - 외부 URL: https://select-tenant.discountallday.kr/
-    // - 내부 페이지: /select-tenant
-    // => "/" 요청은 "/select-tenant"로 "내부 rewrite" (URL은 "/" 유지)
     // =========================
     if (host.startsWith("select-tenant.")) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
         if (pathname === "/") {
-            // ✅ 내부 rewrite로 변경 (외부 https로 rewrite 금지)
             return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
         }
 
@@ -117,12 +174,12 @@ export async function middleware(req: NextRequest) {
             return NextResponse.next();
         }
 
-        // 그 외는 루트로 정리(redirect는 외부 origin)
         return NextResponse.redirect(new URL("/", externalOrigin));
     }
 
     // =========================
-    // 2) Admin 보호 (기존 유지)
+    // 2) 기존 /admin path 보호 (호환 유지)
+    // - 메인도메인/admin을 완전히 안 쓸 거면 나중에 제거해도 됨
     // =========================
     if (isAdminPath(pathname)) {
         if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
@@ -130,9 +187,6 @@ export async function middleware(req: NextRequest) {
         }
 
         try {
-            // ✅ 세션 체크는 같은 호스트로 내부 호출하지 말고,
-            // 외부 절대URL(브라우저 기준)이 아닌 "내부 origin"으로 호출하는 게 안전.
-            // 다만 여기서는 /api/admin/session 이 Next route handler라 내부 origin이어도 OK.
             const internalSessionUrl = new URL("/api/admin/session", req.nextUrl.origin);
 
             const res = await fetch(internalSessionUrl.toString(), {
@@ -157,7 +211,6 @@ export async function middleware(req: NextRequest) {
     const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
     const subdomain = ENABLE_SUBDOMAIN_TENANT ? getSubdomain(host) : null;
 
-    // ✅ main 등에서는 tenant rewrite 하지 않는다.
     if (!subdomain) return NextResponse.next();
 
     // tenant 서브도메인에서 전역 라우트 bypass
@@ -185,11 +238,9 @@ export async function middleware(req: NextRequest) {
 
     if (isPublicPath(pathname)) return NextResponse.next();
 
-    // 보호 경로 아닐 때 rewrite만
     const isProtected = needsAuth(internalPathname);
     if (!isProtected) {
         if (internalPathname !== pathname) {
-            // ✅ 내부 rewrite로 변경 (외부 https 절대URL rewrite 금지)
             return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
         }
         return NextResponse.next();
@@ -198,13 +249,11 @@ export async function middleware(req: NextRequest) {
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";
     if (mockLogin) {
         if (internalPathname !== pathname) {
-            // ✅ 내부 rewrite로 변경
             return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
         }
         return NextResponse.next();
     }
 
-    // ✅ 미로그인 → auth 도메인으로 보낸다. (redirect는 외부 origin/ENV 기준)
     const AUTH_ORIGIN = getEnvOrigin("AUTH");
     const SELECT_TENANT_ORIGIN = getEnvOrigin("SELECT_TENANT");
 

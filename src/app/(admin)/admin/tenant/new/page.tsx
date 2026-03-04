@@ -101,7 +101,7 @@ export default function AdminTenantNewPage() {
                                 }
 
                                 // 생성 후 상세 페이지로
-                                router.push(`/admin/tenant/${data.tenant.id}`);
+                                router.push(`/tenant/${data.tenant.id}`);
                             } catch (e: any) {
                                 setError(e?.message || "생성 실패");
                             } finally {

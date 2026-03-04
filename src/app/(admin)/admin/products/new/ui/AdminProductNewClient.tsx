@@ -119,7 +119,7 @@ export default function AdminProductNewClient() {
 
             alert("상품이 등록되었습니다.");
             // 등록 후 목록 페이지로 이동(다음 단계에서 /admin/products 만들 예정)
-            window.location.href = "/admin/dashboard";
+            window.location.href = "/dashboard";
         } catch (e: any) {
             alert(`등록 실패: ${e?.message || "unknown error"}`);
         } finally {
@@ -137,7 +137,7 @@ export default function AdminProductNewClient() {
                             지점을 선택하고 상품/옵션을 등록합니다.
                         </div>
                     </div>
-                    <a className="dad-btn dad-btn-ghost px-4 py-2 text-sm" href="/admin/dashboard">
+                    <a className="dad-btn dad-btn-ghost px-4 py-2 text-sm" href="/dashboard">
                         대시보드 →
                     </a>
                 </div>

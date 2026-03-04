@@ -15,7 +15,7 @@ export default async function AdminProductNewPage() {
                     </div>
                 </div>
 
-                <a href="/admin/products" className="dad-btn dad-btn-ghost h-10 px-4 text-sm">
+                <a href="/products" className="dad-btn dad-btn-ghost h-10 px-4 text-sm">
                     ← 목록
                 </a>
             </div>

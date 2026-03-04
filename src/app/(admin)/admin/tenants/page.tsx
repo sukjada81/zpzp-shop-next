@@ -2,5 +2,5 @@
 import { redirect } from "next/navigation";
 
 export default function AdminTenantsAliasPage() {
-    redirect("/admin/tenant");
+    redirect("/tenant");
 }

@@ -7,8 +7,11 @@ import { adminLogin } from "@/lib/admin/adminAuthClient";
 export default function AdminLoginClient() {
     const router = useRouter();
     const sp = useSearchParams();
-    const rawReturnTo = sp.get("returnTo") || "/admin/dashboard";
-    const returnTo = rawReturnTo === "/admin" ? "/admin/dashboard" : rawReturnTo;
+    const rawReturnTo = sp.get("returnTo") || "/dashboard";
+    const returnTo =
+        rawReturnTo === "/admin" || rawReturnTo === "/admin/dashboard"
+            ? "/dashboard"
+            : rawReturnTo;
 
     const [id, setId] = useState("admin"); // 기본값은 편의용(원하시면 빈값으로)
     const [password, setPassword] = useState("");
