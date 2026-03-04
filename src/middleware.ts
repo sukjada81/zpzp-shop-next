@@ -35,15 +35,25 @@ function getHost(req: NextRequest) {
 }
 
 /**
- * ✅ 프록시 뒤에서 NextRequest.nextUrl이 localhost로 굳는 케이스가 있어서,
- * rewrite/redirect에 사용할 "외부 origin"을 헤더 기준으로 직접 만든다.
+ * ✅ rewrite는 "내부 라우팅(로컬 origin)" 으로만 해야 안전함.
+ * - 외부 https 절대 URL로 rewrite하면 Next가 내부 프록시/페치하다가 SSL 체인 문제로 500 나는 케이스가 많음.
+ */
+function makeInternalRewriteUrl(req: NextRequest, pathname: string, search: string) {
+    const url = req.nextUrl.clone(); // 내부 origin(대부분 http://127.0.0.1:3000)
+    url.pathname = pathname;
+    url.search = search || "";
+    return url;
+}
+
+/**
+ * ✅ redirect는 사용자 브라우저가 따라갈 "외부 origin" 이 필요.
+ * (localhost로 굳는 현상 방지)
  */
 function getExternalOrigin(req: NextRequest) {
     const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
     const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
         .split(",")[0]
         .trim();
-    // host는 반드시 있어야 정상. 없으면 req.nextUrl.origin fallback
     if (!host) return req.nextUrl.origin;
     return `${proto}://${host}`;
 }
@@ -93,23 +103,21 @@ export async function middleware(req: NextRequest) {
     // 1) select-tenant 서브도메인 처리
     // - 외부 URL: https://select-tenant.discountallday.kr/
     // - 내부 페이지: /select-tenant
-    // => "/" 요청은 "/select-tenant"로 rewrite (URL은 "/" 유지)
+    // => "/" 요청은 "/select-tenant"로 "내부 rewrite" (URL은 "/" 유지)
     // =========================
     if (host.startsWith("select-tenant.")) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
         if (pathname === "/") {
-            // ✅ 절대 URL로 rewrite (localhost로 굳는 현상 방지)
-            const url = new URL("/select-tenant", externalOrigin);
-            url.search = search;
-            return NextResponse.rewrite(url);
+            // ✅ 내부 rewrite로 변경 (외부 https로 rewrite 금지)
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
         }
 
         if (pathname === "/select-tenant" || pathname.startsWith("/select-tenant/")) {
             return NextResponse.next();
         }
 
-        // 그 외는 루트로 정리
+        // 그 외는 루트로 정리(redirect는 외부 origin)
         return NextResponse.redirect(new URL("/", externalOrigin));
     }
 
@@ -122,8 +130,12 @@ export async function middleware(req: NextRequest) {
         }
 
         try {
-            const sessionUrl = new URL("/api/admin/session", externalOrigin);
-            const res = await fetch(sessionUrl.toString(), {
+            // ✅ 세션 체크는 같은 호스트로 내부 호출하지 말고,
+            // 외부 절대URL(브라우저 기준)이 아닌 "내부 origin"으로 호출하는 게 안전.
+            // 다만 여기서는 /api/admin/session 이 Next route handler라 내부 origin이어도 OK.
+            const internalSessionUrl = new URL("/api/admin/session", req.nextUrl.origin);
+
+            const res = await fetch(internalSessionUrl.toString(), {
                 headers: { cookie: req.headers.get("cookie") || "" },
                 cache: "no-store",
             });
@@ -177,9 +189,8 @@ export async function middleware(req: NextRequest) {
     const isProtected = needsAuth(internalPathname);
     if (!isProtected) {
         if (internalPathname !== pathname) {
-            const url = new URL(internalPathname, externalOrigin);
-            url.search = search;
-            return NextResponse.rewrite(url);
+            // ✅ 내부 rewrite로 변경 (외부 https 절대URL rewrite 금지)
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
         }
         return NextResponse.next();
     }
@@ -187,14 +198,13 @@ export async function middleware(req: NextRequest) {
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";
     if (mockLogin) {
         if (internalPathname !== pathname) {
-            const url = new URL(internalPathname, externalOrigin);
-            url.search = search;
-            return NextResponse.rewrite(url);
+            // ✅ 내부 rewrite로 변경
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
         }
         return NextResponse.next();
     }
 
-    // ✅ 미로그인 → auth 도메인으로 보낸다.
+    // ✅ 미로그인 → auth 도메인으로 보낸다. (redirect는 외부 origin/ENV 기준)
     const AUTH_ORIGIN = getEnvOrigin("AUTH");
     const SELECT_TENANT_ORIGIN = getEnvOrigin("SELECT_TENANT");
 
