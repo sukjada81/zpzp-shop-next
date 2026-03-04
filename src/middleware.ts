@@ -34,6 +34,20 @@ function getHost(req: NextRequest) {
         .toLowerCase();
 }
 
+/**
+ * ✅ 프록시 뒤에서 NextRequest.nextUrl이 localhost로 굳는 케이스가 있어서,
+ * rewrite/redirect에 사용할 "외부 origin"을 헤더 기준으로 직접 만든다.
+ */
+function getExternalOrigin(req: NextRequest) {
+    const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
+    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+        .split(",")[0]
+        .trim();
+    // host는 반드시 있어야 정상. 없으면 req.nextUrl.origin fallback
+    if (!host) return req.nextUrl.origin;
+    return `${proto}://${host}`;
+}
+
 function getSubdomain(host: string) {
     const h = host.split(":")[0].toLowerCase();
     if (!h) return null;
@@ -68,8 +82,9 @@ export async function middleware(req: NextRequest) {
     if (isPublicAsset(pathname)) return NextResponse.next();
 
     const host = getHost(req);
+    const externalOrigin = getExternalOrigin(req);
 
-    // ✅ 0) auth 서브도메인은 middleware가 손대지 않는다.
+    // ✅ 0) auth 서브도메인은 middleware에서 손대지 않는다.
     if (host.startsWith("auth.")) {
         return NextResponse.next();
     }
@@ -79,30 +94,23 @@ export async function middleware(req: NextRequest) {
     // - 외부 URL: https://select-tenant.discountallday.kr/
     // - 내부 페이지: /select-tenant
     // => "/" 요청은 "/select-tenant"로 rewrite (URL은 "/" 유지)
-    //
-    // ⚠️ 중요:
-    // - rewrite는 반드시 "같은 origin(req.nextUrl)" 기반 absolute URL이어야 함
-    // - forwarded origin(https://...)로 만들면 Next가 'proxy' 하려다 SSL 오류가 날 수 있음
     // =========================
     if (host.startsWith("select-tenant.")) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
         if (pathname === "/") {
-            const url = req.nextUrl.clone(); // ✅ absolute + same-origin
-            url.pathname = "/select-tenant";
+            // ✅ 절대 URL로 rewrite (localhost로 굳는 현상 방지)
+            const url = new URL("/select-tenant", externalOrigin);
             url.search = search;
-            return NextResponse.redirect(url);
+            return NextResponse.rewrite(url);
         }
 
         if (pathname === "/select-tenant" || pathname.startsWith("/select-tenant/")) {
             return NextResponse.next();
         }
 
-        // 그 외는 루트로 정리(redirect도 absolute URL로)
-        const toRoot = req.nextUrl.clone();
-        toRoot.pathname = "/";
-        toRoot.search = "";
-        return NextResponse.redirect(toRoot);
+        // 그 외는 루트로 정리
+        return NextResponse.redirect(new URL("/", externalOrigin));
     }
 
     // =========================
@@ -114,23 +122,21 @@ export async function middleware(req: NextRequest) {
         }
 
         try {
-            const sessionUrl = new URL("/api/admin/session", req.nextUrl.origin);
+            const sessionUrl = new URL("/api/admin/session", externalOrigin);
             const res = await fetch(sessionUrl.toString(), {
                 headers: { cookie: req.headers.get("cookie") || "" },
                 cache: "no-store",
             });
 
             if (!res.ok) {
-                const loginUrl = req.nextUrl.clone();
-                loginUrl.pathname = "/admin/login";
+                const loginUrl = new URL("/admin/login", externalOrigin);
                 loginUrl.searchParams.set("returnTo", `${pathname}${search || ""}`);
                 return NextResponse.redirect(loginUrl);
             }
 
             return NextResponse.next();
         } catch {
-            const loginUrl = req.nextUrl.clone();
-            loginUrl.pathname = "/admin/login";
+            const loginUrl = new URL("/admin/login", externalOrigin);
             loginUrl.searchParams.set("returnTo", `${pathname}${search || ""}`);
             return NextResponse.redirect(loginUrl);
         }
@@ -139,10 +145,10 @@ export async function middleware(req: NextRequest) {
     const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
     const subdomain = ENABLE_SUBDOMAIN_TENANT ? getSubdomain(host) : null;
 
-    // ✅ main/auth 등에서는 tenant rewrite 자체를 하지 않는다.
+    // ✅ main 등에서는 tenant rewrite 하지 않는다.
     if (!subdomain) return NextResponse.next();
 
-    // tenant 서브도메인에서 전역 라우트는 bypass
+    // tenant 서브도메인에서 전역 라우트 bypass
     if (
         pathname === "/login" ||
         pathname.startsWith("/login/") ||
@@ -171,8 +177,7 @@ export async function middleware(req: NextRequest) {
     const isProtected = needsAuth(internalPathname);
     if (!isProtected) {
         if (internalPathname !== pathname) {
-            const url = req.nextUrl.clone(); // ✅ same-origin absolute
-            url.pathname = internalPathname;
+            const url = new URL(internalPathname, externalOrigin);
             url.search = search;
             return NextResponse.rewrite(url);
         }
@@ -182,8 +187,7 @@ export async function middleware(req: NextRequest) {
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";
     if (mockLogin) {
         if (internalPathname !== pathname) {
-            const url = req.nextUrl.clone(); // ✅ same-origin absolute
-            url.pathname = internalPathname;
+            const url = new URL(internalPathname, externalOrigin);
             url.search = search;
             return NextResponse.rewrite(url);
         }
