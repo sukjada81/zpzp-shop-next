@@ -34,19 +34,6 @@ function getHost(req: NextRequest) {
         .toLowerCase();
 }
 
-/** ✅ Edge middleware에서 절대 URL rewrite를 만들 때 localhost로 굳는 문제 방지 */
-function getRequestOrigin(req: NextRequest) {
-    const xfProto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim();
-    const xfHost = (req.headers.get("x-forwarded-host") || "").split(",")[0].trim();
-    const host = (req.headers.get("host") || "").split(",")[0].trim();
-
-    const proto = xfProto || "http";
-    const hostname = xfHost || host;
-
-    // hostname이 비면 req.nextUrl.origin fallback
-    return hostname ? `${proto}://${hostname}` : req.nextUrl.origin;
-}
-
 function getSubdomain(host: string) {
     const h = host.split(":")[0].toLowerCase();
     if (!h) return null;
@@ -82,8 +69,7 @@ export async function middleware(req: NextRequest) {
 
     const host = getHost(req);
 
-    // ✅ 0) auth 서브도메인은 middleware가 redirect/rewrite 하지 않고 Next 라우트로 넘긴다.
-    // - auth 루트(/) → /login 처리, returnTo 처리 등은 src/app/page.tsx(및 로그인 페이지)에서 담당
+    // ✅ 0) auth 서브도메인은 middleware가 손대지 않는다.
     if (host.startsWith("auth.")) {
         return NextResponse.next();
     }
@@ -93,15 +79,17 @@ export async function middleware(req: NextRequest) {
     // - 외부 URL: https://select-tenant.discountallday.kr/
     // - 내부 페이지: /select-tenant
     // => "/" 요청은 "/select-tenant"로 rewrite (URL은 "/" 유지)
+    //
+    // ⚠️ 중요:
+    // - rewrite는 반드시 "같은 origin(req.nextUrl)" 기반 absolute URL이어야 함
+    // - forwarded origin(https://...)로 만들면 Next가 'proxy' 하려다 SSL 오류가 날 수 있음
     // =========================
     if (host.startsWith("select-tenant.")) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
         if (pathname === "/") {
-            // ✅ Next.js 16 Edge middleware는 rewrite에 "절대 URL" 요구
-            // ✅ 그리고 base origin은 x-forwarded-* 기반으로 만들어 localhost로 굳는 문제 방지
-            const origin = getRequestOrigin(req);
-            const url = new URL("/select-tenant", origin);
+            const url = req.nextUrl.clone(); // ✅ absolute + same-origin
+            url.pathname = "/select-tenant";
             url.search = search;
             return NextResponse.rewrite(url);
         }
@@ -110,9 +98,11 @@ export async function middleware(req: NextRequest) {
             return NextResponse.next();
         }
 
-        // 그 외는 루트로 정리
-        const origin = getRequestOrigin(req);
-        return NextResponse.redirect(new URL("/", origin));
+        // 그 외는 루트로 정리(redirect도 absolute URL로)
+        const toRoot = req.nextUrl.clone();
+        toRoot.pathname = "/";
+        toRoot.search = "";
+        return NextResponse.redirect(toRoot);
     }
 
     // =========================
@@ -181,7 +171,7 @@ export async function middleware(req: NextRequest) {
     const isProtected = needsAuth(internalPathname);
     if (!isProtected) {
         if (internalPathname !== pathname) {
-            const url = req.nextUrl.clone();
+            const url = req.nextUrl.clone(); // ✅ same-origin absolute
             url.pathname = internalPathname;
             url.search = search;
             return NextResponse.rewrite(url);
@@ -192,7 +182,7 @@ export async function middleware(req: NextRequest) {
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";
     if (mockLogin) {
         if (internalPathname !== pathname) {
-            const url = req.nextUrl.clone();
+            const url = req.nextUrl.clone(); // ✅ same-origin absolute
             url.pathname = internalPathname;
             url.search = search;
             return NextResponse.rewrite(url);
