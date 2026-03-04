@@ -4,15 +4,25 @@
 export default function LoginPage() {
     const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
 
-    // ✅ auth 도메인 로그인 페이지 기본 returnTo:
-    // - returnTo가 없으면 main의 /select-tenant로 보내는 게 정답
-    const defaultReturnTo =
-        (process.env.NEXT_PUBLIC_SITE_ORIGIN || "https://discountallday.kr") + "/select-tenant";
-
-    const returnTo = sp?.get("returnTo") || defaultReturnTo;
-
-    // tenant는 선택적으로만 받음(바로 특정 지점으로 보낼 때 쓰고, 기본 플로우는 tenant 없음)
     const tenant = sp?.get("tenant") || "";
+    const returnToParam = sp?.get("returnTo");
+
+    const baseDomain =
+        process.env.NEXT_PUBLIC_TENANT_BASE_DOMAIN || "discountallday.kr";
+
+    const selectTenantOrigin =
+        process.env.NEXT_PUBLIC_SELECT_TENANT_ORIGIN ||
+        process.env.NEXT_PUBLIC_SITE_ORIGIN ||
+        "https://select-tenant.discountallday.kr";
+
+    // ✅ 기본 returnTo 정책
+    // - tenant가 있으면: 해당 tenant 홈
+    // - tenant가 없으면: select-tenant
+    const defaultReturnTo = tenant
+        ? `https://${tenant}.${baseDomain}/home`
+        : `${selectTenantOrigin}/`;
+
+    const returnTo = returnToParam || defaultReturnTo;
 
     return (
         <main className="min-h-dvh flex flex-col items-center justify-center px-6">
@@ -33,12 +43,11 @@ export default function LoginPage() {
                     type="button"
                     className="mt-5 w-full rounded-xl bg-[var(--kakao)] py-4 font-bold text-black shadow-sm active:scale-[0.99]"
                     onClick={() => {
-                        const qs =
-                            `tenant=${encodeURIComponent(tenant)}` +
-                            `&returnTo=${encodeURIComponent(returnTo)}` +
-                            `&auto=0`;
-                        // ✅ auto=1 쓰면 login_required가 자주 뜹니다(세션 없으면 필연).
-                        window.location.href = `/api/auth/kakao/login?${qs}`;
+                        const qs = new URLSearchParams();
+                        if (tenant) qs.set("tenant", tenant);
+                        qs.set("returnTo", returnTo);
+                        qs.set("auto", "0");
+                        window.location.href = `/api/auth/kakao/login?${qs.toString()}`;
                     }}
                 >
                     카카오로 시작하기

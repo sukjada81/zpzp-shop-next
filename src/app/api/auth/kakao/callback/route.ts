@@ -24,7 +24,7 @@ function verifyState(state: string, secret: string) {
     try {
         const payload = JSON.parse(payloadBuf.toString("utf8")) as {
             tenant?: string;
-            returnTo?: string; // 절대URL 또는 상대경로
+            returnTo?: string;
             nonce?: string;
             ts?: number;
         };
@@ -38,15 +38,30 @@ function isAbsoluteUrl(s: string) {
     return /^https?:\/\//i.test(s);
 }
 
-function getForwardedProto(req: NextRequest) {
-    return (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim().toLowerCase();
+function getHeaderFirst(req: NextRequest, key: string) {
+    return (req.headers.get(key) || "").split(",")[0].trim();
 }
 
-function isHttpsRequest(req: NextRequest) {
-    const xfProto = getForwardedProto(req);
-    if (xfProto) return xfProto === "https";
-    // fallback: nextUrl.protocol
-    return req.nextUrl.protocol === "https:";
+function getForwardedProto(req: NextRequest) {
+    return getHeaderFirst(req, "x-forwarded-proto").toLowerCase();
+}
+
+function getForwardedHost(req: NextRequest) {
+    return getHeaderFirst(req, "x-forwarded-host") || getHeaderFirst(req, "host");
+}
+
+/**
+ * ✅ 중요: dev(:3000, http)에서는 Secure 쿠키를 절대 세팅하면 안 됨
+ * - Secure 쿠키는 https에서만 전송되기 때문에
+ * - http://a.discountallday.kr:3000 에서는 쿠키가 안 붙어서 로그인 루프 발생
+ */
+function isDevHttp(req: NextRequest) {
+    const host = (getForwardedHost(req) || "").toLowerCase();
+    const proto = getForwardedProto(req) || req.nextUrl.protocol.replace(":", "");
+    // 포트 3000이거나, proto가 http면 dev 취급
+    if (proto === "http") return true;
+    if (host.includes(":3000")) return true;
+    return false;
 }
 
 function isLikelyLocalHost(host: string) {
@@ -55,56 +70,64 @@ function isLikelyLocalHost(host: string) {
     if (!hostOnly) return true;
     if (hostOnly === "localhost") return true;
     if (hostOnly.endsWith(".localhost")) return true;
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return true; // IP
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return true;
     return false;
 }
 
 function safeTenantSlug(raw: string) {
     const t = (raw || "").trim().toLowerCase();
-    // tenant는 알파/숫자/하이픈만 허용 (보안/오타 방지)
     if (!t) return "";
     if (!/^[a-z0-9-]+$/.test(t)) return "";
     return t;
 }
 
 function cookieDomainForShare(req: NextRequest) {
-    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").split(",")[0].trim();
-    // 로컬(= localhost / IP 등)에서는 domain 지정하면 쿠키가 안 먹음
+    const host = (getForwardedHost(req) || "").split(",")[0].trim();
+    // localhost / IP 환경이면 domain 지정하면 쿠키가 깨지는 경우가 많음
     if (isLikelyLocalHost(host)) return undefined;
+    // a.discountallday.kr / auth.discountallday.kr 사이 공유하려면 .discountallday.kr
     return process.env.COOKIE_DOMAIN || ".discountallday.kr";
 }
 
 function buildTenantOrigin(req: NextRequest, tenant: string) {
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const dev = isDevHttp(req);
 
-    // 운영은 항상 https 기준 (nginx 뒤에서 도는 구조)
-    const proto = isHttpsRequest(req) ? "https" : "http";
-
-    // 로컬에서만 포트 유지가 필요하면 env로 지정해서 사용
-    // 예: LOCAL_TENANT_PORT=3000
-    const localPort = process.env.LOCAL_TENANT_PORT || "";
-    const portPart = proto === "http" && localPort ? `:${localPort}` : "";
+    const proto = dev ? "http" : "https";
+    const localPort = process.env.LOCAL_TENANT_PORT || "3000";
+    const portPart = dev ? `:${localPort}` : "";
 
     return `${proto}://${tenant}.${baseDomain}${portPart}`;
 }
 
+function normalizeReturnToToHome(req: NextRequest, returnTo: string, tenant: string) {
+    if (isAbsoluteUrl(returnTo)) {
+        try {
+            const u = new URL(returnTo);
+            if (u.pathname === "/" || u.pathname === "") {
+                u.pathname = "/home";
+                u.search = "";
+                u.hash = "";
+                return u.toString();
+            }
+            return u.toString();
+        } catch {}
+    }
+
+    const path = returnTo?.startsWith("/") ? returnTo : "/";
+    if ((path === "/" || path === "") && tenant) {
+        return new URL("/home", buildTenantOrigin(req, tenant)).toString();
+    }
+    return returnTo;
+}
+
 function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
-    const SELECT_TENANT_ORIGIN =
-        process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
     const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://discountallday.kr";
 
-    // 1) 절대 URL이면 그대로(단, 허용 도메인만 통과시키면 더 안전)
     if (isAbsoluteUrl(returnTo)) return returnTo;
 
-    // 2) 상대경로면 tenant가 있으면 tenant origin 기준으로 붙임
-    const path = returnTo.startsWith("/") ? returnTo : "/";
+    const path = returnTo.startsWith("/") ? returnTo : "/home";
     if (tenant) return new URL(path, buildTenantOrigin(req, tenant)).toString();
-
-    // 3) tenant 없으면 지점선택으로 보내는 게 기본
-    //    (/select-tenant를 main이 아니라 select-tenant 서브도메인 루트로 보냄)
-    if (path === "/select-tenant" || path === "/") {
-        return new URL("/", SELECT_TENANT_ORIGIN).toString();
-    }
 
     return new URL(path, SITE_ORIGIN).toString();
 }
@@ -130,14 +153,12 @@ export async function GET(req: NextRequest) {
     if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 });
 
     const tenant = safeTenantSlug(v.payload.tenant || "");
-    const returnTo =
-        v.payload.returnTo ||
-        (process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr") + "/";
+    const rawReturnTo = v.payload.returnTo || (tenant ? "/home" : "/");
+    const returnTo = normalizeReturnToToHome(req, rawReturnTo, tenant);
 
     // code 없이 error로 돌아오는 케이스: 일반 로그인으로 재시도
     if (!code && err) {
-        const AUTH_ORIGIN =
-            process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "http://localhost:3000";
+        const AUTH_ORIGIN = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "http://localhost:3000";
         const retry = new URL("/api/auth/kakao/login", AUTH_ORIGIN);
         if (tenant) retry.searchParams.set("tenant", tenant);
         retry.searchParams.set("returnTo", returnTo);
@@ -154,13 +175,10 @@ export async function GET(req: NextRequest) {
         const target = safeNextUrl(req, returnTo, tenant);
         const res = NextResponse.redirect(target, { status: 302 });
 
-        const https = isHttpsRequest(req);
-
-        // ✅ 운영(https): SameSite=None + Secure=true 권장
-        // ✅ 로컬(http): Lax + Secure=false
-        const sameSite = https ? ("none" as const) : ("lax" as const);
-        const secure = https;
-
+        // ✅ 핵심: dev http(:3000)면 Secure 절대 금지
+        const dev = isDevHttp(req);
+        const secure = dev ? false : true;
+        const sameSite = secure ? ("none" as const) : ("lax" as const);
         const domain = cookieDomainForShare(req);
 
         res.cookies.set("mockLogin", "1", {

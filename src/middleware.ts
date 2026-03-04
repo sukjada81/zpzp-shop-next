@@ -21,7 +21,14 @@ function isAdminPath(pathname: string) {
     return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+/**
+ * ✅ 보호 경로
+ * - (중요) 테넌트 서브도메인에서 "/"도 보호로 취급 (요구사항: 지점 접속 시 로그인 필요)
+ */
 function needsAuth(pathname: string) {
+    // tenant 서브도메인 외부 루트도 로그인 필요
+    if (pathname === "/" || pathname === "/home") return true;
+
     const siteProtected = /^\/[^/]+\/(home|cart|order|orders|goods|points|settings)(\/|$)/;
     const sellerProtected = /^\/seller\/[^/]+\/(products|orders)(\/|$)/;
     return siteProtected.test(pathname) || sellerProtected.test(pathname);
@@ -35,12 +42,7 @@ function getHost(req: NextRequest) {
 }
 
 /**
- * ✅ rewrite는 "내부 라우팅(로컬 Next 서버)"으로만 한다.
- * - 절대 req.nextUrl.clone() 사용 금지: 운영에서 https://localhost:3000 로 굳어
- *   Next가 내부 프록시를 TLS로 시도하다가 "wrong version number"로 500이 난다.
- *
- * 운영: nginx(https) → next(127.0.0.1:3000 http)
- * 따라서 내부 rewrite는 항상 http://127.0.0.1:3000 기준으로 고정.
+ * ✅ rewrite는 내부 Next 서버로만 한다.
  */
 function makeInternalRewriteUrl(req: NextRequest, pathname: string, search: string) {
     const INTERNAL_ORIGIN = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
@@ -50,8 +52,7 @@ function makeInternalRewriteUrl(req: NextRequest, pathname: string, search: stri
 }
 
 /**
- * ✅ redirect는 사용자 브라우저가 따라갈 "외부 origin"이 필요.
- * (localhost로 굳는 현상 방지)
+ * ✅ redirect는 외부 origin으로
  */
 function getExternalOrigin(req: NextRequest) {
     const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
@@ -74,7 +75,7 @@ function getSubdomain(host: string) {
 
     const sub = parts[0];
 
-    // ✅ main/auth/admin/api/select-tenant 등은 tenant로 취급 금지
+    // tenant로 보면 안 되는 서브도메인
     if (["www", "admin", "auth", "api", "select-tenant", "discountallday"].includes(sub)) return null;
 
     return sub;
@@ -90,6 +91,79 @@ function getEnvOrigin(kind: "AUTH" | "SITE" | "SELECT_TENANT") {
     return process.env.SITE_ORIGIN || "https://discountallday.kr";
 }
 
+function isLikelyLocalHost(host: string) {
+    const h = (host || "").split(",")[0].trim().toLowerCase();
+    const hostOnly = h.split(":")[0];
+    if (!hostOnly) return true;
+    if (hostOnly === "localhost") return true;
+    if (hostOnly.endsWith(".localhost")) return true;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return true; // IP
+    return false;
+}
+
+/**
+ * ✅ 로컬/dev에서는 http + :3000 유지, 운영은 https 고정
+ * (callback/login에서 넘기는 returnTo를 정확히 만들기 위함)
+ */
+function buildTenantHomeAbs(req: NextRequest, tenant: string) {
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+
+    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+        .split(",")[0]
+        .trim();
+    const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
+
+    // 로컬이면 현재 포트 유지(:3000)
+    const portMatch = host.match(/:(\d+)$/);
+    const port = portMatch ? portMatch[1] : "";
+    const portPart = proto === "http" && port ? `:${port}` : "";
+
+    // 운영은 https (nginx)
+    const httpsPreferred =
+        !isLikelyLocalHost(host) && (process.env.AUTH_ORIGIN || "").startsWith("https://");
+    const finalProto = httpsPreferred ? "https" : proto;
+
+    return `${finalProto}://${tenant}.${baseDomain}${portPart}/home`;
+}
+
+/**
+ * ✅ 디버그 로그/헤더 유틸
+ * - cookie 원문은 찍지 않고, "mockLogin 존재 여부" 같은 최소정보만 남김
+ * - 응답 헤더로도 확인 가능 (DevTools Network -> Response headers)
+ */
+function attachDebugHeaders(
+    res: NextResponse,
+    info: {
+        host: string;
+        pathname: string;
+        subdomain: string | null;
+        internalPathname?: string;
+        isProtected?: boolean;
+        mockLogin?: boolean;
+        hasMockLoginCookie?: boolean;
+        hasMockTenantCookie?: boolean;
+        action: string;
+        redirectTo?: string;
+    }
+) {
+    // 서버 콘솔 로그
+    console.log("[MW]", JSON.stringify(info));
+
+    // 브라우저에서 확인용 헤더(짧게)
+    res.headers.set("x-dad-debug-host", info.host);
+    res.headers.set("x-dad-debug-path", info.pathname);
+    res.headers.set("x-dad-debug-sub", info.subdomain ?? "");
+    res.headers.set("x-dad-debug-protected", String(!!info.isProtected));
+    res.headers.set("x-dad-debug-mocklogin", String(!!info.mockLogin));
+    res.headers.set("x-dad-debug-has-mockLogin", String(!!info.hasMockLoginCookie));
+    res.headers.set("x-dad-debug-has-mockTenant", String(!!info.hasMockTenantCookie));
+    res.headers.set("x-dad-debug-action", info.action);
+    if (info.internalPathname) res.headers.set("x-dad-debug-internal", info.internalPathname);
+    if (info.redirectTo) res.headers.set("x-dad-debug-redirect", info.redirectTo);
+
+    return res;
+}
+
 export async function middleware(req: NextRequest) {
     const { pathname, search } = req.nextUrl;
 
@@ -98,96 +172,269 @@ export async function middleware(req: NextRequest) {
     const host = getHost(req);
     const externalOrigin = getExternalOrigin(req);
 
-    // ✅ 0) auth 서브도메인은 middleware에서 손대지 않는다.
+    // ✅ 공통 쿠키 체크(최소정보)
+    const mockLoginCookie = req.cookies.get("mockLogin")?.value;
+    const mockTenantCookie = req.cookies.get("mockTenant")?.value;
+    const mockLogin = mockLoginCookie === "1";
+
+    // ✅ auth 서브도메인은 건드리지 않음
     if (host.startsWith("auth.")) {
-        return NextResponse.next();
+        const res = NextResponse.next();
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain: null,
+            isProtected: false,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "next(auth-bypass)",
+        });
     }
 
     // =========================
-    // 1) select-tenant 서브도메인 처리
-    // - 외부 URL: https://select-tenant.discountallday.kr/
-    // - 내부 페이지: /select-tenant
-    // => "/" 요청은 "/select-tenant"로 내부 rewrite (URL은 "/" 유지)
+    // select-tenant 서브도메인
     // =========================
     if (host.startsWith("select-tenant.")) {
-        if (isPublicPath(pathname)) return NextResponse.next();
+        if (isPublicPath(pathname)) {
+            const res = NextResponse.next();
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "next(select-tenant public)",
+            });
+        }
 
         if (pathname === "/") {
-            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
+            const res = NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                internalPathname: "/select-tenant",
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "rewrite(select-tenant / -> /select-tenant)",
+            });
         }
 
         if (pathname === "/select-tenant" || pathname.startsWith("/select-tenant/")) {
-            return NextResponse.next();
+            const res = NextResponse.next();
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "next(select-tenant passthrough)",
+            });
         }
 
-        // 그 외는 루트로 정리(redirect는 외부 origin)
-        return NextResponse.redirect(new URL("/", externalOrigin));
+        const red = new URL("/", externalOrigin).toString();
+        const res = NextResponse.redirect(red);
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain: null,
+            isProtected: false,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "redirect(select-tenant cleanup)",
+            redirectTo: red,
+        });
     }
 
     // =========================
-    // 1.5) admin 서브도메인 처리 (admin.discountallday.kr)
-    // - 외부: /login, /dashboard, /orders ...
-    // - 내부: /admin/login, /admin/dashboard, /admin/orders ...
+    // admin 서브도메인
     // =========================
     if (host.startsWith("admin.")) {
-        if (isPublicPath(pathname)) return NextResponse.next();
+        if (isPublicPath(pathname)) {
+            const res = NextResponse.next();
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "next(admin public)",
+            });
+        }
 
-        // 루트 접속은 대시보드로
         if (pathname === "/") {
-            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/admin/dashboard", search));
+            const res = NextResponse.rewrite(makeInternalRewriteUrl(req, "/admin/dashboard", search));
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                internalPathname: "/admin/dashboard",
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "rewrite(admin / -> /admin/dashboard)",
+            });
         }
 
-        // /login -> /admin/login
         if (pathname === "/login" || pathname.startsWith("/login/")) {
-            return NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
+            const res = NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                internalPathname: `/admin${pathname}`,
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "rewrite(admin /login -> /admin/login)",
+            });
         }
 
-        // 이미 /admin으로 들어온 건 그대로
         if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-            return NextResponse.next();
+            const res = NextResponse.next();
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "next(admin internal passthrough)",
+            });
         }
 
-        // 그 외 모든 경로는 /admin 프리픽스 붙여서 내부로 보냄
-        // 예) /orders -> /admin/orders
-        return NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
+        const res = NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain: null,
+            internalPathname: `/admin${pathname}`,
+            isProtected: false,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "rewrite(admin catch-all)",
+        });
     }
 
     // =========================
-    // 2) Admin 보호 (내부 라우트는 /admin/* 유지)
+    // 내부 /admin 보호
     // =========================
     if (isAdminPath(pathname)) {
         if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
-            return NextResponse.next();
+            const res = NextResponse.next();
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                isProtected: false,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "next(admin login allowed)",
+            });
         }
 
         try {
-            // ✅ 내부 API(session) 호출도 내부 origin 고정 사용
-            const internalSessionUrl = new URL("/api/admin/session", process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000");
+            const internalSessionUrl = new URL(
+                "/api/admin/session",
+                process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000"
+            );
 
-            const res = await fetch(internalSessionUrl.toString(), {
+            const r = await fetch(internalSessionUrl.toString(), {
                 headers: { cookie: req.headers.get("cookie") || "" },
                 cache: "no-store",
             });
 
-            if (!res.ok) {
-                const loginUrl = new URL("/login", externalOrigin); // admin 도메인에서는 /login이 user-facing
-                loginUrl.searchParams.set("returnTo", pathname === "/admin" ? "/dashboard" : `${pathname}${search || ""}`);
-                return NextResponse.redirect(loginUrl);
+            if (!r.ok) {
+                const loginUrl = new URL("/login", externalOrigin);
+                loginUrl.searchParams.set(
+                    "returnTo",
+                    pathname === "/admin" ? "/dashboard" : `${pathname}${search || ""}`
+                );
+
+                const red = loginUrl.toString();
+                const res = NextResponse.redirect(red);
+                return attachDebugHeaders(res, {
+                    host,
+                    pathname,
+                    subdomain: null,
+                    isProtected: true,
+                    mockLogin,
+                    hasMockLoginCookie: !!mockLoginCookie,
+                    hasMockTenantCookie: !!mockTenantCookie,
+                    action: "redirect(admin protected -> /login)",
+                    redirectTo: red,
+                });
             }
 
-            return NextResponse.next();
+            const res = NextResponse.next();
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                isProtected: true,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "next(admin protected OK)",
+            });
         } catch {
             const loginUrl = new URL("/login", externalOrigin);
-            loginUrl.searchParams.set("returnTo", pathname === "/admin" ? "/dashboard" : `${pathname}${search || ""}`);
-            return NextResponse.redirect(loginUrl);
+            loginUrl.searchParams.set(
+                "returnTo",
+                pathname === "/admin" ? "/dashboard" : `${pathname}${search || ""}`
+            );
+
+            const red = loginUrl.toString();
+            const res = NextResponse.redirect(red);
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain: null,
+                isProtected: true,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "redirect(admin protected fetch error)",
+                redirectTo: red,
+            });
         }
     }
 
+    // =========================
+    // tenant 서브도메인 처리
+    // =========================
     const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
     const subdomain = ENABLE_SUBDOMAIN_TENANT ? getSubdomain(host) : null;
 
-    // ✅ main 등에서는 tenant rewrite 하지 않는다.
-    if (!subdomain) return NextResponse.next();
+    // main 도메인 등은 그대로
+    if (!subdomain) {
+        const res = NextResponse.next();
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain: null,
+            isProtected: false,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "next(no-tenant)",
+        });
+    }
 
     // tenant 서브도메인에서 전역 라우트 bypass
     if (
@@ -196,11 +443,23 @@ export async function middleware(req: NextRequest) {
         pathname === "/select-tenant" ||
         pathname.startsWith("/select-tenant/")
     ) {
-        return NextResponse.next();
+        const res = NextResponse.next();
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain,
+            isProtected: false,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "next(tenant bypass global path)",
+        });
     }
 
-    // 서브도메인 외부 URL: /home => 내부 라우트 /{tenant}/home 로 rewrite
+    // ✅ tenant 루트("/")는 외부 기준 "/home"으로 처리
     const externalPath = pathname === "/" ? "/home" : pathname;
+
+    // ✅ 내부 라우트는 /{tenant}/... 로 rewrite
     const firstSeg = externalPath.split("/").filter(Boolean)[0] || "";
     const alreadyPrefixed = firstSeg === subdomain;
 
@@ -212,33 +471,108 @@ export async function middleware(req: NextRequest) {
 
     const internalPathname = !alreadyPrefixed && !bypass ? `/${subdomain}${externalPath}` : externalPath;
 
-    if (isPublicPath(pathname)) return NextResponse.next();
+    if (isPublicPath(pathname)) {
+        const res = NextResponse.next();
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain,
+            internalPathname,
+            isProtected: false,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "next(tenant public path)",
+        });
+    }
 
-    // 보호 경로 아닐 때 rewrite만
     const isProtected = needsAuth(internalPathname);
+
+    // ✅ 보호 경로가 아니면 rewrite/next
     if (!isProtected) {
         if (internalPathname !== pathname) {
-            return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
+            const res = NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain,
+                internalPathname,
+                isProtected,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "rewrite(tenant unprotected)",
+            });
         }
-        return NextResponse.next();
+
+        const res = NextResponse.next();
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain,
+            internalPathname,
+            isProtected,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "next(tenant unprotected)",
+        });
     }
 
-    const mockLogin = req.cookies.get("mockLogin")?.value === "1";
+    // ✅ 보호 경로 + 로그인 상태면 통과 (rewrite)
     if (mockLogin) {
         if (internalPathname !== pathname) {
-            return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
+            const res = NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
+            return attachDebugHeaders(res, {
+                host,
+                pathname,
+                subdomain,
+                internalPathname,
+                isProtected,
+                mockLogin,
+                hasMockLoginCookie: !!mockLoginCookie,
+                hasMockTenantCookie: !!mockTenantCookie,
+                action: "rewrite(tenant protected OK)",
+            });
         }
-        return NextResponse.next();
+
+        const res = NextResponse.next();
+        return attachDebugHeaders(res, {
+            host,
+            pathname,
+            subdomain,
+            internalPathname,
+            isProtected,
+            mockLogin,
+            hasMockLoginCookie: !!mockLoginCookie,
+            hasMockTenantCookie: !!mockTenantCookie,
+            action: "next(tenant protected OK)",
+        });
     }
 
-    // ✅ 미로그인 → auth 도메인으로 보낸다. (redirect는 외부 origin/ENV 기준)
+    // ✅ 보호 경로 + 미로그인 => auth로 이동
     const AUTH_ORIGIN = getEnvOrigin("AUTH");
-    const SELECT_TENANT_ORIGIN = getEnvOrigin("SELECT_TENANT");
-
     const loginUrl = new URL("/login", AUTH_ORIGIN);
-    loginUrl.searchParams.set("returnTo", new URL("/", SELECT_TENANT_ORIGIN).toString());
 
-    return NextResponse.redirect(loginUrl);
+    // returnTo는 "해당 tenant 홈" 절대 URL로 고정
+    loginUrl.searchParams.set("tenant", subdomain);
+    loginUrl.searchParams.set("returnTo", buildTenantHomeAbs(req, subdomain));
+
+    const red = loginUrl.toString();
+    const res = NextResponse.redirect(red);
+
+    return attachDebugHeaders(res, {
+        host,
+        pathname,
+        subdomain,
+        internalPathname,
+        isProtected,
+        mockLogin,
+        hasMockLoginCookie: !!mockLoginCookie,
+        hasMockTenantCookie: !!mockTenantCookie,
+        action: "redirect(tenant protected -> auth/login)",
+        redirectTo: red,
+    });
 }
 
 export const config = {

@@ -11,7 +11,6 @@ export async function GET(req: NextRequest) {
         ok: true,
         loggedIn: mockLogin,
         tenant: mockTenant,
-        // 프론트-only 단계: 유저 프로필은 settings(localStorage)에서 채워서 보여줄 거라 여기선 최소만
         user: mockLogin ? { id: "mock", provider: "kakao" } : null,
     });
 }

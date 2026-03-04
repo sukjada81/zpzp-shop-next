@@ -1,6 +1,6 @@
 // src/app/select-tenant/page.tsx
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTenantList } from "@/lib/tenant/tenants";
 
@@ -14,16 +14,40 @@ function normalizeTenant(raw: string) {
 
 function buildTenantHomeUrl(tenant: string) {
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    // 로컬에서도 https 고정하면 꼬일 수 있으니, 환경변수로 외부 origin을 받으면 더 좋지만
+    // 지금 단계에서는 운영 기준(https) 유지.
     return `https://${tenant}.${baseDomain}/home`;
 }
 
-export default async function SelectTenantPage() {
-    const ck = await cookies();
+async function getSessionFromApi() {
+    // ✅ SSR에서 현재 요청의 쿠키를 그대로 내부 API로 전달
+    const h = await headers();
+    const cookie = h.get("cookie") || "";
 
+    const INTERNAL_ORIGIN = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
+    const url = new URL("/api/auth/session", INTERNAL_ORIGIN);
+
+    const res = await fetch(url.toString(), {
+        headers: { cookie },
+        cache: "no-store",
+    });
+
+    if (!res.ok) return { ok: false, loggedIn: false, tenant: "" };
+
+    try {
+        return (await res.json()) as { ok: boolean; loggedIn: boolean; tenant?: string };
+    } catch {
+        return { ok: false, loggedIn: false, tenant: "" };
+    }
+}
+
+export default async function SelectTenantPage() {
     const AUTH_ORIGIN = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
     const SELECT_TENANT_ORIGIN = process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
 
-    const isLoggedIn = ck.get("mockLogin")?.value === "1";
+    // ✅ 로그인 여부는 API로 판별 (쿠키 domain/samesite 이슈로 루프 방지)
+    const sess = await getSessionFromApi();
+    const isLoggedIn = !!sess?.loggedIn;
 
     // ✅ 로그인 전이면 접근 금지 → auth로 보냄 (returnTo는 select-tenant 루트)
     if (!isLoggedIn) {
@@ -39,9 +63,7 @@ export default async function SelectTenantPage() {
             <div className="pt-7">
                 <div className="flex items-end justify-between gap-3">
                     <div className="min-w-0">
-                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">
-                            지점 선택
-                        </div>
+                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">지점 선택</div>
                         <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
                             원하시는 지점을 눌러 들어가세요.
                         </div>
@@ -77,9 +99,7 @@ export default async function SelectTenantPage() {
                                 <div className="p-4">
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="min-w-0">
-                                            <div className="truncate text-[16px] font-extrabold text-[color:var(--fg)]">
-                                                {t.name}
-                                            </div>
+                                            <div className="truncate text-[16px] font-extrabold text-[color:var(--fg)]">{t.name}</div>
                                             <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
                                                 선택 시 해당 지점 홈으로 이동합니다.
                                             </div>

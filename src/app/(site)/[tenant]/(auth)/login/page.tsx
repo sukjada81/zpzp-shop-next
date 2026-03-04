@@ -3,25 +3,36 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+export default function TenantLoginPage() {
     const params = useParams<{ tenant?: string }>();
     const sp = useSearchParams();
 
     const tenant = (params?.tenant as string) || "";
-    const returnTo = sp.get("returnTo") || "/home";
+    const returnToParam = sp.get("returnTo");
+
+    const AUTH_ORIGIN = process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+
+    // ✅ defaultReturnTo는 "현재 접속 origin" 기반으로 만든다.
+    // - 로컬: http://a.discountallday.kr:3000/home
+    // - 운영: https://a.discountallday.kr/home
+    const origin =
+        typeof window !== "undefined" ? window.location.origin : `https://${tenant}.discountallday.kr`;
+
+    const defaultReturnTo = tenant ? new URL("/home", origin).toString() : origin;
+
+    const returnTo = returnToParam || defaultReturnTo;
 
     return (
         <main className="min-h-dvh flex flex-col items-center justify-center px-6">
             <div className="w-full max-w-[420px] flex flex-col items-center">
                 <div className="mb-6 text-center">
                     <div className="text-xl font-extrabold tracking-wide">매장 로그인</div>
-                    <div className="mt-2 text-sm text-slate-500">카카오 계정으로 간편하게 시작하세요.</div>
+                    <div className="mt-2 text-sm text-slate-500">인증 페이지로 이동합니다.</div>
                 </div>
 
                 <div className="w-full rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="text-sm text-slate-700 leading-6">
-                        <div>• 필수 · 선택 모두 동의해야</div>
-                        <div>• 픽업 안내 알림을 받을 수 있습니다.</div>
+                        <div>• 카카오 로그인은 인증 서버에서 진행됩니다.</div>
                     </div>
                 </div>
 
@@ -29,15 +40,13 @@ export default function LoginPage() {
                     type="button"
                     className="mt-5 w-full rounded-xl bg-[var(--kakao)] py-4 font-bold text-black shadow-sm active:scale-[0.99]"
                     onClick={() => {
-                        // ✅ 버튼 클릭은 일반 로그인: auto=1 제거
-                        const qs =
-                            `tenant=${encodeURIComponent(tenant)}` +
-                            `&returnTo=${encodeURIComponent(returnTo)}`;
-
-                        window.location.href = `/api/auth/kakao/login?${qs}`;
+                        const loginUrl = new URL("/login", AUTH_ORIGIN);
+                        if (tenant) loginUrl.searchParams.set("tenant", tenant);
+                        loginUrl.searchParams.set("returnTo", returnTo);
+                        window.location.href = loginUrl.toString();
                     }}
                 >
-                    카카오로 시작하기
+                    카카오 로그인으로 이동
                 </button>
 
                 <p className="mt-3 text-xs text-slate-400 text-center">
