@@ -15,12 +15,9 @@ function signState(payloadJson: string, secret: string) {
 }
 
 function getAuthOrigin(req: NextRequest) {
-    // ✅ 운영: AUTH_ORIGIN을 최우선 사용 (표준키)
-    // ✅ 호환: MAIN_ORIGIN
     const env = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN;
     if (env) return env;
 
-    // 로컬/프록시 fallback (최후수단)
     const xfProto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim();
     const xfHost = (req.headers.get("x-forwarded-host") || "").split(",")[0].trim();
     const host = (req.headers.get("host") || "").trim();
@@ -33,8 +30,10 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
 
     const tenant = url.searchParams.get("tenant") || "";
-    const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://discountallday.kr";
-    const returnTo = url.searchParams.get("returnTo") || `${SITE_ORIGIN}/select-tenant`;
+
+    const SELECT_TENANT_ORIGIN = process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
+    const returnTo = url.searchParams.get("returnTo") || new URL("/", SELECT_TENANT_ORIGIN).toString();
+
     const auto = url.searchParams.get("auto") === "1";
 
     const KAKAO_CLIENT_ID = process.env.KAKAO_CLIENT_ID;
@@ -47,7 +46,6 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    // ✅ redirect_uri는 무조건 "auth 도메인"으로 고정
     const AUTH_ORIGIN = getAuthOrigin(req);
     const redirectUri = new URL("/api/auth/kakao/callback", AUTH_ORIGIN).toString();
 

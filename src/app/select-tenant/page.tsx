@@ -1,6 +1,6 @@
 // src/app/select-tenant/page.tsx
 import Link from "next/link";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTenantList } from "@/lib/tenant/tenants";
 
@@ -12,35 +12,23 @@ function normalizeTenant(raw: string) {
     return t;
 }
 
-function getHost(h: Headers) {
-    return (h.get("x-forwarded-host") || h.get("host") || "").split(",")[0].trim();
-}
-
-function isLocalHost(host: string) {
-    const hostOnly = host.split(":")[0].toLowerCase();
-    return hostOnly === "localhost" || hostOnly.endsWith(".localhost") || host.includes(":3000");
-}
-
-function buildTenantHomeUrl(host: string, tenant: string) {
+function buildTenantHomeUrl(tenant: string) {
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
-    if (isLocalHost(host)) return `http://${tenant}.${baseDomain}:3000/home`;
     return `https://${tenant}.${baseDomain}/home`;
 }
 
 export default async function SelectTenantPage() {
     const ck = await cookies();
-    const h = await headers();
-    const host = getHost(h);
 
-    const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://discountallday.kr";
-    const AUTH_ORIGIN = process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
+    const AUTH_ORIGIN = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
+    const SELECT_TENANT_ORIGIN = process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
 
     const isLoggedIn = ck.get("mockLogin")?.value === "1";
 
-    // ✅ 로그인 전이면 select-tenant 접근 금지 → auth로 보냄
+    // ✅ 로그인 전이면 접근 금지 → auth로 보냄 (returnTo는 select-tenant 루트)
     if (!isLoggedIn) {
         const u = new URL("/login", AUTH_ORIGIN);
-        u.searchParams.set("returnTo", new URL("/select-tenant", SITE_ORIGIN).toString());
+        u.searchParams.set("returnTo", new URL("/", SELECT_TENANT_ORIGIN).toString());
         return redirect(u.toString());
     }
 
@@ -64,8 +52,7 @@ export default async function SelectTenantPage() {
                     {tenants.map((t) => {
                         const slug = normalizeTenant(t.slug);
                         const imgLabel = TENANT_IMAGES[slug]?.label;
-
-                        const href = buildTenantHomeUrl(host, slug);
+                        const href = buildTenantHomeUrl(slug);
 
                         return (
                             <Link
