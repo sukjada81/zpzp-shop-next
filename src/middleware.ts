@@ -34,6 +34,19 @@ function getHost(req: NextRequest) {
         .toLowerCase();
 }
 
+/** ✅ Edge middleware에서 절대 URL rewrite를 만들 때 localhost로 굳는 문제 방지 */
+function getRequestOrigin(req: NextRequest) {
+    const xfProto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim();
+    const xfHost = (req.headers.get("x-forwarded-host") || "").split(",")[0].trim();
+    const host = (req.headers.get("host") || "").split(",")[0].trim();
+
+    const proto = xfProto || "http";
+    const hostname = xfHost || host;
+
+    // hostname이 비면 req.nextUrl.origin fallback
+    return hostname ? `${proto}://${hostname}` : req.nextUrl.origin;
+}
+
 function getSubdomain(host: string) {
     const h = host.split(":")[0].toLowerCase();
     if (!h) return null;
@@ -84,20 +97,22 @@ export async function middleware(req: NextRequest) {
     if (host.startsWith("select-tenant.")) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
-        // ✅ "/" 요청은 내부 선택화면으로 rewrite
-        // 핵심: 절대 URL로 rewrite 하지 않기! (localhost로 굳는 문제 방지)
         if (pathname === "/") {
-            // URL 객체를 만들지 말고 "경로 문자열"로 rewrite
-            return NextResponse.rewrite("/select-tenant");
+            // ✅ Next.js 16 Edge middleware는 rewrite에 "절대 URL" 요구
+            // ✅ 그리고 base origin은 x-forwarded-* 기반으로 만들어 localhost로 굳는 문제 방지
+            const origin = getRequestOrigin(req);
+            const url = new URL("/select-tenant", origin);
+            url.search = search;
+            return NextResponse.rewrite(url);
         }
 
-        // 선택화면 경로는 그대로 통과
         if (pathname === "/select-tenant" || pathname.startsWith("/select-tenant/")) {
             return NextResponse.next();
         }
 
         // 그 외는 루트로 정리
-        return NextResponse.redirect("/");
+        const origin = getRequestOrigin(req);
+        return NextResponse.redirect(new URL("/", origin));
     }
 
     // =========================
