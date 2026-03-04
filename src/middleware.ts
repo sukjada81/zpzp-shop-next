@@ -125,6 +125,34 @@ export async function middleware(req: NextRequest) {
     }
 
     // =========================
+    // 1.5) admin 서브도메인 처리 (admin.discountallday.kr)
+    // - 외부: /login, /dashboard, /orders ...
+    // - 내부: /admin/login, /admin/dashboard, /admin/orders ...
+    // =========================
+    if (host.startsWith("admin.")) {
+        if (isPublicPath(pathname)) return NextResponse.next();
+
+        // 루트 접속은 대시보드로
+        if (pathname === "/") {
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/admin/dashboard", search));
+        }
+
+        // /login -> /admin/login
+        if (pathname === "/login" || pathname.startsWith("/login/")) {
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
+        }
+
+        // 이미 /admin으로 들어온 건 그대로
+        if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+            return NextResponse.next();
+        }
+
+        // 그 외 모든 경로는 /admin 프리픽스 붙여서 내부로 보냄
+        // 예) /orders -> /admin/orders
+        return NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
+    }
+
+    // =========================
     // 2) Admin 보호 (내부 라우트는 /admin/* 유지)
     // =========================
     if (isAdminPath(pathname)) {
