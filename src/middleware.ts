@@ -35,18 +35,22 @@ function getHost(req: NextRequest) {
 }
 
 /**
- * ✅ rewrite는 "내부 라우팅(로컬 origin)" 으로만 해야 안전함.
- * - 외부 https 절대 URL로 rewrite하면 Next가 내부 프록시/페치하다가 SSL 체인 문제로 500 나는 케이스가 많음.
+ * ✅ rewrite는 "내부 라우팅(로컬 Next 서버)"으로만 한다.
+ * - 절대 req.nextUrl.clone() 사용 금지: 운영에서 https://localhost:3000 로 굳어
+ *   Next가 내부 프록시를 TLS로 시도하다가 "wrong version number"로 500이 난다.
+ *
+ * 운영: nginx(https) → next(127.0.0.1:3000 http)
+ * 따라서 내부 rewrite는 항상 http://127.0.0.1:3000 기준으로 고정.
  */
 function makeInternalRewriteUrl(req: NextRequest, pathname: string, search: string) {
-    const url = req.nextUrl.clone(); // 내부 origin(대부분 http://127.0.0.1:3000)
-    url.pathname = pathname;
+    const INTERNAL_ORIGIN = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
+    const url = new URL(pathname, INTERNAL_ORIGIN);
     url.search = search || "";
     return url;
 }
 
 /**
- * ✅ redirect는 사용자 브라우저가 따라갈 "외부 origin" 이 필요.
+ * ✅ redirect는 사용자 브라우저가 따라갈 "외부 origin"이 필요.
  * (localhost로 굳는 현상 방지)
  */
 function getExternalOrigin(req: NextRequest) {
@@ -103,13 +107,12 @@ export async function middleware(req: NextRequest) {
     // 1) select-tenant 서브도메인 처리
     // - 외부 URL: https://select-tenant.discountallday.kr/
     // - 내부 페이지: /select-tenant
-    // => "/" 요청은 "/select-tenant"로 "내부 rewrite" (URL은 "/" 유지)
+    // => "/" 요청은 "/select-tenant"로 내부 rewrite (URL은 "/" 유지)
     // =========================
     if (host.startsWith("select-tenant.")) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
         if (pathname === "/") {
-            // ✅ 내부 rewrite로 변경 (외부 https로 rewrite 금지)
             return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
         }
 
@@ -122,7 +125,7 @@ export async function middleware(req: NextRequest) {
     }
 
     // =========================
-    // 2) Admin 보호 (기존 유지)
+    // 2) Admin 보호 (내부 라우트는 /admin/* 유지)
     // =========================
     if (isAdminPath(pathname)) {
         if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
@@ -130,10 +133,8 @@ export async function middleware(req: NextRequest) {
         }
 
         try {
-            // ✅ 세션 체크는 같은 호스트로 내부 호출하지 말고,
-            // 외부 절대URL(브라우저 기준)이 아닌 "내부 origin"으로 호출하는 게 안전.
-            // 다만 여기서는 /api/admin/session 이 Next route handler라 내부 origin이어도 OK.
-            const internalSessionUrl = new URL("/api/admin/session", req.nextUrl.origin);
+            // ✅ 내부 API(session) 호출도 내부 origin 고정 사용
+            const internalSessionUrl = new URL("/api/admin/session", process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000");
 
             const res = await fetch(internalSessionUrl.toString(), {
                 headers: { cookie: req.headers.get("cookie") || "" },
@@ -141,15 +142,15 @@ export async function middleware(req: NextRequest) {
             });
 
             if (!res.ok) {
-                const loginUrl = new URL("/admin/login", externalOrigin);
-                loginUrl.searchParams.set("returnTo", `${pathname}${search || ""}`);
+                const loginUrl = new URL("/login", externalOrigin); // admin 도메인에서는 /login이 user-facing
+                loginUrl.searchParams.set("returnTo", pathname === "/admin" ? "/dashboard" : `${pathname}${search || ""}`);
                 return NextResponse.redirect(loginUrl);
             }
 
             return NextResponse.next();
         } catch {
-            const loginUrl = new URL("/admin/login", externalOrigin);
-            loginUrl.searchParams.set("returnTo", `${pathname}${search || ""}`);
+            const loginUrl = new URL("/login", externalOrigin);
+            loginUrl.searchParams.set("returnTo", pathname === "/admin" ? "/dashboard" : `${pathname}${search || ""}`);
             return NextResponse.redirect(loginUrl);
         }
     }
@@ -189,7 +190,6 @@ export async function middleware(req: NextRequest) {
     const isProtected = needsAuth(internalPathname);
     if (!isProtected) {
         if (internalPathname !== pathname) {
-            // ✅ 내부 rewrite로 변경 (외부 https 절대URL rewrite 금지)
             return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
         }
         return NextResponse.next();
@@ -198,7 +198,6 @@ export async function middleware(req: NextRequest) {
     const mockLogin = req.cookies.get("mockLogin")?.value === "1";
     if (mockLogin) {
         if (internalPathname !== pathname) {
-            // ✅ 내부 rewrite로 변경
             return NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search));
         }
         return NextResponse.next();
