@@ -69,6 +69,12 @@ export async function middleware(req: NextRequest) {
 
     const host = getHost(req);
 
+    // ✅ 0) auth 서브도메인은 middleware가 redirect/rewrite 하지 않고 Next 라우트로 넘긴다.
+    // - auth 루트(/) → /login 처리, returnTo 처리 등은 src/app/page.tsx(및 로그인 페이지)에서 담당
+    if (host.startsWith("auth.")) {
+        return NextResponse.next();
+    }
+
     // =========================
     // 1) select-tenant 서브도메인 처리
     // - 외부 URL: https://select-tenant.discountallday.kr/
