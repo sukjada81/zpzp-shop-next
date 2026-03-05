@@ -35,6 +35,7 @@ function getSetCookies(res: Response): string[] {
 /**
  * ✅ 프록시 환경에서 쿠키 저장 실패 방지:
  * - Domain=... 제거 (Host-only cookie)
+ * - Path 없으면 /
  * - SameSite 없으면 Lax
  * - SameSite=None이면 Secure 강제
  */
@@ -53,27 +54,29 @@ function normalizeSetCookie(sc: string, req: NextRequest) {
     // 4) SameSite=None이면 Secure 필수
     const hasNone = /;\s*SameSite=None/i.test(out);
 
+    // x-forwarded-proto 우선 (프록시 환경)
     const proto =
-        req.headers.get("x-forwarded-proto") ||
+        (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() ||
         (req.nextUrl.protocol ? req.nextUrl.protocol.replace(":", "") : "http");
 
     const isHttps = proto === "https";
 
-    if (hasNone && !/;\s*Secure/i.test(out)) {
-        out += "; Secure";
-    }
-
-    // https일 때 None이면 Secure 보강(중복 방지)
-    if (isHttps && hasNone && !/;\s*Secure/i.test(out)) {
-        out += "; Secure";
-    }
+    if (hasNone && !/;\s*Secure/i.test(out)) out += "; Secure";
+    if (isHttps && hasNone && !/;\s*Secure/i.test(out)) out += "; Secure";
 
     return out;
 }
 
-async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-    const { path } = await ctx.params;
+/** Next route handler: ctx.params가 Promise/동기 혼재 가능 → 둘 다 커버 */
+async function getPathParams(ctx: any): Promise<string[]> {
+    const rawParams = await Promise.resolve(ctx?.params);
+    const path = rawParams?.path;
+    if (Array.isArray(path)) return path.map(String);
+    return [];
+}
 
+async function handle(req: NextRequest, ctx: any) {
+    const path = await getPathParams(ctx);
     const upstreamUrl = new URL(`/${path.join("/")}`, baseApi());
 
     // querystring 전달
@@ -93,16 +96,21 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
 
     const buf = await upstream.arrayBuffer();
 
-    const outHeaders = new Headers();
-    const ct = upstream.headers.get("content-type");
-    if (ct) outHeaders.set("content-type", ct);
+    /**
+     * ✅ 업스트림 헤더를 가능한 많이 보존
+     * - 단, hop-by-hop / 길이 관련은 제거
+     * - set-cookie는 normalize 해서 다시 append
+     */
+    const outHeaders = new Headers(upstream.headers);
+    outHeaders.delete("content-length"); // NextResponse가 알아서 처리
+    outHeaders.delete("connection");
+    outHeaders.delete("transfer-encoding");
 
+    // set-cookie는 정규화 필요 → 기존 제거 후 append
+    outHeaders.delete("set-cookie");
     for (const c of getSetCookies(upstream)) {
         outHeaders.append("set-cookie", normalizeSetCookie(c, req));
     }
-
-    const loc = upstream.headers.get("location");
-    if (loc) outHeaders.set("location", loc);
 
     return new NextResponse(buf, {
         status: upstream.status,
@@ -123,5 +131,8 @@ export async function PATCH(req: NextRequest, ctx: any) {
     return handle(req, ctx);
 }
 export async function DELETE(req: NextRequest, ctx: any) {
+    return handle(req, ctx);
+}
+export async function OPTIONS(req: NextRequest, ctx: any) {
     return handle(req, ctx);
 }
