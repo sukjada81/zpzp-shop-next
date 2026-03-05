@@ -4,9 +4,8 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireTenant } from "../../common/guard.js";
 
-/**
- * ✅ JSON-safe helpers (BigInt/Decimal 등)
- */
+type ImageItem = { key: string; label?: string };
+
 function toId(v: bigint | number | string): string {
     if (typeof v === "bigint") return v.toString();
     return String(v);
@@ -19,7 +18,7 @@ function toNumber(v: any, fallback = 0): number {
     return Number.isFinite(n) ? n : fallback;
 }
 
-function calcTimeLeft(end?: Date | null): string | undefined {
+function calcTimeLeftFromEnd(end?: Date | null): string | undefined {
     if (!end) return undefined;
     const diff = end.getTime() - Date.now();
     if (diff <= 0) return "마감";
@@ -31,67 +30,120 @@ function calcTimeLeft(end?: Date | null): string | undefined {
     return `${mins}분 남음`;
 }
 
-type ImageItem = { key: string; label?: string };
+function goodsImageUrl(raw: string | null | undefined): string {
+    const s = String(raw ?? "").trim();
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+
+    const base = (process.env.GOODS_IMAGE_BASE_URL ?? "").trim();
+    if (!base) return s; // base 없으면 일단 그대로
+    return base.endsWith("/") ? `${base}${s}` : `${base}/${s}`;
+}
 
 /**
- * images_json LONGTEXT 저장 형태를 느슨하게 허용
- * - JSON 문자열: ["url1","url2"]
- * - JSON 문자열: { "urls":[...]} / { "images":[...]} / { "items":[...]}
- * - 그냥 문자열(단일 URL)도 허용
+ * ✅ images_json 없음 (schema 기준)
+ * ✅ other_image(콤마) + 대표(image1/image2)로 구성
  */
-function normalizeImagesFromLongText(
-    imagesJsonText: string | null | undefined,
-    thumbnailUrl?: string | null
-): ImageItem[] {
+function normalizeImages(row: {
+    other_image?: string;
+    image1?: string;
+    image2?: string;
+}): ImageItem[] {
     const out: ImageItem[] = [];
 
     const pushUrl = (u: unknown) => {
         if (typeof u !== "string") return;
         const s = u.trim();
         if (!s) return;
-        out.push({ key: s });
+        out.push({ key: goodsImageUrl(s) });
     };
 
-    // 1) images_json 파싱
-    if (typeof imagesJsonText === "string" && imagesJsonText.trim()) {
-        const raw = imagesJsonText.trim();
-
-        // 단일 url일 수도 있음
-        if (/^https?:\/\//i.test(raw)) {
-            pushUrl(raw);
-        } else {
-            try {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) {
-                    for (const u of parsed) pushUrl(u);
-                } else if (parsed && typeof parsed === "object") {
-                    const obj = parsed as Record<string, unknown>;
-                    const urls = obj.urls ?? obj.images ?? obj.items;
-                    if (Array.isArray(urls)) {
-                        for (const u of urls) pushUrl(u);
-                    }
-                }
-            } catch {
-                // JSON 아닌 텍스트면 무시
-            }
-        }
+    // 1) other_image (콤마 문자열)
+    const other = String(row?.other_image ?? "").trim();
+    if (other) {
+        other
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean)
+            .forEach((x) => pushUrl(x));
     }
 
-    // 2) thumbnail_url도 포함
-    if (typeof thumbnailUrl === "string" && thumbnailUrl.trim()) {
-        pushUrl(thumbnailUrl);
-    }
+    // 2) 대표/목록 이미지
+    const img1 = String(row?.image1 ?? "").trim();
+    const img2 = String(row?.image2 ?? "").trim();
+    if (img1) pushUrl(img1);
+    if (img2) pushUrl(img2);
 
     // 중복 제거
     const uniq = Array.from(new Map(out.map((x) => [x.key, x])).values());
     return uniq.length ? uniq : [{ key: "", label: "이미지 없음" }];
 }
 
-type ProductsQuery = {
-    q?: string;
-    cursor?: string;
-    take: number;
-};
+/**
+ * ✅ option_info (옵션명|옵션항목|*|옵션명|옵션항목...)
+ * - 옵션항목은 사이트마다 "항목^추가금액^재고" 같은 케이스가 많아서 ^로 느슨히 파싱
+ */
+function parseOptions(row: {
+    option_use?: number;
+    option_soldout?: number;
+    option_info?: string;
+}): Array<{
+    id: string;
+    name: string;
+    price: number | null;
+    soldout?: boolean;
+    stockNote?: string;
+}> {
+    const optionUse = Number(row?.option_use ?? 0);
+    if (!optionUse) return [];
+
+    const optionSoldout = Number(row?.option_soldout ?? 0); // 2면 전체품절
+    const allSoldout = optionSoldout === 2;
+
+    const text = String(row?.option_info ?? "").trim();
+    if (!text) return [];
+
+    const groups = text
+        .split("|*|")
+        .map((g: string) => g.trim())
+        .filter(Boolean);
+
+    const out: any[] = [];
+    let seq = 0;
+
+    for (const g of groups) {
+        const parts = g.split("|");
+        if (parts.length < 2) continue;
+
+        const optName = String(parts[0] ?? "").trim();
+        const itemsRaw = String(parts.slice(1).join("|") ?? "").trim();
+
+        const items = itemsRaw.split(",").map((x) => x.trim()).filter(Boolean);
+        for (const it of items) {
+            const seg = it.split("^").map((x) => x.trim());
+            const itemName = String(seg[0] ?? "").trim();
+            if (!itemName) continue;
+
+            const addPrice = seg.length >= 2 ? toNumber(seg[1], 0) : 0;
+            const stock = seg.length >= 3 ? toNumber(seg[2], NaN) : NaN;
+
+            const soldout = allSoldout || (Number.isFinite(stock) && stock <= 0);
+            const name = optName ? `${optName} / ${itemName}` : itemName;
+
+            out.push({
+                id: `opt_${seq++}`,
+                name,
+                price: addPrice, // “추가금액”
+                soldout,
+                stockNote: soldout ? "품절" : Number.isFinite(stock) ? `재고 ${stock}` : undefined,
+            });
+        }
+    }
+
+    return out;
+}
+
+type ProductsQuery = { q?: string; cursor?: string; take: number };
 
 type ProductsListResponse = {
     ok: true;
@@ -100,8 +152,6 @@ type ProductsListResponse = {
         id: string;
         title: string;
         price: number;
-        badgeLeft?: string;
-        badgeRight?: string;
         metaLeft?: string;
         metaRight?: string;
         thumbnailUrl?: string;
@@ -115,11 +165,7 @@ type ProductDetailResponse = {
         id: string;
         title: string;
         price: number;
-
-        // ✅ 추가: DB description 표시용
         description?: string | null;
-
-        badges?: { left?: string; right?: string };
         meta?: { timeLeft?: string; pickup?: string };
         images: { key: string; label?: string }[];
         options: Array<{
@@ -129,19 +175,16 @@ type ProductDetailResponse = {
             soldout?: boolean;
             stockNote?: string;
         }>;
-        notices?: Array<{ icon?: string; text: string }>;
     };
 };
 
 export async function publicProductRoutes(app: FastifyInstance) {
-    // ✅ 이 모듈의 모든 public products 라우트는 tenant 세션/컨텍스트 필요
-    // (tenantId/tenantSlug가 플러그인에서 세팅된다는 전제)
     app.addHook("preHandler", requireTenant());
 
-    // GET /:tenant/v1/public/products
-    app.get<{ Querystring: ProductsQuery }>("/v1/public/products", async (req, reply) => {
-        // tenantSlug는 string | null | undefined 로 잡힐 수 있어 null -> undefined로 정규화
+    // GET /v1/public/products
+    app.get<{ Querystring: ProductsQuery }>("/v1/public/products", async (req) => {
         const tenantSlug: string | undefined = (req as any).tenantSlug ?? undefined;
+        const tenantId = (req as any).tenantId as bigint;
 
         const q = z
             .object({
@@ -151,102 +194,138 @@ export async function publicProductRoutes(app: FastifyInstance) {
             })
             .parse(req.query);
 
-        const where: Prisma.ProductWhereInput = {
-            tenantId: (req as any).tenantId!,
+        const where: Prisma.mallRN_goodsWhereInput = {
+            tenant_id: tenantId,
+            sale_use: 1,
+            display_use: 1,
+            auth_ck: "Y",
+            deleted_at: null,
             status: "active",
             ...(q.q
                 ? {
-                    OR: [{ title: { contains: q.q } }, { description: { contains: q.q } }],
+                    OR: [
+                        { name: { contains: q.q } },
+                        { explains: { contains: q.q } },
+                        { detail: { contains: q.q } },
+                    ],
                 }
                 : {}),
         };
 
-        const products = await app.prisma.product.findMany({
+        const rows = await app.prisma.mallRN_goods.findMany({
             where,
-            orderBy: [{ sortOrder: "desc" }, { updatedAt: "desc" }],
+            orderBy: [{ sort_order: "desc" }, { moddate: "desc" }, { uid: "desc" }],
             take: q.take,
             select: {
-                id: true,
-                title: true,
-                basePrice: true,
-                pickupOnly: true,
-                saleEndAt: true,
-                thumbnailUrl: true,
+                uid: true,
+                name: true,
+                price: true,
+                image2: true,
+                image1: true,
+                pickup_only: true,
+                sale_end_at: true,
             },
         });
 
-        const items: ProductsListResponse["items"] = products.map((p) => ({
-            id: toId(p.id),
-            title: p.title,
-            price: toNumber(p.basePrice, 0),
-            metaLeft: calcTimeLeft(p.saleEndAt),
-            metaRight: p.pickupOnly ? "픽업" : undefined,
-            thumbnailUrl: p.thumbnailUrl ?? undefined,
-        }));
+        const items: ProductsListResponse["items"] = rows.map((r) => {
+            const thumb = goodsImageUrl(r.image2 || r.image1);
+            const timeLeft = calcTimeLeftFromEnd(r.sale_end_at ?? null);
+
+            return {
+                id: toId(r.uid),
+                title: String(r.name ?? ""),
+                price: toNumber(r.price, 0),
+                metaLeft: timeLeft,
+                metaRight: r.pickup_only ? "픽업" : undefined,
+                thumbnailUrl: thumb || undefined,
+            };
+        });
 
         return { ok: true, tenant: tenantSlug, items } satisfies ProductsListResponse;
     });
 
-    // GET /:tenant/v1/public/products/:id
+    // GET /v1/public/products/:id
     app.get<{ Params: { id: string } }>("/v1/public/products/:id", async (req, reply) => {
         const tenantSlug: string | undefined = (req as any).tenantSlug ?? undefined;
+        const tenantId = (req as any).tenantId as bigint;
 
         const params = z.object({ id: z.string() }).parse(req.params);
+        const uid = Number(params.id);
 
-        let idBig: bigint;
-        try {
-            idBig = BigInt(params.id);
-        } catch {
+        if (!Number.isFinite(uid) || uid <= 0) {
             reply.code(400).send({ ok: false, error: "INVALID_ID" });
             return;
         }
 
-        const p = await app.prisma.product.findFirst({
-            where: { id: idBig, tenantId: (req as any).tenantId!, status: "active" },
-            include: {
-                options: { orderBy: { sortOrder: "asc" } },
+        const row = await app.prisma.mallRN_goods.findFirst({
+            where: {
+                uid,
+                tenant_id: tenantId,
+                sale_use: 1,
+                display_use: 1,
+                auth_ck: "Y",
+                deleted_at: null,
+                status: "active",
+            },
+            select: {
+                uid: true,
+                name: true,
+                price: true,
+                explains: true,
+                detail: true,
+                image1: true,
+                image2: true,
+                other_image: true,
+                detail_image: true,
+                option_use: true,
+                option_info: true,
+                option_soldout: true,
+                pickup_only: true,
+                sale_end_at: true,
             },
         });
 
-        if (!p) {
+        if (!row) {
             reply.code(404).send({ ok: false, error: "NOT_FOUND" });
             return;
         }
 
-        // images_json(LONGTEXT) + thumbnail_url 기반으로 구성
-        const images = normalizeImagesFromLongText((p as any).imagesJson as any, (p as any).thumbnailUrl);
+        const images = normalizeImages(row);
+        const desc = String(row.explains ?? "").trim() || String(row.detail ?? "").trim() || null;
 
-        const options: ProductDetailResponse["product"]["options"] = ((p as any).options ?? []).map((o: any) => {
-            const stock = o.stockQty ?? null;
-            const soldout = !o.isActive || stock === 0;
+        const parsedOptions = parseOptions(row);
+        const options =
+            parsedOptions.length > 0
+                ? parsedOptions.map((o) => ({
+                    ...o,
+                    price: o.price == null ? null : toNumber(row.price, 0) + toNumber(o.price, 0),
+                }))
+                : [
+                    {
+                        id: "base",
+                        name: "기본 구성",
+                        price: null,
+                        soldout: false,
+                        stockNote: "바로 주문 가능",
+                    },
+                ];
 
-            return {
-                id: toId(o.id),
-                name: o.name,
-                price: o.price == null ? null : toNumber(o.price, 0),
-                soldout,
-                stockNote: soldout ? "품절" : stock != null ? `재고 ${stock}` : undefined,
-            };
-        });
+        const timeLeft = calcTimeLeftFromEnd(row.sale_end_at ?? null);
 
         const product: ProductDetailResponse["product"] = {
-            id: toId((p as any).id),
-            title: (p as any).title,
-            price: toNumber((p as any).basePrice, 0),
-            description: (p as any).description ?? null,
-            badges: undefined,
+            id: toId(row.uid),
+            title: String(row.name ?? ""),
+            price: toNumber(row.price, 0),
+            description: desc,
             meta: {
-                timeLeft: calcTimeLeft((p as any).saleEndAt),
-                pickup: (p as any).pickupOnly ? "픽업 상품" : undefined,
+                timeLeft,
+                pickup: row.pickup_only ? "픽업 상품" : undefined,
             },
             images: images.map((x, idx) => ({
                 key: x.key,
                 label: idx === 0 ? "대표 이미지" : undefined,
             })),
-            options: options.length
-                ? options
-                : [{ id: "base", name: "기본 구성", price: null, soldout: false, stockNote: "바로 주문 가능" }],
-            notices: undefined,
+            options,
         };
 
         return { ok: true, tenant: tenantSlug, product } satisfies ProductDetailResponse;

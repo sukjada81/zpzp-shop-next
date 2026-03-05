@@ -33,28 +33,24 @@ function getSetCookies(res: Response): string[] {
 }
 
 /**
- * ✅ ngrok/프록시 환경에서 쿠키가 저장되지 않는 가장 흔한 원인:
- * - Set-Cookie에 Domain=localhost / 127.0.0.1 등이 들어있으면
- *   ngrok 도메인에서 브라우저가 쿠키 저장을 거부함.
- *
- * 그래서 proxy에서 Set-Cookie를 "현재 호스트에 맞게" 정규화한다.
- * - Domain=... 제거 (Host-only cookie로 만듦)
- * - SameSite 없으면 Lax 기본
- * - SameSite=None 이면 Secure 강제(현대 브라우저 요구)
+ * ✅ 프록시 환경에서 쿠키 저장 실패 방지:
+ * - Domain=... 제거 (Host-only cookie)
+ * - SameSite 없으면 Lax
+ * - SameSite=None이면 Secure 강제
  */
 function normalizeSetCookie(sc: string, req: NextRequest) {
     let out = sc;
 
-    // 1) Domain=... 제거 (가장 중요)
+    // 1) Domain=... 제거
     out = out.replace(/;\s*Domain=[^;]+/gi, "");
 
-    // 2) Path 없으면 / (대부분 있겠지만 안전)
+    // 2) Path 없으면 /
     if (!/;\s*Path=/i.test(out)) out += "; Path=/";
 
-    // 3) SameSite 없으면 Lax 기본
+    // 3) SameSite 없으면 Lax
     if (!/;\s*SameSite=/i.test(out)) out += "; SameSite=Lax";
 
-    // 4) SameSite=None 이면 Secure 필수
+    // 4) SameSite=None이면 Secure 필수
     const hasNone = /;\s*SameSite=None/i.test(out);
 
     const proto =
@@ -64,16 +60,11 @@ function normalizeSetCookie(sc: string, req: NextRequest) {
     const isHttps = proto === "https";
 
     if (hasNone && !/;\s*Secure/i.test(out)) {
-        // None인데 Secure가 없으면 브라우저가 차단
         out += "; Secure";
     }
 
-    // 5) https 접속일 때, 쿠키에 Secure가 있어도 OK (없어도 되지만 문제는 아님)
-    //    반대로 http(localhost)에서 Secure가 있으면 쿠키가 안 저장될 수 있음.
-    //    => 여기서는 "https일 때만 Secure를 추가" 정도만 하고,
-    //       기존 Secure는 건드리지 않는다(백엔드 정책 존중).
-    if (isHttps && !/;\s*Secure/i.test(out) && hasNone) {
-        // (이미 위에서 처리되지만 중복 방지용)
+    // https일 때 None이면 Secure 보강(중복 방지)
+    if (isHttps && hasNone && !/;\s*Secure/i.test(out)) {
         out += "; Secure";
     }
 
@@ -83,7 +74,6 @@ function normalizeSetCookie(sc: string, req: NextRequest) {
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
     const { path } = await ctx.params;
 
-    // ex) /api/proxy/admin/auth/login -> path=["admin","auth","login"]
     const upstreamUrl = new URL(`/${path.join("/")}`, baseApi());
 
     // querystring 전달
@@ -101,20 +91,16 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
         redirect: "manual",
     });
 
-    // ✅ 응답 바디 그대로
     const buf = await upstream.arrayBuffer();
 
-    // ✅ 응답 헤더 복사 (특히 set-cookie!)
     const outHeaders = new Headers();
     const ct = upstream.headers.get("content-type");
     if (ct) outHeaders.set("content-type", ct);
 
-    // 중요: 세션 쿠키 전달(정규화해서 전달)
     for (const c of getSetCookies(upstream)) {
         outHeaders.append("set-cookie", normalizeSetCookie(c, req));
     }
 
-    // 필요시 location도 전달(redirect 쓰는 경우)
     const loc = upstream.headers.get("location");
     if (loc) outHeaders.set("location", loc);
 

@@ -1,3 +1,4 @@
+// src/components/goods/GoodsDetailClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -35,17 +36,33 @@ function cn(...xs: Array<string | false | null | undefined>) {
     return xs.filter(Boolean).join(" ");
 }
 
-function parseDescription(desc?: string | null) {
-    const raw = String(desc ?? "").trim();
-    if (!raw) return { lines: [] as string[] };
+function looksLikeHtml(s?: string | null) {
+    const v = String(s ?? "").trim();
+    if (!v) return false;
+    return /<\/?[a-z][\s\S]*>/i.test(v);
+}
 
-    const lines = raw
-        .replace(/\r\n/g, "\n")
-        .split("\n")
-        .map((l) => l.trimEnd())
-        .filter((l) => l.trim().length > 0);
+/** 최소한의 방어 (script/inline handler 제거) */
+function sanitizeHtml(input: string) {
+    let html = input;
+    html = html.replace(/<\s*(script|iframe|object|embed)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "");
+    html = html.replace(/<\s*(script|iframe|object|embed)[^>]*\/\s*>/gi, "");
+    html = html.replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
+    return html;
+}
 
-    return { lines };
+/** src="image/..." 같은 상대경로를 절대경로로 변환 */
+function absolutizeHtmlImageSrc(html: string) {
+    const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
+    if (!base) return html;
+
+    const re1 = /\bsrc\s*=\s*(["'])(image\/[^"']+)\1/gi;
+    const re2 = /\bsrc\s*=\s*(["'])(\/image\/[^"']+)\1/gi;
+
+    let out = html;
+    out = out.replace(re1, (_m, q, p) => `src=${q}${base}/${p}${q}`);
+    out = out.replace(re2, (_m, q, p) => `src=${q}${base}${p}${q}`);
+    return out;
 }
 
 export default function GoodsDetailClient(props: { tenant: string; data: GoodsDetailData }) {
@@ -61,10 +78,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const [imgIdx, setImgIdx] = useState(0);
     const canCarousel = safeImages.length > 1;
 
-    const [qty, setQty] = useState<Record<string, number>>(() =>
-        Object.fromEntries(data.options.map((o) => [o.id, 0])),
-    );
-
+    const [qty, setQty] = useState<Record<string, number>>(() => Object.fromEntries(data.options.map((o) => [o.id, 0])));
     const optionById = useMemo(() => new Map(data.options.map((o) => [o.id, o])), [data.options]);
 
     const selectedLines = useMemo(() => {
@@ -96,7 +110,24 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const imgLabel = safeImages?.[imgIdx]?.label?.trim();
     const [sheetOpen, setSheetOpen] = useState(false);
 
-    const { lines: descLines } = useMemo(() => parseDescription(data.description), [data.description]);
+    // ✅ 대표이미지: key가 절대URL이면 그대로, 상대면 NEXT_PUBLIC_ASSET_ORIGIN 붙이기
+    const mainImg = useMemo(() => {
+        const k = String(safeImages?.[imgIdx]?.key ?? "").trim();
+        if (!k) return "";
+        if (/^https?:\/\//i.test(k)) return k;
+        const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
+        return base ? `${base}${k.startsWith("/") ? "" : "/"}${k}` : (k.startsWith("/") ? k : `/${k}`);
+    }, [safeImages, imgIdx]);
+
+    // ✅ 상세설명: HTML이면 HTML로 렌더
+    const descRaw = String(data.description ?? "").trim();
+    const descIsHtml = looksLikeHtml(descRaw);
+
+    const descHtml = useMemo(() => {
+        if (!descIsHtml) return "";
+        const safe = sanitizeHtml(descRaw);
+        return absolutizeHtmlImageSrc(safe);
+    }, [descIsHtml, descRaw]);
 
     function addLinesToCart() {
         const payloadItems = selectedLines.map((l) => ({
@@ -140,7 +171,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const adjustQty = (optionId: string, delta: number) => {
         const opt = optionById.get(optionId);
         const isSoldout = !!opt?.soldout;
-
         if (delta > 0 && isSoldout) return;
 
         setQty((prev) => {
@@ -152,17 +182,20 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     return (
         <main className="mx-auto max-w-[520px] pb-24">
-            {/* ✅ 상단 카드(이미지/상품명/가격/설명까지 한 덩어리) */}
+            {/* 상단 카드 */}
             <section className="bg-white">
                 <div className="relative bg-slate-100">
-                    {safeImages[imgIdx]?.key ? (
+                    {mainImg ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={safeImages[imgIdx].key} alt={data.title} className="h-auto w-full object-cover" />
+                        <img
+                            src={mainImg}
+                            alt={data.title}
+                            className="h-auto w-full object-contain"   // ✅ 잘림 방지
+                        />
                     ) : (
                         <div className="aspect-[4/3]" />
                     )}
 
-                    {/* 배지 */}
                     <div className="absolute left-3 top-3 flex gap-2">
                         {data.badges?.left ? (
                             <span className="rounded-full bg-[color:var(--brand)] px-2.5 py-1 text-[11px] font-extrabold text-white">
@@ -206,7 +239,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     ) : null}
                 </div>
 
-                {/* ✅ 이미지 아래: 상품명/가격/칩 + 상세설명(같은 박스 안) */}
                 <div className="px-4 pt-4 pb-6">
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -216,9 +248,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                         <div className="shrink-0 text-right">
                             <div className="flex items-center justify-end gap-1">
                                 <span className="text-[14px] font-extrabold text-rose-600">₩</span>
-                                <span className="text-[28px] font-extrabold text-slate-900 tabular-nums">
-                  {data.price.toLocaleString()}
-                </span>
+                                <span className="text-[28px] font-extrabold text-slate-900 tabular-nums">{data.price.toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
@@ -229,7 +259,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 ⏰ {data.meta.timeLeft}
               </span>
                         ) : null}
-
                         {data.meta?.pickup ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-extrabold text-slate-700">
                 🚚 {data.meta.pickup}
@@ -237,49 +266,22 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                         ) : null}
                     </div>
 
-                    {/* (레퍼런스처럼) 안내 문구 */}
-                    <div className="mt-5 text-center text-[12px] font-semibold text-slate-400">
-                        이미지 클릭시 상세보기 가능합니다.
-                    </div>
+                    <div className="mt-5 text-center text-[12px] font-semibold text-slate-400">이미지 클릭시 상세보기 가능합니다.</div>
 
-                    {/* ✅ 여기! "상세 설명" 타이틀/박스 없이, 바로 본문처럼 노출 */}
-                    {descLines.length ? (
-                        <div className="mt-5 space-y-2">
-                            {descLines.map((line, i) => {
-                                const trimmed = line.trim();
-
-                                // 체크/불릿 비슷하게 렌더
-                                if (trimmed.startsWith("✓") || trimmed.startsWith("✔")) {
-                                    return (
-                                        <div key={i} className="flex gap-2 text-[14px] font-semibold leading-relaxed text-slate-800">
-                                            <span className="mt-[2px] text-slate-900">✓</span>
-                                            <span className="whitespace-pre-wrap break-words">
-                        {trimmed.replace(/^([✓✔]\s*)/, "")}
-                      </span>
-                                        </div>
-                                    );
-                                }
-
-                                if (trimmed.startsWith("-")) {
-                                    return (
-                                        <div key={i} className="flex gap-2 text-[14px] font-semibold leading-relaxed text-slate-800">
-                                            <span className="mt-[2px] text-slate-400">•</span>
-                                            <span className="whitespace-pre-wrap break-words">{trimmed.replace(/^-+\s*/, "")}</span>
-                                        </div>
-                                    );
-                                }
-
-                                // 아이콘/이모지로 시작하는 줄도 자연스럽게
-                                return (
-                                    <div key={i} className="whitespace-pre-wrap break-words text-[14px] font-semibold leading-relaxed text-slate-800">
-                                        {line}
-                                    </div>
-                                );
-                            })}
-                        </div>
+                    {/* ✅ 상세설명: HTML이면 렌더, 아니면 텍스트 */}
+                    {descRaw ? (
+                        descIsHtml ? (
+                            <div
+                                className="mt-5 prose prose-sm max-w-none prose-img:max-w-full prose-img:h-auto"
+                                dangerouslySetInnerHTML={{ __html: descHtml }}
+                            />
+                        ) : (
+                            <div className="mt-5 whitespace-pre-wrap break-words text-[14px] font-semibold leading-relaxed text-slate-800">
+                                {descRaw}
+                            </div>
+                        )
                     ) : null}
 
-                    {/* 공지(있으면) */}
                     {data.notices?.length ? (
                         <div className="mt-5 space-y-2">
                             {data.notices.map((n, idx) => (
@@ -296,7 +298,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </div>
             </section>
 
-            {/* ✅ 옵션/구성 */}
+            {/* 옵션/바텀시트 (당신이 보내준 기존 코드 그대로) */}
             <section className="px-4 pt-4">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex items-center justify-between">
@@ -379,7 +381,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </div>
             </section>
 
-            {/* ✅ 하단 구매하기 바 */}
+            {/* 바텀바/시트는 기존 그대로 사용 */}
             {!sheetOpen ? (
                 <div className="fixed bottom-0 left-0 right-0 z-[50] border-t border-slate-200 bg-white/95 backdrop-blur">
                     <div className="mx-auto max-w-[520px] px-4 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
@@ -410,15 +412,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </div>
             ) : null}
 
-            {/* ✅ 바텀시트 */}
             {sheetOpen ? (
                 <>
-                    <button
-                        type="button"
-                        aria-label="닫기"
-                        className="fixed inset-0 z-[80] bg-black/30"
-                        onClick={() => setSheetOpen(false)}
-                    />
+                    <button type="button" aria-label="닫기" className="fixed inset-0 z-[80] bg-black/30" onClick={() => setSheetOpen(false)} />
 
                     <div className="fixed bottom-0 left-0 right-0 z-[81]">
                         <div className="mx-auto max-w-[520px] overflow-hidden rounded-t-3xl bg-white shadow-2xl">
@@ -533,9 +529,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
                                     <div className="mt-3 flex items-center justify-between px-1">
                                         <div className="text-[13px] font-extrabold text-slate-900">총 상품금액</div>
-                                        <div className="text-[16px] font-extrabold text-slate-900 tabular-nums">
-                                            {grandTotal.toLocaleString()}원
-                                        </div>
+                                        <div className="text-[16px] font-extrabold text-slate-900 tabular-nums">{grandTotal.toLocaleString()}원</div>
                                     </div>
                                 </div>
 

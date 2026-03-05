@@ -1,6 +1,4 @@
 // apps/api/src/modules/admin/products.routes.ts
-import type { Prisma } from "@prisma/client";
-import { PrismaClient } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 
 type AdminSession = {
@@ -21,12 +19,6 @@ function requireSuperAdmin(req: any, reply: any) {
     return null;
 }
 
-/**
- * ✅ Prisma(BigInt/Decimal) -> JSON safe 변환기
- * - bigint: string 변환
- * - Decimal(Decimal.js): string 변환(안전)
- * - 객체/배열 재귀 변환
- */
 function jsonSafe<T>(v: T): any {
     if (v === null || v === undefined) return v;
 
@@ -34,10 +26,8 @@ function jsonSafe<T>(v: T): any {
     if (t === "bigint") return (v as unknown as bigint).toString();
     if (t !== "object") return v;
 
-    // Date
     if (v instanceof Date) return v.toISOString();
 
-    // Decimal.js (Prisma Decimal)
     const ctorName = (v as any)?.constructor?.name;
     if (ctorName === "Decimal" && typeof (v as any).toString === "function") {
         return (v as any).toString();
@@ -46,21 +36,17 @@ function jsonSafe<T>(v: T): any {
     if (Array.isArray(v)) return v.map(jsonSafe);
 
     const out: any = {};
-    for (const [k, val] of Object.entries(v as any)) {
-        out[k] = jsonSafe(val);
-    }
+    for (const [k, val] of Object.entries(v as any)) out[k] = jsonSafe(val);
     return out;
 }
 
-function parseBigIntParam(raw: unknown) {
+function parseIntId(raw: unknown) {
     const s = String(raw ?? "").trim();
     if (!s) return { ok: false as const, error: "id required" };
     if (!/^\d+$/.test(s)) return { ok: false as const, error: "invalid id" };
-    try {
-        return { ok: true as const, value: BigInt(s) };
-    } catch {
-        return { ok: false as const, error: "invalid id" };
-    }
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return { ok: false as const, error: "invalid id" };
+    return { ok: true as const, value: n };
 }
 
 function toNullableInt(v: any): number | null {
@@ -73,6 +59,12 @@ function toNullableInt(v: any): number | null {
 function toNumberSafe(v: any, fallback = 0) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
+}
+
+function unixToIso(u: any): string | null {
+    const n = Number(u);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return new Date(n * 1000).toISOString();
 }
 
 export async function adminProductsRoutes(app: FastifyInstance) {
@@ -91,7 +83,6 @@ export async function adminProductsRoutes(app: FastifyInstance) {
     });
 
     // ✅ 통합 관리자: 상품 목록
-    // GET /admin/products?tenant=all|{slug}&status=&q=&page=1&limit=20
     app.get("/admin/products", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
@@ -99,7 +90,6 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         const q = (req.query ?? {}) as any;
 
         const tenantSlug = String(q.tenant ?? "all").trim() || "all";
-        const status = q.status ? String(q.status).trim() : "";
         const keyword = q.q ? String(q.q).trim() : "";
 
         const page = Math.max(1, Number(q.page ?? 1) || 1);
@@ -113,42 +103,54 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 select: { id: true },
             });
             if (!tenant) return reply.code(400).send({ ok: false, message: "invalid tenant" });
-            tenantId = tenant.id as any;
+            tenantId = tenant.id;
         }
 
-        const where: any = {};
-        if (tenantId) where.tenantId = tenantId;
-        if (status) where.status = status;
+        const where: any = { deleted_at: null };
+        if (tenantId) where.tenant_id = tenantId;
+
         if (keyword) {
             where.OR = [
-                { title: { contains: keyword } },
-                { description: { contains: keyword } },
+                { name: { contains: keyword } },
+                { explains: { contains: keyword } },
+                { detail: { contains: keyword } },
             ];
         }
 
         const [total, rows] = await Promise.all([
-            app.prisma.product.count({ where }),
-            app.prisma.product.findMany({
+            app.prisma.mallRN_goods.count({ where }),
+            app.prisma.mallRN_goods.findMany({
                 where,
-                orderBy: { updatedAt: "desc" },
+                orderBy: [{ sort_order: "desc" }, { moddate: "desc" }, { uid: "desc" }],
                 skip,
                 take: limit,
                 select: {
-                    id: true,
-                    tenantId: true,
-                    title: true,
+                    uid: true,
+                    tenant_id: true,
+                    name: true,
+                    price: true,
+                    image2: true,
+                    image1: true,
+                    moddate: true,
+                    signdate: true,
                     status: true,
-                    basePrice: true,
-                    pickupOnly: true,
-                    minQty: true,
-                    maxQty: true,
-                    thumbnailUrl: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    tenant: { select: { slug: true, name: true } },
+                    pickup_only: true,
                 },
             }),
         ]);
+
+        const mapped = (rows as any[]).map((r) => ({
+            id: String(r.uid),
+            tenantId: r.tenant_id == null ? null : String(r.tenant_id),
+            title: r.name,
+            status: String(r.status ?? "draft"),
+            basePrice: Number(r.price ?? 0),
+            pickupOnly: !!r.pickup_only,
+            thumbnailUrl: r.image2 || r.image1 || null,
+            createdAt: unixToIso(r.signdate),
+            updatedAt: unixToIso(r.moddate),
+            tenant: undefined,
+        }));
 
         return reply.send(
             jsonSafe({
@@ -157,39 +159,79 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 page,
                 limit,
                 pageSize: limit,
-                rows,
-                items: rows, // 프론트 호환
+                rows: mapped,
+                items: mapped,
             })
         );
     });
 
     // ✅ 상품 상세
-    // GET /admin/products/:id
     app.get("/admin/products/:id", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
 
-        const parsed = parseBigIntParam(req.params?.id);
+        const parsed = parseIntId(req.params?.id);
         if (!parsed.ok) return reply.code(400).send({ ok: false, message: parsed.error });
 
-        const product = await app.prisma.product.findUnique({
-            where: { id: parsed.value },
-            include: {
-                tenant: { select: { slug: true, name: true } },
-                options: { orderBy: { sortOrder: "asc" } },
+        const row = await app.prisma.mallRN_goods.findUnique({
+            where: { uid: parsed.value },
+            select: {
+                uid: true,
+                tenant_id: true,
+                name: true,
+                price: true,
+                explains: true,
+                detail: true,
+                image1: true,
+                image2: true,
+                other_image: true,
+                detail_image: true,
+                option_use: true,
+                option_info: true,
+                option_soldout: true,
+                moddate: true,
+                signdate: true,
+                status: true,
+                pickup_only: true,
+                min_qty: true,
+                max_qty: true,
+                sale_start_at: true,
+                sale_end_at: true,
+                sort_order: true,
+                deleted_at: true,
             },
         });
 
-        if (!product) return reply.code(404).send({ ok: false, message: "not found" });
+        if (!row) return reply.code(404).send({ ok: false, message: "not found" });
+
+        const product = {
+            id: String(row.uid),
+            tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+            title: row.name,
+            description: String(row.explains ?? "").trim() || String(row.detail ?? "").trim() || null,
+            status: String(row.status ?? "draft"),
+            thumbnailUrl: row.image2 || row.image1 || null,
+            basePrice: Number(row.price ?? 0),
+            pickupOnly: !!row.pickup_only,
+            minQty: row.min_qty ?? null,
+            maxQty: row.max_qty ?? null,
+            saleStartAt: row.sale_start_at ?? null,
+            saleEndAt: row.sale_end_at ?? null,
+            createdAt: unixToIso(row.signdate),
+            updatedAt: unixToIso(row.moddate),
+            sortOrder: row.sort_order ?? 0,
+            deletedAt: row.deleted_at ?? null,
+            options: [],
+        };
+
         return reply.send({ ok: true, product: jsonSafe(product) });
     });
 
-    // ✅ 상품 생성 (+ 옵션 다건)
+    // ✅ 상품 생성
     app.post("/admin/products", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
 
-        const admin = (req.session as AdminSession).admin!;
         const body = (req.body ?? {}) as any;
 
         const tenantSlug = String(body.tenantSlug ?? "").trim();
@@ -204,144 +246,98 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         const title = String(body.title ?? "").trim();
         if (!title) return reply.code(400).send({ ok: false, message: "title required" });
 
-        const createdBy = BigInt(admin.id);
+        const nowSec = Math.floor(Date.now() / 1000);
 
-        const payload = {
-            tenantId: tenant.id,
-            title,
-            description: body.description == null ? null : String(body.description),
-            status: String(body.status ?? "draft").trim() || "draft",
-            thumbnailUrl: body.thumbnailUrl ? String(body.thumbnailUrl).trim() : null,
-            imagesJson: body.imagesJson ? String(body.imagesJson).trim() : null,
-            basePrice: toNumberSafe(body.basePrice, 0),
-            pickupOnly: Boolean(body.pickupOnly ?? true),
-            minQty: toNullableInt(body.minQty),
-            maxQty: toNullableInt(body.maxQty),
-            saleStartAt: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
-            saleEndAt: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
-            createdBy,
-        };
+        // ✅ Prisma 스키마에서 Text 필드가 required 인 것들 기본값 채움
+        const created = await app.prisma.mallRN_goods.create({
+            data: {
+                tenant_id: tenant.id,
+                name: title,
 
-        const options = Array.isArray(body.options) ? body.options : [];
+                // 필수 Text (required) 기본값
+                other_image: "",
+                detail_image: "",
+                option_info: "",
+                require_info: "",
+                detail: "",
+                making_info: "",
+                mileage_level: "",
+                delivery_info: "",
+                refund_info: "",
+                exchange_info: "",
+                as_info: "",
+                exhibition: "",
+                keyword: "",
 
-        const created = await app.prisma.$transaction(async (tx) => {
-            const product = await tx.product.create({
-                data: payload,
-                select: { id: true, tenantId: true, title: true, status: true, createdAt: true },
-            });
+                // 설명(필수 Text)
+                explains: body.description == null ? "" : String(body.description),
 
-            const rows = options
-                .map((o: any, idx: number) => ({
-                    productId: product.id,
-                    name: String(o.name ?? "").trim(),
-                    sku: o.sku == null || String(o.sku).trim() === "" ? null : String(o.sku).trim(),
-                    price: toNumberSafe(o.price, 0),
-                    stockQty: toNullableInt(o.stockQty),
-                    isActive: o.isActive == null ? true : Boolean(o.isActive),
-                    sortOrder: Number.isFinite(Number(o.sortOrder)) ? Number(o.sortOrder) : idx,
-                }))
-                .filter((r: any) => r.name);
+                // 가격
+                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice, 0))),
 
-            if (rows.length > 0) {
-                await tx.productOption.createMany({ data: rows });
-            }
+                // 확장 컬럼
+                status: String(body.status ?? "draft").trim() || "draft",
+                pickup_only: Boolean(body.pickupOnly ?? true),
+                min_qty: toNullableInt(body.minQty),
+                max_qty: toNullableInt(body.maxQty),
+                sale_start_at: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
+                sale_end_at: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
+                sort_order: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
+                deleted_at: null,
 
-            return product;
+                // 운영 필터
+                sale_use: 1,
+                display_use: 1,
+                auth_ck: "Y",
+                moddate: nowSec,
+                signdate: nowSec,
+            },
+            select: { uid: true },
         });
 
-        return reply.send({ ok: true, product: jsonSafe(created) });
+        return reply.send({ ok: true, product: jsonSafe({ id: String(created.uid) }) });
     });
 
-    // ✅ 상품 수정 (DB 컬럼 기준 전체 반영 + 옵션 동기화)
-    // PUT /admin/products/:id
+    // ✅ 상품 수정
     app.put("/admin/products/:id", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
 
-        const parsed = parseBigIntParam(req.params?.id);
+        const parsed = parseIntId(req.params?.id);
         if (!parsed.ok) return reply.code(400).send({ ok: false, message: parsed.error });
-        const id = parsed.value;
 
         const body = (req.body ?? {}) as any;
 
         const title = String(body.title ?? "").trim();
         if (!title) return reply.code(400).send({ ok: false, message: "title required" });
 
-        const status = String(body.status ?? "").trim() || "draft";
+        const exists = await app.prisma.mallRN_goods.findUnique({
+            where: { uid: parsed.value },
+            select: { uid: true },
+        });
+        if (!exists) return reply.code(404).send({ ok: false, message: "not found" });
 
-        const updateData: any = {
-            title,
-            description: body.description == null ? null : String(body.description),
-            status,
-            thumbnailUrl: body.thumbnailUrl ? String(body.thumbnailUrl).trim() : null,
-            imagesJson: body.imagesJson ? String(body.imagesJson).trim() : null,
-            basePrice: toNumberSafe(body.basePrice, 0),
-            pickupOnly: Boolean(body.pickupOnly ?? true),
-            minQty: toNullableInt(body.minQty),
-            maxQty: toNullableInt(body.maxQty),
-            saleStartAt: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
-            saleEndAt: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
-        };
+        const updated = await app.prisma.mallRN_goods.update({
+            where: { uid: parsed.value },
+            data: {
+                name: title,
+                explains: body.description == null ? "" : String(body.description),
+                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice, 0))),
 
-        const options = Array.isArray(body.options) ? body.options : [];
+                status: String(body.status ?? "draft").trim() || "draft",
+                pickup_only: Boolean(body.pickupOnly ?? true),
+                min_qty: toNullableInt(body.minQty),
+                max_qty: toNullableInt(body.maxQty),
+                sale_start_at: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
+                sale_end_at: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
+                sort_order: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
+                deleted_at: body.deletedAt ? new Date(String(body.deletedAt)) : null,
 
-        const updated = await app.prisma.$transaction(async (tx) => {
-            // 존재 확인
-            const exists = await tx.product.findUnique({ where: { id }, select: { id: true } });
-            if (!exists) {
-                // 트랜잭션 안에서 throw -> 404 처리
-                const err: any = new Error("not found");
-                err.statusCode = 404;
-                throw err;
-            }
-
-            const product = await tx.product.update({
-                where: { id },
-                data: updateData,
-                include: {
-                    tenant: { select: { slug: true, name: true } },
-                    options: { orderBy: { sortOrder: "asc" } },
-                },
-            });
-
-            // ✅ 옵션 동기화(간단/안전): 기존 전부 삭제 후 재생성
-            // (추후 “id 기반 upsert”가 필요하면 그때 확장)
-            await tx.productOption.deleteMany({ where: { productId: id } });
-
-            const rows = options
-                .map((o: any, idx: number) => ({
-                    productId: id,
-                    name: String(o.name ?? "").trim(),
-                    sku: o.sku == null || String(o.sku).trim() === "" ? null : String(o.sku).trim(),
-                    price: toNumberSafe(o.price, 0),
-                    stockQty: toNullableInt(o.stockQty),
-                    isActive: o.isActive == null ? true : Boolean(o.isActive),
-                    sortOrder: Number.isFinite(Number(o.sortOrder)) ? Number(o.sortOrder) : idx,
-                }))
-                .filter((r: any) => r.name);
-
-            if (rows.length > 0) {
-                await tx.productOption.createMany({ data: rows });
-            }
-
-            // 옵션 재조회해서 반환(정합)
-            const reloaded = await tx.product.findUnique({
-                where: { id },
-                include: {
-                    tenant: { select: { slug: true, name: true } },
-                    options: { orderBy: { sortOrder: "asc" } },
-                },
-            });
-
-            return reloaded ?? product;
-        }).catch((e: any) => {
-            if (e?.statusCode === 404 || e?.message === "not found") {
-                return null;
-            }
-            throw e;
+                moddate: Math.floor(Date.now() / 1000),
+            },
+            select: { uid: true },
         });
 
-        if (!updated) return reply.code(404).send({ ok: false, message: "not found" });
-        return reply.send({ ok: true, product: jsonSafe(updated) });
+        return reply.send({ ok: true, product: jsonSafe({ id: String(updated.uid) }) });
     });
 }

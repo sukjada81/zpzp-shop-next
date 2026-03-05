@@ -1,15 +1,18 @@
 // src/app/(site)/[tenant]/(app)/home/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { headers } from "next/headers";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
+import { endpoints } from "@/lib/api/endpoints";
+import { normalizeTenant } from "@/lib/tenant/getTenant";
+import type { PublicProductsResponse } from "@/lib/types/goods";
 
 type CardItem = {
     id: string;
     title: string;
     price: number;
     tags?: string[];
+    thumbnailUrl?: string;
 };
 
 type GridSection = {
@@ -18,61 +21,31 @@ type GridSection = {
     items: CardItem[];
 };
 
-type PublicProductsResponse = {
-    ok: true;
-    tenant: string;
-    items: Array<{
-        id: string;
-        title: string;
-        price: number;
-        metaLeft?: string;
-        metaRight?: string;
-    }>;
-};
-
-/**
- * Next.js 16/Turbopack 환경에서 headers()가 Promise로 동작하는 케이스가 있어
- * Promise.resolve(headers())로 안전하게 처리합니다.
- * (동기/비동기 모두 커버)
- */
-async function getRequestOrigin() {
-    const h = await Promise.resolve(headers() as any);
-
-    const xfProto = (h?.get?.("x-forwarded-proto") || "").split(",")[0].trim();
-    const xfHost = (h?.get?.("x-forwarded-host") || "").split(",")[0].trim();
-    const host = (h?.get?.("host") || "").trim();
-
-    const proto = xfProto || "http";
-    const hostname = xfHost || host;
-
-    // hostname이 비어있으면 마지막 fallback
-    if (!hostname) return "http://localhost:3000";
-
-    return `${proto}://${hostname}`;
+function getInternalOrigin() {
+    // ✅ SSR fetch는 internal origin이 제일 안전
+    return process.env.NEXT_INTERNAL_ORIGIN || process.env.NEXT_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
 }
 
 async function fetchProducts(tenant: string) {
-    const baseUrl =
-        process.env.NEXT_PUBLIC_BASE_URL ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-    const url = new URL(`/api/proxy/${tenant}/v1/public/products`, baseUrl);
-    url.searchParams.set("take", "50");
+    const origin = getInternalOrigin();
+    const path = endpoints.publicProducts(tenant, { take: 50 });
+    const url = new URL(path, origin);
 
     const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) return [];
+    if (!res.ok) return [] as PublicProductsResponse["items"];
 
     const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
-    if (!data || data.ok !== true) return [];
+    if (!data?.ok) return [];
 
     return data.items ?? [];
 }
 
 function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
-    return items.map((p) => ({
+    return (items ?? []).map((p) => ({
         id: String(p.id),
-        title: p.title,
+        title: String(p.title ?? ""),
         price: Number(p.price ?? 0),
+        thumbnailUrl: p.thumbnailUrl,
         tags: [...(p.metaLeft ? [p.metaLeft] : []), ...(p.metaRight ? [p.metaRight] : [])].slice(0, 2),
     }));
 }
@@ -80,11 +53,12 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
 export default async function HomePage({
                                            params,
                                        }: {
-    params: Promise<{ tenant: string }>;
+    params: { tenant: string } | Promise<{ tenant: string }>;
 }) {
-    const { tenant: rawTenant } = await params;
-    const tenant = (rawTenant || "").toLowerCase().trim();
-    if (!tenant || tenant === "undefined" || tenant === "null") notFound();
+    const resolved = await Promise.resolve(params);
+    const tenant = normalizeTenant(resolved?.tenant);
+
+    if (!tenant) notFound();
 
     const products = await fetchProducts(tenant);
     const pickup = products.filter((p) => (p.metaRight || "").includes("픽업"));
@@ -190,7 +164,12 @@ function Grid2({
                     className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm overflow-hidden active:scale-[0.995]"
                 >
                     <div className="aspect-[4/3] bg-[color:var(--brand-soft)]">
-                        <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
+                        {it.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={it.thumbnailUrl} alt={it.title} className="h-full w-full object-cover" />
+                        ) : (
+                            <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
+                        )}
                     </div>
 
                     <div className="p-3">

@@ -1,5 +1,6 @@
-export function apiProxy(path: string) {
-    // path 예: "a/v1/public/page.tsx"
+// src/lib/api/endpoints.ts
+
+function apiProxy(path: string) {
     const p = path.replace(/^\//, "");
     return `/api/proxy/${p}`;
 }
@@ -16,8 +17,7 @@ export const endpoints = {
         return url.pathname + (url.search ? url.search : "");
     },
 
-    publicProductDetail: (tenant: string, id: string | number) =>
-        apiProxy(`${tenant}/v1/public/products/${id}`),
+    publicProductDetail: (tenant: string, id: string | number) => apiProxy(`${tenant}/v1/public/products/${id}`),
 
     // --------
     // (다음 단계) Orders / Admin는 여기 계속 추가

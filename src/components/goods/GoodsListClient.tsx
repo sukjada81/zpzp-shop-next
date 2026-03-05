@@ -13,6 +13,7 @@ export type GoodsListItem = {
     badgeRight?: string;
     metaLeft?: string;
     metaRight?: string;
+    thumbnailUrl?: string; // ✅ 추가
 };
 
 const TABS = [
@@ -29,10 +30,7 @@ function isTabKey(x: string | null): x is TabKey {
     return !!x && (TABS as readonly { key: string }[]).some((t) => t.key === x);
 }
 
-export default function GoodsListClient(props: {
-    tenant: string;
-    initialItems: GoodsListItem[];
-}) {
+export default function GoodsListClient(props: { tenant: string; initialItems: GoodsListItem[] }) {
     const { tenant, initialItems } = props;
     const router = useRouter();
     const sp = useSearchParams();
@@ -41,7 +39,6 @@ export default function GoodsListClient(props: {
     const [q, setQ] = useState("");
     const [tab, setTab] = useState<TabKey>(isTabKey(tabFromUrl) ? tabFromUrl : "today");
 
-    // ✅ URL의 tab이 바뀌면(직접 입력/뒤로가기) 상태도 동기화
     useEffect(() => {
         const t = sp?.get("tab");
         if (isTabKey(t)) setTab(t);
@@ -58,11 +55,8 @@ export default function GoodsListClient(props: {
             const badgeR = it.badgeRight ?? "";
 
             if (tab === "today") return true;
-
-            // ✅ 픽업: metaRight에 "픽업"이 들어가는 규칙(현재 홈에서 쓰는 기준과 동일)
             if (tab === "pickup") return right.includes("픽업") || title.includes("픽업");
 
-            // ✅ 진행중: 배지/타이틀/메타 중 "진행" 또는 "D-" 같은 힌트가 있으면 포함 (필요 시 규칙 더 정교화 가능)
             if (tab === "ongoing") {
                 return (
                     badgeL.includes("진행") ||
@@ -98,13 +92,11 @@ export default function GoodsListClient(props: {
 
     function onChangeTab(next: TabKey) {
         setTab(next);
-        // ✅ URL도 같이 업데이트해서 공유/뒤로가기 안정화
         router.replace(`/${tenant}/goods?tab=${next}`);
     }
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24">
-            {/* 상단 */}
             <section className="pt-3">
                 <div className="flex items-start gap-3">
                     <button
@@ -123,7 +115,6 @@ export default function GoodsListClient(props: {
                 </div>
             </section>
 
-            {/* ✅ 탭 */}
             <section className="mt-4">
                 <div className="flex gap-2 overflow-x-auto pb-1">
                     {TABS.map((t) => {
@@ -147,7 +138,6 @@ export default function GoodsListClient(props: {
                 </div>
             </section>
 
-            {/* 검색 */}
             <section className="mt-4">
                 <div className="rounded-2xl border border-[color:var(--border)] bg-white px-3 py-2 shadow-sm">
                     <div className="flex items-center gap-2">
@@ -171,7 +161,6 @@ export default function GoodsListClient(props: {
                 </div>
             </section>
 
-            {/* 리스트 */}
             <section className="mt-5">
                 {filtered.length === 0 ? (
                     <div className="rounded-2xl border border-[color:var(--border)] bg-white p-6 text-center shadow-sm">
@@ -193,6 +182,9 @@ export default function GoodsListClient(props: {
 function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
     const { tenant, item } = props;
 
+    // ✅ thumbnailUrl이 절대URL로 오니 그대로 사용
+    const thumb = item.thumbnailUrl?.trim();
+
     return (
         <Link
             href={`/${tenant}/goods/${item.id}`}
@@ -201,6 +193,16 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
             <div className="p-3">
                 <div className="relative overflow-hidden rounded-xl bg-[color:var(--brand-soft)]">
                     <div className="aspect-[4/3]" />
+
+                    {thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={thumb}
+                            alt={item.title}
+                            className="absolute inset-0 h-full w-full object-cover"
+                            loading="lazy"
+                        />
+                    ) : null}
 
                     <div className="absolute left-2 top-2 flex gap-2">
                         {item.badgeLeft ? (
@@ -217,9 +219,7 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
                 </div>
 
                 <div className="mt-3 line-clamp-2 text-sm font-bold text-[color:var(--fg)]">{item.title}</div>
-                <div className="mt-2 text-lg font-extrabold text-[color:var(--fg)]">
-                    {Number(item.price ?? 0).toLocaleString()}원
-                </div>
+                <div className="mt-2 text-lg font-extrabold text-[color:var(--fg)]">{Number(item.price ?? 0).toLocaleString()}원</div>
 
                 {(item.metaLeft || item.metaRight) && (
                     <div className="mt-2 flex items-center justify-between text-[11px] font-semibold text-[color:var(--muted)]">

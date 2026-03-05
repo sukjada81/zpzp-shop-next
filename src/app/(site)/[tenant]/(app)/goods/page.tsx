@@ -13,6 +13,7 @@ type PublicProductsResponse = {
         badgeRight?: string;
         metaLeft?: string;
         metaRight?: string;
+        thumbnailUrl?: string; // ✅ 백엔드 응답에 있음
     }>;
 };
 
@@ -52,13 +53,13 @@ function toGoodsListItems(items: PublicProductsResponse["items"]): GoodsListItem
         badgeRight: p.badgeRight,
         metaLeft: p.metaLeft,
         metaRight: p.metaRight,
+        thumbnailUrl: p.thumbnailUrl, // ✅ 전달
     }));
 }
 
 export default async function GoodsPage({
                                             params,
                                         }: {
-    // ✅ Next.js 16: params Promise 대응
     params: { tenant: string } | Promise<{ tenant: string }>;
 }) {
     const resolved = await Promise.resolve(params);

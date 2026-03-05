@@ -12,7 +12,8 @@ function isLoggedIn(req: FastifyRequest): boolean {
 
 function isSuperAdmin(req: FastifyRequest): boolean {
     const s = getSession(req);
-    return !!(s?.admin?.is_super_admin || s?.user?.is_super_admin);
+    // 케이스 혼재 대응
+    return !!(s?.admin?.isSuperAdmin || s?.admin?.is_super_admin || s?.user?.is_super_admin);
 }
 
 export type RequireAdminOptions = {
@@ -22,8 +23,6 @@ export type RequireAdminOptions = {
 
 /**
  * ✅ Admin 가드
- * - 사용 형태 1) preHandler: requireAdmin
- * - 사용 형태 2) app.addHook("preHandler", requireAdmin({ superOnly: true }))
  */
 export function requireAdmin(
     opts?: RequireAdminOptions
@@ -41,35 +40,33 @@ export function requireAdmin(
 }
 
 export type RequireTenantOptions = {
-    /** tenantId 체크를 완화하고 싶을 때 */
+    /** 특정 라우트에서 tenant 없이도 허용하고 싶을 때 */
     allowMissingTenant?: boolean;
 };
 
 /**
- * ✅ Tenant 가드 (public/seller 등에서 사용 가능)
+ * ✅ Tenant 가드 (PUBLIC)
+ * - 로그인 여부 체크 ❌
+ * - tenantPlugin이 채워준 request.tenantId / tenantSlug 기준으로 체크 ✅
  */
 export function requireTenant(
     opts?: RequireTenantOptions
 ): (req: FastifyRequest, reply: FastifyReply) => Promise<void> {
     return async (req: FastifyRequest, reply: FastifyReply) => {
-        const s = getSession(req);
+        if (opts?.allowMissingTenant) return;
 
-        if (!isLoggedIn(req)) {
-            reply.code(401).send({ ok: false, message: "UNAUTHORIZED" });
+        const tenantId = (req as any).tenantId as bigint | null | undefined;
+        const tenantSlug = (req as any).tenantSlug as string | null | undefined;
+
+        if (!tenantId || !tenantSlug) {
+            reply.code(400).send({ ok: false, message: "TENANT_NOT_RESOLVED" });
             return;
-        }
-
-        if (!opts?.allowMissingTenant) {
-            if (!s?.tenantId && !s?.tenant?.id) {
-                reply.code(403).send({ ok: false, message: "TENANT_FORBIDDEN" });
-                return;
-            }
         }
     };
 }
 
 /**
- * (옵션) 슈퍼관리자 전용 (별도 사용하고 싶을 때)
+ * (옵션) 슈퍼관리자 전용
  */
 export function requireSuperAdmin() {
     return requireAdmin({ superOnly: true });

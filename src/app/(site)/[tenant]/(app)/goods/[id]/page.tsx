@@ -1,53 +1,25 @@
 // src/app/(site)/[tenant]/(app)/goods/[id]/page.tsx
 import { notFound } from "next/navigation";
 import GoodsDetailClient, { type GoodsDetailData } from "@/components/goods/GoodsDetailClient";
+import { endpoints } from "@/lib/api/endpoints";
+import { normalizeTenant } from "@/lib/tenant/getTenant";
+import type { ProductDetailResponse, PublicProductsResponse } from "@/lib/types/goods";
 
-type ProductDetailResponse = {
-    ok: true;
-    tenant?: string;
-    product: {
-        id: string | number;
-        title: string;
-        price: number;
-        description?: string | null;
-        badges?: { left?: string; right?: string };
-        meta?: { timeLeft?: string; pickup?: string };
-        images?: { key: string; label?: string }[];
-        options?: Array<{
-            id: string | number;
-            name: string;
-            price: number | null;
-            soldout?: boolean;
-            stockNote?: string;
-        }>;
-        notices?: { icon?: string; text: string }[];
-    };
-};
-
-function normalizeTenant(raw: string) {
-    const t = (raw || "").toLowerCase().trim();
-    if (!t || t === "undefined" || t === "null") return "";
-    return t;
-}
-
-function getBaseUrl() {
-    return (
-        process.env.NEXT_PUBLIC_BASE_URL ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-    );
+function getInternalOrigin() {
+    return process.env.NEXT_INTERNAL_ORIGIN || process.env.NEXT_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
 }
 
 /**
- * ✅ 1순위: 백엔드에 상세 API가 있으면 그걸 사용
- * - /v1/public/products/:id 형태로 먼저 시도
- * ✅ 2순위: 없으면(not ok) 목록 API로 fallback해서 최소 상세 데이터 구성
+ * ✅ 1순위: 상세 API 사용
+ * ✅ 2순위: 목록 fallback (최소 구성)
  */
 async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDetailData | null> {
-    const baseUrl = getBaseUrl();
+    const origin = getInternalOrigin();
 
-    // 1) 상세 API 시도
+    // 1) 상세 API
     {
-        const url = new URL(`/api/proxy/${tenant}/v1/public/products/${id}`, baseUrl);
+        const path = endpoints.publicProductDetail(tenant, id);
+        const url = new URL(path, origin);
         const res = await fetch(url.toString(), { cache: "no-store" });
 
         if (res.ok) {
@@ -88,22 +60,10 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
         }
     }
 
-    // 2) fallback: 목록 API에서 찾아서 최소 상세 구성
+    // 2) fallback: 목록에서 찾기
     {
-        type PublicProductsResponse = {
-            ok: true;
-            tenant: string;
-            items: Array<{
-                id: string | number;
-                title: string;
-                price: number;
-                metaLeft?: string;
-                metaRight?: string;
-            }>;
-        };
-
-        const url = new URL(`/api/proxy/${tenant}/v1/public/products`, baseUrl);
-        url.searchParams.set("take", "200");
+        const path = endpoints.publicProducts(tenant, { take: 200 });
+        const url = new URL(path, origin);
 
         const res = await fetch(url.toString(), { cache: "no-store" });
         if (!res.ok) return null;
@@ -143,7 +103,6 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
 export default async function GoodsDetailPage({
                                                   params,
                                               }: {
-    // ✅ Next.js 16: params Promise 케이스 대응
     params: { tenant: string; id: string } | Promise<{ tenant: string; id: string }>;
 }) {
     const resolved = await Promise.resolve(params);

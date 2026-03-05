@@ -3,21 +3,9 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTenantList } from "@/lib/tenant/tenants";
+import { normalizeTenant } from "@/lib/tenant/getTenant";
 
 const TENANT_IMAGES: Record<string, { label?: string }> = {};
-
-function normalizeTenant(raw: string) {
-    const t = (raw || "").toLowerCase().trim();
-    if (!t || t === "undefined" || t === "null") return "";
-    return t;
-}
-
-function buildTenantHomeUrl(tenant: string) {
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
-    // 로컬에서도 https 고정하면 꼬일 수 있으니, 환경변수로 외부 origin을 받으면 더 좋지만
-    // 지금 단계에서는 운영 기준(https) 유지.
-    return `https://${tenant}.${baseDomain}/home`;
-}
 
 async function getSessionFromApi() {
     // ✅ SSR에서 현재 요청의 쿠키를 그대로 내부 API로 전달
@@ -74,7 +62,9 @@ export default async function SelectTenantPage() {
                     {tenants.map((t) => {
                         const slug = normalizeTenant(t.slug);
                         const imgLabel = TENANT_IMAGES[slug]?.label;
-                        const href = buildTenantHomeUrl(slug);
+
+                        // ✅ 핵심: 지점 선택은 항상 API 라우트로 (쿠키 세팅 + 올바른 redirect 보장)
+                        const href = `/api/tenant/select?tenant=${encodeURIComponent(slug)}`;
 
                         return (
                             <Link
@@ -85,6 +75,7 @@ export default async function SelectTenantPage() {
                                     "hover:-translate-y-[1px] hover:shadow-md active:scale-[0.995]",
                                 ].join(" ")}
                                 aria-label={`${t.name} 선택`}
+                                prefetch={false}
                             >
                                 <div className="relative h-[110px] w-full" style={{ background: "var(--brand-soft)" }}>
                                     {imgLabel ? (
