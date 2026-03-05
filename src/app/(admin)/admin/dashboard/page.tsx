@@ -2,6 +2,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation"; // ✅ 추가
 
 type Money = number | string;
 
@@ -28,7 +29,6 @@ type Dash = {
 };
 
 async function getOriginAndCookie() {
-    // Next 16/Turbopack 환경에서 headers()가 Promise/동기 혼재 케이스 방어
     const h: any = await Promise.resolve(headers() as any);
 
     const xfProto = (h?.get?.("x-forwarded-proto") || "").split(",")[0].trim();
@@ -52,9 +52,13 @@ async function getDash(tenant: string): Promise<Dash> {
 
     const res = await fetch(url.toString(), {
         cache: "no-store",
-        // ✅ Server Component → 내부 API 호출 시 쿠키를 직접 실어줘야 세션 유지됨
         headers: cookie ? { cookie } : undefined,
     });
+
+    // ✅ 401이면 에러 throw 대신 로그인으로 이동
+    if (res.status === 401) {
+        redirect(`/login?returnTo=${encodeURIComponent("/dashboard?tenant=" + (tenant || "all"))}`);
+    }
 
     if (!res.ok) {
         const text = await res.text().catch(() => "");
@@ -74,6 +78,7 @@ export default async function AdminDashboardPage({
 
     return (
         <div className="space-y-4">
+            {/* 이하 기존 코드 그대로 */}
             <div className="dad-card p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="min-w-0">
@@ -94,16 +99,8 @@ export default async function AdminDashboardPage({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Kpi title="주문 수" value={data?.kpi?.ordersCount ?? 0} />
                 <Kpi title="상품 수" value={data?.kpi?.productsCount ?? 0} />
-                <Kpi
-                    title="총 매출"
-                    value={Number(data?.kpi?.totalSales ?? 0).toLocaleString()}
-                    suffix="원"
-                />
-                <Kpi
-                    title="포인트 합계"
-                    value={Number(data?.kpi?.pointsSum ?? 0).toLocaleString()}
-                    suffix="P"
-                />
+                <Kpi title="총 매출" value={Number(data?.kpi?.totalSales ?? 0).toLocaleString()} suffix="원" />
+                <Kpi title="포인트 합계" value={Number(data?.kpi?.pointsSum ?? 0).toLocaleString()} suffix="P" />
             </div>
 
             <div className="dad-card p-5">
@@ -174,15 +171,7 @@ export default async function AdminDashboardPage({
     );
 }
 
-function FilterPill({
-                        href,
-                        label,
-                        active,
-                    }: {
-    href: string;
-    label: string;
-    active: boolean;
-}) {
+function FilterPill({ href, label, active }: { href: string; label: string; active: boolean }) {
     return (
         <a
             href={href}
@@ -198,23 +187,13 @@ function FilterPill({
     );
 }
 
-function Kpi({
-                 title,
-                 value,
-                 suffix,
-             }: {
-    title: string;
-    value: string | number;
-    suffix?: string;
-}) {
+function Kpi({ title, value, suffix }: { title: string; value: string | number; suffix?: string }) {
     return (
         <div className="dad-card p-5">
             <div className="text-xs font-extrabold text-[var(--dad-muted)]">{title}</div>
             <div className="mt-2 text-2xl font-extrabold text-[var(--dad-ink)]">
                 {value}
-                {suffix ? (
-                    <span className="ml-1 text-base font-extrabold text-[var(--dad-muted)]">{suffix}</span>
-                ) : null}
+                {suffix ? <span className="ml-1 text-base font-extrabold text-[var(--dad-muted)]">{suffix}</span> : null}
             </div>
         </div>
     );
