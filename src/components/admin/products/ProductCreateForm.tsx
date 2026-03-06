@@ -1,6 +1,5 @@
 "use client";
 
-// src/components/admin/products/ProductCreateForm.tsx
 import { useMemo, useState } from "react";
 import { PRODUCT_STATUS_OPTIONS, statusLabel } from "@/lib/admin/productStatus";
 
@@ -10,27 +9,40 @@ type Props = {
     tenants: Tenant[];
 };
 
+type OptionValueRow = {
+    id: string;
+    valueName: string;
+    addPrice: string;
+    stockQty: string;
+};
+
+type OptionGroupRow = {
+    id: string;
+    groupName: string;
+    values: OptionValueRow[];
+};
+
 type FormState = {
-    tenantSlug: string; // ✅ server 요구: tenantSlug
+    tenantSlug: string;
     status: string;
 
-    title: string; // ✅ server 요구: title
-    name: string; // (레거시/DB용) UI 호환용
-    price: number; // 판매가
-    origPrice: number; // 공급가
-    consumerPrice: number; // 소비자가
+    title: string;
+    name: string;
+    price: number;
+    origPrice: number;
+    consumerPrice: number;
 
     pickupOnly: boolean;
     displayUse: boolean;
     saleUse: boolean;
 
-    // 썸네일 URL (레거시 image2 용)
-    thumbnailUrl: string;
+    image1: string;
+    image2: string;
+    image3: string;
 
-    explains: string; // HTML
+    explains: string;
 
     optionUse: boolean;
-    optionInfo: string; // ✅ 간단 입력(기존 방식)
 
     minQty: string;
     maxQty: string;
@@ -45,6 +57,68 @@ function guessTenantSlug(tenants: Tenant[], fallback = "all") {
     const first = tenants?.[0];
     const slug = (first?.slug || "").toString().trim();
     return slug || fallback;
+}
+
+function getAssetOrigin() {
+    return (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "https://discountallday.kr").replace(/\/+$/, "");
+}
+
+function toPreviewUrl(input: string) {
+    const v = (input || "").trim();
+    if (!v) return "";
+    if (/^https?:\/\//i.test(v)) return v;
+    if (/^\/\//.test(v)) return `https:${v}`;
+    const assetOrigin = getAssetOrigin();
+    const path = v.startsWith("/") ? v : `/${v}`;
+    return `${assetOrigin}${path}`;
+}
+
+function makeValueRow(): OptionValueRow {
+    return {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        valueName: "",
+        addPrice: "0",
+        stockQty: "",
+    };
+}
+
+function makeGroupRow(): OptionGroupRow {
+    return {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        groupName: "",
+        values: [makeValueRow()],
+    };
+}
+
+function serializeOptionGroups(groups: OptionGroupRow[]) {
+    const normalized = groups
+        .map((group) => ({
+            groupName: group.groupName.trim(),
+            values: group.values
+                .map((value) => ({
+                    valueName: value.valueName.trim(),
+                    addPrice: value.addPrice.trim(),
+                    stockQty: value.stockQty.trim(),
+                }))
+                .filter((value) => value.valueName),
+        }))
+        .filter((group) => group.groupName && group.values.length > 0);
+
+    if (!normalized.length) return "";
+
+    return normalized
+        .map((group) => {
+            const values = group.values
+                .map((value) => {
+                    const addPrice = value.addPrice === "" ? "0" : String(safeNum(value.addPrice, 0));
+                    const stockQty = value.stockQty === "" ? "" : String(safeNum(value.stockQty, 0));
+                    return [value.valueName, addPrice, stockQty].join("^");
+                })
+                .join(",");
+
+            return `${group.groupName}|${values}`;
+        })
+        .join("|*|");
 }
 
 export default function ProductCreateForm({ tenants }: Props) {
@@ -64,75 +138,123 @@ export default function ProductCreateForm({ tenants }: Props) {
         displayUse: true,
         saleUse: true,
 
-        thumbnailUrl: "",
+        image1: "",
+        image2: "",
+        image3: "",
+
         explains: "<p></p>",
 
         optionUse: false,
-        optionInfo: "",
 
         minQty: "",
         maxQty: "",
     });
 
-    // ✅ 파일 선택 시 미리보기(실제 업로드는 “추가 API”로 연결해야 함)
-    const [thumbFile, setThumbFile] = useState<File | null>(null);
-    const [thumbPreview, setThumbPreview] = useState<string>("");
-
-    const thumbSrc = useMemo(() => {
-        if (form.thumbnailUrl?.trim()) return form.thumbnailUrl.trim();
-        if (thumbPreview) return thumbPreview;
-        return "";
-    }, [form.thumbnailUrl, thumbPreview]);
+    const [optionGroups, setOptionGroups] = useState<OptionGroupRow[]>([]);
+    const [uploadingKey, setUploadingKey] = useState<"image1" | "image2" | "image3" | null>(null);
 
     function onChange<K extends keyof FormState>(key: K, value: FormState[K]) {
         setForm((p) => ({ ...p, [key]: value }));
     }
 
-    async function onPickFile(file: File | null) {
-        setThumbFile(file);
-        if (!file) {
-            setThumbPreview("");
-            return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => setThumbPreview(String(reader.result || ""));
-        reader.readAsDataURL(file);
+    function normalizeTitleInput(v: string) {
+        return (v ?? "").toString();
     }
 
-    function normalizeTitleInput(v: string) {
-        // title이 핵심 필드라, name과 동기화해서 UX 혼란 방지
-        const t = (v ?? "").toString();
-        return t;
+    function addOptionGroup() {
+        setOptionGroups((prev) => [...prev, makeGroupRow()]);
+        if (!form.optionUse) onChange("optionUse", true);
+    }
+
+    function updateOptionGroup(groupId: string, patch: Partial<OptionGroupRow>) {
+        setOptionGroups((prev) => prev.map((group) => (group.id === groupId ? { ...group, ...patch } : group)));
+    }
+
+    function removeOptionGroup(groupId: string) {
+        setOptionGroups((prev) => prev.filter((group) => group.id !== groupId));
+    }
+
+    function addOptionValue(groupId: string) {
+        setOptionGroups((prev) =>
+            prev.map((group) =>
+                group.id === groupId ? { ...group, values: [...group.values, makeValueRow()] } : group
+            )
+        );
+    }
+
+    function updateOptionValue(groupId: string, valueId: string, patch: Partial<OptionValueRow>) {
+        setOptionGroups((prev) =>
+            prev.map((group) =>
+                group.id === groupId
+                    ? {
+                        ...group,
+                        values: group.values.map((value) =>
+                            value.id === valueId ? { ...value, ...patch } : value
+                        ),
+                    }
+                    : group
+            )
+        );
+    }
+
+    function removeOptionValue(groupId: string, valueId: string) {
+        setOptionGroups((prev) =>
+            prev.map((group) =>
+                group.id === groupId
+                    ? {
+                        ...group,
+                        values: group.values.filter((value) => value.id !== valueId),
+                    }
+                    : group
+            )
+        );
+    }
+
+    async function uploadImage(file: File, key: "image1" | "image2" | "image3") {
+        setUploadingKey(key);
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const res = await fetch("/api/proxy/admin/uploads/product-image", {
+                method: "POST",
+                body: formData,
+                credentials: "include",
+                cache: "no-store",
+            });
+
+            const json = await res.json().catch(() => ({}));
+
+            if (!res.ok || json?.ok === false || !json?.path) {
+                alert(json?.message || `이미지 업로드 실패 (HTTP ${res.status})`);
+                return;
+            }
+
+            onChange(key, String(json.path));
+        } finally {
+            setUploadingKey(null);
+        }
     }
 
     async function submit() {
-        // ✅ 최소 검증
         if (!form.tenantSlug?.trim()) return alert("지점을 선택해 주세요.(tenantSlug)");
         if (!form.title.trim()) return alert("상품명을 입력해 주세요.(title)");
         if (safeNum(form.price) <= 0) return alert("판매가를 입력해 주세요.");
 
-        /**
-         * ✅ 백엔드가 지금 요구하는 형태:
-         * - tenantSlug (필수)
-         * - title (필수)
-         *
-         * 그리고 구현이 과거 Product 모델/레거시(mallRN_goods) 혼재라서
-         * basePrice/price, description/explains 등 다양한 키를 같이 보내도 안전합니다.
-         */
+        const serializedOptionInfo = form.optionUse ? serializeOptionGroups(optionGroups) : "";
+
         const payload: any = {
-            tenantSlug: form.tenantSlug.trim(), // ✅ 필수
+            tenantSlug: form.tenantSlug.trim(),
             status: String(form.status || "draft"),
 
-            // ✅ 필수
             title: form.title.trim(),
-
-            // (레거시 컬럼/화면 호환)
             name: form.name?.trim() || form.title.trim(),
 
-            // 가격계열: 서버 구현이 basePrice만 쓰거나 price만 쓸 수 있어 둘 다 전송
             basePrice: safeNum(form.price),
             price: safeNum(form.price),
+            origPrice: safeNum(form.origPrice),
             orig_price: safeNum(form.origPrice),
+            consumerPrice: safeNum(form.consumerPrice),
             consumer_price: safeNum(form.consumerPrice),
 
             pickupOnly: !!form.pickupOnly,
@@ -144,31 +266,24 @@ export default function ProductCreateForm({ tenants }: Props) {
             saleUse: !!form.saleUse,
             sale_use: form.saleUse ? 1 : 0,
 
-            // 썸네일: 레거시 image2로도, 신형 thumbnailUrl로도 같이 전송
-            thumbnailUrl: (form.thumbnailUrl || "").trim() || null,
-            image2: (form.thumbnailUrl || "").trim(),
+            image1: form.image1.trim(),
+            image2: form.image2.trim(),
+            image3: form.image3.trim(),
+            thumbnailUrl: form.image1.trim(),
 
-            // 설명: 신형 description + 레거시 explains 같이
             description: form.explains ?? "",
             explains: form.explains ?? "",
 
             optionUse: !!form.optionUse,
             option_use: form.optionUse ? 1 : 0,
-            optionInfo: form.optionInfo ?? "",
-            option_info: form.optionInfo ?? "",
+            optionInfo: serializedOptionInfo,
+            option_info: serializedOptionInfo,
 
             minQty: form.minQty ? safeNum(form.minQty) : null,
             maxQty: form.maxQty ? safeNum(form.maxQty) : null,
             min_qty: form.minQty ? safeNum(form.minQty) : null,
             max_qty: form.maxQty ? safeNum(form.maxQty) : null,
         };
-
-        // ✅ 파일 업로드는 아직 “저장”이 아니라 “미리보기”만.
-        // 서버에서 base64 업로드를 지원하도록 확장하면 같이 저장 가능.
-        if (!payload.thumbnailUrl && thumbPreview) {
-            payload.thumbnail_upload_base64 = thumbPreview;
-            payload.thumbnail_upload_name = thumbFile?.name || "thumbnail.png";
-        }
 
         const res = await fetch("/api/proxy/admin/products", {
             method: "POST",
@@ -184,17 +299,16 @@ export default function ProductCreateForm({ tenants }: Props) {
             return alert(json?.message || `등록 실패 (HTTP ${res.status})`);
         }
 
-        const newId = String(json?.product?.id ?? json?.id ?? "");
-        if (newId) {
-            window.location.href = `/products/${newId}`;
-            return;
-        }
-        window.location.href = `/products`;
+        alert("상품 등록이 완료되었습니다.");
+        window.location.href = "/admin/products";
     }
+
+    const preview1 = useMemo(() => toPreviewUrl(form.image1), [form.image1]);
+    const preview2 = useMemo(() => toPreviewUrl(form.image2), [form.image2]);
+    const preview3 = useMemo(() => toPreviewUrl(form.image3), [form.image3]);
 
     return (
         <div className="space-y-6">
-            {/* 기본정보 */}
             <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div>
                     <label className="text-xs font-extrabold text-[var(--dad-muted)]">지점(tenant)</label>
@@ -237,7 +351,6 @@ export default function ProductCreateForm({ tenants }: Props) {
                 </div>
             </section>
 
-            {/* 상품명/가격 */}
             <section className="dad-card p-4 sm:p-5 space-y-4">
                 <div>
                     <label className="text-xs font-extrabold text-[var(--dad-muted)]">
@@ -249,14 +362,10 @@ export default function ProductCreateForm({ tenants }: Props) {
                         onChange={(e) => {
                             const v = normalizeTitleInput(e.target.value);
                             onChange("title", v);
-                            // name도 같이 동기화(레거시 대비)
                             if (!form.name || form.name === form.title) onChange("name", v);
                         }}
                         placeholder="예: 홍삼원골드 100ml x 24포"
                     />
-                    <div className="mt-1 text-[11px] font-bold text-[var(--dad-muted)]">
-                        서버 필수값: <span className="text-[var(--dad-ink)]">title</span>
-                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -316,71 +425,198 @@ export default function ProductCreateForm({ tenants }: Props) {
                     </label>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">
-                            대표이미지(썸네일) URL (thumbnailUrl / image2)
-                        </label>
-                        <input
-                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                            value={form.thumbnailUrl}
-                            onChange={(e) => onChange("thumbnailUrl", e.target.value)}
-                            placeholder='예: https://discountallday.kr/image/goods/img2/1/10002.jpg'
-                        />
-                        <div className="mt-1 text-[11px] font-bold text-[var(--dad-muted)]">
-                            URL이 있으면 URL 우선 미리보기 / 없으면 파일 미리보기
-                        </div>
-                    </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {[
+                        {
+                            key: "image1" as const,
+                            label: "대표이미지(image1)",
+                            value: form.image1,
+                            preview: preview1,
+                            placeholder: "예: /uploads/products/... 또는 https://...",
+                        },
+                        {
+                            key: "image2" as const,
+                            label: "목록이미지(image2)",
+                            value: form.image2,
+                            preview: preview2,
+                            placeholder: "예: /uploads/products/... 또는 https://...",
+                        },
+                        {
+                            key: "image3" as const,
+                            label: "작은목록이미지(image3)",
+                            value: form.image3,
+                            preview: preview3,
+                            placeholder: "예: /uploads/products/... 또는 https://...",
+                        },
+                    ].map((item) => (
+                        <div key={item.key} className="space-y-2">
+                            <label className="text-xs font-extrabold text-[var(--dad-muted)]">{item.label}</label>
+                            <input
+                                className="w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                                value={item.value}
+                                onChange={(e) => onChange(item.key, e.target.value)}
+                                placeholder={item.placeholder}
+                            />
+                            <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]">
+                                {uploadingKey === item.key ? "업로드 중..." : "파일 업로드"}
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    disabled={uploadingKey !== null}
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        uploadImage(file, item.key);
+                                        e.currentTarget.value = "";
+                                    }}
+                                />
+                            </label>
 
-                    <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">또는 이미지 파일 선택(미리보기)</label>
-                        <input
-                            type="file"
-                            accept="image/*"
-                            className="mt-2 block w-full text-sm font-bold"
-                            onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
-                        />
-                    </div>
+                            <div className="rounded-2xl border border-[var(--dad-border)] overflow-hidden bg-white/70">
+                                <div className="px-4 py-3 text-xs font-extrabold text-[var(--dad-muted)]">
+                                    {item.key} 미리보기
+                                </div>
+                                <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
+                                    {item.preview ? (
+                                        <img src={item.preview} alt={`${item.key}-preview`} className="h-full w-full object-cover" />
+                                    ) : (
+                                        <div className="flex h-full items-center justify-center text-xs font-bold text-[var(--dad-muted)]">
+                                            이미지 없음
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
-
-                {thumbSrc ? (
-                    <div className="rounded-2xl border border-[var(--dad-border)] overflow-hidden bg-white/70">
-                        <div className="px-4 py-3 text-xs font-extrabold text-[var(--dad-muted)]">미리보기</div>
-                        <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={thumbSrc} alt="thumbnail preview" className="h-full w-full object-cover" />
-                        </div>
-                    </div>
-                ) : null}
             </section>
 
-            {/* 옵션 (간단 입력 방식 유지) */}
-            <section className="dad-card p-4 sm:p-5 space-y-3">
-                <label className="inline-flex items-center gap-2 text-sm font-extrabold">
-                    <input
-                        type="checkbox"
-                        checked={form.optionUse}
-                        onChange={(e) => onChange("optionUse", e.target.checked)}
-                    />
-                    옵션 사용(option_use)
-                </label>
-
-                <div>
-                    <label className="text-xs font-extrabold text-[var(--dad-muted)]">
-                        옵션 정보(option_info) — 예: <span className="font-bold">수량|1개,2개,3개</span>
-                    </label>
-                    <textarea
-                        className="mt-2 h-28 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                        value={form.optionInfo}
-                        onChange={(e) => onChange("optionInfo", e.target.value)}
-                        placeholder="수량|1개,2개,3개"
-                        disabled={!form.optionUse}
-                    />
-                    <div className="mt-1 text-[11px] font-bold text-[var(--dad-muted)]">
-                        (레거시) option_info 포맷 그대로 사용합니다.
+            <section className="dad-card p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                    <div className="text-sm font-extrabold text-[var(--dad-ink)]">옵션</div>
+                    <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm font-extrabold">
+                            <input
+                                type="checkbox"
+                                checked={form.optionUse}
+                                onChange={(e) => onChange("optionUse", e.target.checked)}
+                            />
+                            옵션 사용
+                        </label>
+                        <button
+                            type="button"
+                            className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
+                            onClick={addOptionGroup}
+                        >
+                            + 옵션명 추가
+                        </button>
                     </div>
                 </div>
 
+                {!form.optionUse ? (
+                    <div className="rounded-xl border border-dashed border-[var(--dad-border)] bg-white/50 px-4 py-6 text-center text-sm font-bold text-[var(--dad-muted)]">
+                        옵션 사용을 체크하거나 옵션명 추가 버튼을 눌러주세요.
+                    </div>
+                ) : optionGroups.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-[var(--dad-border)] bg-white/50 px-4 py-6 text-center text-sm font-bold text-[var(--dad-muted)]">
+                        등록된 옵션명이 없습니다. “옵션명 추가”를 눌러주세요.
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {optionGroups.map((group) => (
+                            <div
+                                key={group.id}
+                                className="rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4"
+                            >
+                                <div className="mb-3 flex items-center gap-2">
+                                    <input
+                                        className="h-11 w-full max-w-[260px] rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                                        value={group.groupName}
+                                        onChange={(e) => updateOptionGroup(group.id, { groupName: e.target.value })}
+                                        placeholder="옵션명 예: 색상"
+                                    />
+
+                                    <button
+                                        type="button"
+                                        className="dad-btn dad-btn-ghost h-10 px-3 text-sm"
+                                        onClick={() => addOptionValue(group.id)}
+                                    >
+                                        + 옵션값 추가
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="dad-btn dad-btn-ghost h-10 px-3 text-sm"
+                                        onClick={() => removeOptionGroup(group.id)}
+                                    >
+                                        옵션명 삭제
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {group.values.map((value) => (
+                                        <div
+                                            key={value.id}
+                                            className="grid grid-cols-1 gap-3 rounded-xl border border-[var(--dad-border)] bg-white p-3 md:grid-cols-[1.4fr_0.8fr_0.8fr_auto]"
+                                        >
+                                            <div>
+                                                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">옵션값</div>
+                                                <input
+                                                    className="h-11 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                                                    value={value.valueName}
+                                                    onChange={(e) =>
+                                                        updateOptionValue(group.id, value.id, { valueName: e.target.value })
+                                                    }
+                                                    placeholder="예: 레드"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">추가금액</div>
+                                                <input
+                                                    type="number"
+                                                    className="h-11 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                                                    value={value.addPrice}
+                                                    onChange={(e) =>
+                                                        updateOptionValue(group.id, value.id, { addPrice: e.target.value })
+                                                    }
+                                                    placeholder="0"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">재고</div>
+                                                <input
+                                                    type="number"
+                                                    className="h-11 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                                                    value={value.stockQty}
+                                                    onChange={(e) =>
+                                                        updateOptionValue(group.id, value.id, { stockQty: e.target.value })
+                                                    }
+                                                    placeholder="비우면 미지정"
+                                                />
+                                            </div>
+
+                                            <div className="flex items-end">
+                                                <button
+                                                    type="button"
+                                                    className="dad-btn dad-btn-ghost h-11 px-3 text-sm"
+                                                    onClick={() => removeOptionValue(group.id, value.id)}
+                                                >
+                                                    삭제
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            <section className="dad-card p-4 sm:p-5 space-y-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                         <label className="text-xs font-extrabold text-[var(--dad-muted)]">최소구매(min_qty)</label>
@@ -405,7 +641,6 @@ export default function ProductCreateForm({ tenants }: Props) {
                 </div>
             </section>
 
-            {/* 상세설명 */}
             <section className="dad-card p-4 sm:p-5 space-y-3">
                 <div className="text-sm font-extrabold text-[var(--dad-ink)]">상세설명(explains / HTML)</div>
                 <textarea
@@ -417,7 +652,7 @@ export default function ProductCreateForm({ tenants }: Props) {
 
                 <div className="rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4">
                     <div className="text-xs font-extrabold text-[var(--dad-muted)]">미리보기(HTML 렌더)</div>
-                    <div className="prose prose-sm max-w-none mt-3" dangerouslySetInnerHTML={{ __html: form.explains || "" }} />
+                    <div className="prose prose-sm mt-3 max-w-none" dangerouslySetInnerHTML={{ __html: form.explains || "" }} />
                 </div>
             </section>
 

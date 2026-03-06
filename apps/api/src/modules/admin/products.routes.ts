@@ -1,4 +1,3 @@
-// apps/api/src/modules/admin/products.routes.ts
 import type { FastifyInstance } from "fastify";
 
 type AdminSession = {
@@ -45,7 +44,7 @@ function parseIntId(raw: unknown) {
     if (!s) return { ok: false as const, error: "id required" };
     if (!/^\d+$/.test(s)) return { ok: false as const, error: "invalid id" };
     const n = Number(s);
-    if (!Number.isFinite(n) || n <= 0) return { ok: false as const, error: "invalid id" };
+    if (!Number.isFinite(n) || n <= 0) return { ok: false as const, value: 0, error: "invalid id" };
     return { ok: true as const, value: n };
 }
 
@@ -67,8 +66,13 @@ function unixToIso(u: any): string | null {
     return new Date(n * 1000).toISOString();
 }
 
+function normalizeImagePath(v: any): string {
+    const s = String(v ?? "").trim();
+    if (!s) return "";
+    return s;
+}
+
 export async function adminProductsRoutes(app: FastifyInstance) {
-    // ✅ 통합 관리자: 지점 목록
     app.get("/admin/tenants", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
@@ -82,7 +86,6 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         return reply.send({ ok: true, rows: jsonSafe(rows) });
     });
 
-    // ✅ 통합 관리자: 상품 목록
     app.get("/admin/products", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
@@ -129,8 +132,9 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                     tenant_id: true,
                     name: true,
                     price: true,
-                    image2: true,
                     image1: true,
+                    image2: true,
+                    image3: true,
                     moddate: true,
                     signdate: true,
                     status: true,
@@ -139,18 +143,63 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             }),
         ]);
 
-        const mapped = (rows as any[]).map((r) => ({
-            id: String(r.uid),
-            tenantId: r.tenant_id == null ? null : String(r.tenant_id),
-            title: r.name,
-            status: String(r.status ?? "draft"),
-            basePrice: Number(r.price ?? 0),
-            pickupOnly: !!r.pickup_only,
-            thumbnailUrl: r.image2 || r.image1 || null,
-            createdAt: unixToIso(r.signdate),
-            updatedAt: unixToIso(r.moddate),
-            tenant: undefined,
-        }));
+        const tenantIds = Array.from(
+            new Set(
+                rows
+                    .map((r: any) => r.tenant_id)
+                    .filter((v: any) => v !== null && v !== undefined)
+                    .map((v: any) => String(v))
+            )
+        );
+
+        const tenantRows =
+            tenantIds.length > 0
+                ? await app.prisma.tenant.findMany({
+                    where: {
+                        id: {
+                            in: tenantIds.map((v) => BigInt(v)),
+                        },
+                    },
+                    select: {
+                        id: true,
+                        slug: true,
+                        name: true,
+                    },
+                })
+                : [];
+
+        const tenantMap = new Map(
+            tenantRows.map((t: any) => [
+                String(t.id),
+                {
+                    id: String(t.id),
+                    slug: t.slug ?? null,
+                    name: t.name ?? null,
+                },
+            ])
+        );
+
+        const mapped = (rows as any[]).map((r) => {
+            const tenant = r.tenant_id != null ? tenantMap.get(String(r.tenant_id)) ?? null : null;
+
+            return {
+                id: String(r.uid),
+                tenantId: r.tenant_id == null ? null : String(r.tenant_id),
+                tenantName: tenant?.name ?? null,
+                tenantSlug: tenant?.slug ?? null,
+                tenant,
+                title: r.name,
+                status: String(r.status ?? "draft"),
+                basePrice: Number(r.price ?? 0),
+                pickupOnly: !!r.pickup_only,
+                image1: r.image1 || "",
+                image2: r.image2 || "",
+                image3: r.image3 || "",
+                thumbnailUrl: r.image1 || r.image2 || r.image3 || null,
+                createdAt: unixToIso(r.signdate),
+                updatedAt: unixToIso(r.moddate),
+            };
+        });
 
         return reply.send(
             jsonSafe({
@@ -165,7 +214,6 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         );
     });
 
-    // ✅ 상품 상세
     app.get("/admin/products/:id", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
@@ -184,6 +232,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 detail: true,
                 image1: true,
                 image2: true,
+                image3: true,
                 other_image: true,
                 detail_image: true,
                 option_use: true,
@@ -210,7 +259,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             title: row.name,
             description: String(row.explains ?? "").trim() || String(row.detail ?? "").trim() || null,
             status: String(row.status ?? "draft"),
-            thumbnailUrl: row.image2 || row.image1 || null,
+            image1: row.image1 || "",
+            image2: row.image2 || "",
+            image3: row.image3 || "",
+            thumbnailUrl: row.image1 || row.image2 || row.image3 || null,
             basePrice: Number(row.price ?? 0),
             pickupOnly: !!row.pickup_only,
             minQty: row.min_qty ?? null,
@@ -221,13 +273,14 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             updatedAt: unixToIso(row.moddate),
             sortOrder: row.sort_order ?? 0,
             deletedAt: row.deleted_at ?? null,
+            optionUse: Number(row.option_use ?? 0) === 1,
+            optionInfo: String(row.option_info ?? ""),
             options: [],
         };
 
         return reply.send({ ok: true, product: jsonSafe(product) });
     });
 
-    // ✅ 상품 생성
     app.post("/admin/products", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
@@ -248,16 +301,14 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         const nowSec = Math.floor(Date.now() / 1000);
 
-        // ✅ Prisma 스키마에서 Text 필드가 required 인 것들 기본값 채움
         const created = await app.prisma.mallRN_goods.create({
             data: {
                 tenant_id: tenant.id,
                 name: title,
 
-                // 필수 Text (required) 기본값
                 other_image: "",
                 detail_image: "",
-                option_info: "",
+                option_info: String(body.optionInfo ?? body.option_info ?? ""),
                 require_info: "",
                 detail: "",
                 making_info: "",
@@ -269,25 +320,36 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 exhibition: "",
                 keyword: "",
 
-                // 설명(필수 Text)
-                explains: body.description == null ? "" : String(body.description),
+                explains:
+                    body.description != null
+                        ? String(body.description)
+                        : body.explains != null
+                            ? String(body.explains)
+                            : "",
 
-                // 가격
-                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice, 0))),
+                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice ?? body.price, 0))),
+                orig_price: Math.max(0, Math.trunc(toNumberSafe(body.orig_price ?? body.origPrice, 0))),
+                consumer_price: Math.max(
+                    0,
+                    Math.trunc(toNumberSafe(body.consumer_price ?? body.consumerPrice, 0))
+                ),
 
-                // 확장 컬럼
+                image1: normalizeImagePath(body.image1 ?? body.thumbnailUrl),
+                image2: normalizeImagePath(body.image2),
+                image3: normalizeImagePath(body.image3),
+
                 status: String(body.status ?? "draft").trim() || "draft",
-                pickup_only: Boolean(body.pickupOnly ?? true),
-                min_qty: toNullableInt(body.minQty),
-                max_qty: toNullableInt(body.maxQty),
+                pickup_only: Boolean(body.pickupOnly ?? body.pickup_only ?? true),
+                min_qty: toNullableInt(body.minQty ?? body.min_qty),
+                max_qty: toNullableInt(body.maxQty ?? body.max_qty),
                 sale_start_at: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
                 sale_end_at: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
                 sort_order: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
                 deleted_at: null,
 
-                // 운영 필터
-                sale_use: 1,
-                display_use: 1,
+                option_use: Number(body.optionUse ?? body.option_use ? 1 : 0),
+                sale_use: Number(body.saleUse ?? body.sale_use ? 1 : 0),
+                display_use: Number(body.displayUse ?? body.display_use ? 1 : 0),
                 auth_ck: "Y",
                 moddate: nowSec,
                 signdate: nowSec,
@@ -298,7 +360,6 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         return reply.send({ ok: true, product: jsonSafe({ id: String(created.uid) }) });
     });
 
-    // ✅ 상품 수정
     app.put("/admin/products/:id", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
@@ -321,17 +382,36 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             where: { uid: parsed.value },
             data: {
                 name: title,
-                explains: body.description == null ? "" : String(body.description),
-                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice, 0))),
+                explains:
+                    body.description != null
+                        ? String(body.description)
+                        : body.explains != null
+                            ? String(body.explains)
+                            : "",
+                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice ?? body.price, 0))),
+                orig_price: Math.max(0, Math.trunc(toNumberSafe(body.orig_price ?? body.origPrice, 0))),
+                consumer_price: Math.max(
+                    0,
+                    Math.trunc(toNumberSafe(body.consumer_price ?? body.consumerPrice, 0))
+                ),
+
+                image1: normalizeImagePath(body.image1 ?? body.thumbnailUrl),
+                image2: normalizeImagePath(body.image2),
+                image3: normalizeImagePath(body.image3),
 
                 status: String(body.status ?? "draft").trim() || "draft",
-                pickup_only: Boolean(body.pickupOnly ?? true),
-                min_qty: toNullableInt(body.minQty),
-                max_qty: toNullableInt(body.maxQty),
+                pickup_only: Boolean(body.pickupOnly ?? body.pickup_only ?? true),
+                min_qty: toNullableInt(body.minQty ?? body.min_qty),
+                max_qty: toNullableInt(body.maxQty ?? body.max_qty),
                 sale_start_at: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
                 sale_end_at: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
                 sort_order: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
                 deleted_at: body.deletedAt ? new Date(String(body.deletedAt)) : null,
+
+                option_use: Number(body.optionUse ?? body.option_use ? 1 : 0),
+                option_info: String(body.optionInfo ?? body.option_info ?? ""),
+                sale_use: Number(body.saleUse ?? body.sale_use ? 1 : 0),
+                display_use: Number(body.displayUse ?? body.display_use ? 1 : 0),
 
                 moddate: Math.floor(Date.now() / 1000),
             },

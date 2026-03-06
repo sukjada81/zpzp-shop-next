@@ -1,9 +1,7 @@
-// src/app/(admin)/admin/products/page.tsx
 import { getAdminProducts, getAdminTenants } from "@/lib/admin/adminApi";
 import ProductFilters from "@/components/admin/products/ProductFilters";
 import ProductTable from "@/components/admin/products/ProductTable";
 
-// 응답 형태가 rows/items 등으로 달라도 안전하게 사용하기 위한 정규화
 function normalizeList<T>(list: any): {
     items: T[];
     total: number;
@@ -20,7 +18,6 @@ function normalizeList<T>(list: any): {
 
 type SP = Record<string, string | string[] | undefined>;
 
-// ✅ Next 16에서 searchParams가 Promise로 들어오는 케이스 방어
 async function resolveSearchParams(searchParams: unknown): Promise<SP> {
     const sp = (await Promise.resolve(searchParams)) as SP | undefined;
     return sp ?? {};
@@ -29,7 +26,6 @@ async function resolveSearchParams(searchParams: unknown): Promise<SP> {
 export default async function AdminProductsPage({
                                                     searchParams,
                                                 }: {
-    // ✅ Promise 가능성을 타입에 포함
     searchParams?: Promise<SP> | SP;
 }) {
     const sp = await resolveSearchParams(searchParams);
@@ -57,7 +53,7 @@ export default async function AdminProductsPage({
     const nextPage = Math.min(pageCount, list.page + 1);
 
     return (
-        <main className="mx-auto w-full max-w-[1440px] px-3 pb-10 pt-6 sm:px-4">
+        <main className="mx-auto w-full max-w-[1600px] px-3 pb-10 pt-6 sm:px-4">
             <div className="mb-4 flex items-end justify-between gap-3">
                 <div>
                     <div className="text-xl font-extrabold text-[var(--dad-ink)]">상품 관리</div>
@@ -66,20 +62,17 @@ export default async function AdminProductsPage({
                     </div>
                 </div>
 
-                <a href="/products/new" className="dad-btn dad-btn-primary h-10 px-4 text-sm">
+                <a href="/admin/products/new" className="dad-btn dad-btn-primary h-10 px-4 text-sm">
                     + 상품 등록
                 </a>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
+            <div className="space-y-4">
                 <div className="dad-card p-4">
-                    <div className="text-sm font-extrabold text-[var(--dad-ink)]">필터</div>
-                    <div className="mt-3">
-                        <ProductFilters tenants={tenants} />
-                    </div>
+                    <ProductFilters tenants={tenants} />
                 </div>
 
-                <div className="dad-card overflow-hidden p-0">
+                <div className="dad-card p-0">
                     <div className="flex items-center justify-between border-b border-[var(--dad-border)] px-4 py-3">
                         <div className="text-sm font-extrabold text-[var(--dad-ink)]">
                             목록 <span className="text-[var(--dad-muted)]">({list.total})</span>
@@ -95,7 +88,7 @@ export default async function AdminProductsPage({
                         <div className="flex gap-2">
                             <a
                                 className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
-                                href={`/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                                href={`/admin/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
                                     status
                                 )}&q=${encodeURIComponent(q)}&page=${prevPage}`}
                             >
@@ -103,7 +96,7 @@ export default async function AdminProductsPage({
                             </a>
                             <a
                                 className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
-                                href={`/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                                href={`/admin/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
                                     status
                                 )}&q=${encodeURIComponent(q)}&page=${nextPage}`}
                             >

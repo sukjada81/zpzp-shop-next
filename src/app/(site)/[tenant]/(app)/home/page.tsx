@@ -1,8 +1,8 @@
-// src/app/(site)/[tenant]/(app)/home/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
+import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/home/OngoingGroupBuySection";
 import { endpoints } from "@/lib/api/endpoints";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse } from "@/lib/types/goods";
@@ -21,8 +21,27 @@ type GridSection = {
     items: CardItem[];
 };
 
+type ProductDetailResponse = {
+    ok: true;
+    tenant?: string;
+    product: {
+        id: string;
+        title: string;
+        price: number;
+        description?: string | null;
+        meta?: { timeLeft?: string; pickup?: string };
+        images: { key: string; label?: string }[];
+        options: Array<{
+            id: string;
+            name: string;
+            price: number | null;
+            soldout?: boolean;
+            stockNote?: string;
+        }>;
+    };
+};
+
 function getInternalOrigin() {
-    // ✅ SSR fetch는 internal origin이 제일 안전
     return process.env.NEXT_INTERNAL_ORIGIN || process.env.NEXT_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
 }
 
@@ -40,6 +59,19 @@ async function fetchProducts(tenant: string) {
     return data.items ?? [];
 }
 
+async function fetchProductDetail(tenant: string, id: string) {
+    const origin = getInternalOrigin();
+    const url = new URL(`/${tenant}/v1/public/products/${id}`, origin);
+
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) return null;
+
+    const data = (await res.json().catch(() => null)) as ProductDetailResponse | null;
+    if (!data?.ok) return null;
+
+    return data.product ?? null;
+}
+
 function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
     return (items ?? []).map((p) => ({
         id: String(p.id),
@@ -48,6 +80,16 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
         thumbnailUrl: p.thumbnailUrl,
         tags: [...(p.metaLeft ? [p.metaLeft] : []), ...(p.metaRight ? [p.metaRight] : [])].slice(0, 2),
     }));
+}
+
+function getMockRecentOrders() {
+    return [
+        { id: "1", maskedName: "제**5**", minutesAgo: 1, qty: 10 },
+        { id: "2", maskedName: "금****8", minutesAgo: 9, qty: 1 },
+        { id: "3", maskedName: "박**3*", minutesAgo: 14, qty: 3 },
+        { id: "4", maskedName: "김***7", minutesAgo: 22, qty: 2 },
+        { id: "5", maskedName: "이**9*", minutesAgo: 35, qty: 6 },
+    ];
 }
 
 export default async function HomePage({
@@ -75,11 +117,34 @@ export default async function HomePage({
         items: toCardItems(pickup.slice(0, 4)),
     };
 
-    const ongoingSection: GridSection = {
-        title: "진행 중인 공구",
-        href: `/${tenant}/goods?tab=ongoing`,
-        items: toCardItems(products.slice(0, 6)),
-    };
+    const mockOrders = getMockRecentOrders();
+    const ongoingBase = products.slice(0, 3);
+
+    const ongoingDetails = await Promise.all(
+        ongoingBase.map(async (p, index) => {
+            const detail = await fetchProductDetail(tenant, String(p.id));
+
+            const item: OngoingGroupBuyItem = {
+                id: String(p.id),
+                tenant,
+                title: String(detail?.title ?? p.title ?? ""),
+                price: Number(detail?.price ?? p.price ?? 0),
+                images: detail?.images?.length
+                    ? detail.images
+                    : p.thumbnailUrl
+                        ? [{ key: p.thumbnailUrl, label: "대표 이미지" }]
+                        : [],
+                options: detail?.options ?? [],
+                meta: detail?.meta ?? {
+                    timeLeft: p.metaLeft,
+                    pickup: p.metaRight,
+                },
+                notice: mockOrders[index % mockOrders.length],
+            };
+
+            return item;
+        })
+    );
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24">
@@ -92,12 +157,11 @@ export default async function HomePage({
             <SectionTitle title={pickupSection.title} href={pickupSection.href} />
             <Grid2 tenant={tenant} items={pickupSection.items} emptyText="픽업 가능한 상품이 없습니다." />
 
-            <SectionTitle title={ongoingSection.title} href={ongoingSection.href} />
-            <Grid2 tenant={tenant} items={ongoingSection.items} emptyText="진행 중인 공구가 없습니다." />
+            <OngoingGroupBuySection title="진행 중인 공구" items={ongoingDetails} />
 
             <section className="mt-6">
-                <div className="rounded-2xl overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
-                    <div className="h-[230px] relative" style={{ background: "var(--brand)" }}>
+                <div className="overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
+                    <div className="relative h-[230px]" style={{ background: "var(--brand)" }}>
                         <div className="absolute inset-0 p-5 text-white">
                             <div className="text-[22px] font-extrabold leading-tight">장기렌트/리스</div>
                             <div className="mt-2 text-sm font-bold opacity-95">빠르게 견적 받아보세요</div>
@@ -105,7 +169,9 @@ export default async function HomePage({
                             <div className="absolute bottom-4 left-4 right-4">
                                 <div className="rounded-2xl bg-white/90 p-3 text-[color:var(--fg)]">
                                     <div className="text-xs font-bold">신차 장기렌트/리스</div>
-                                    <div className="mt-1 text-[11px] text-[color:var(--muted)]">상담 신청 후 안내드립니다.</div>
+                                    <div className="mt-1 text-[11px] text-[color:var(--muted)]">
+                                        상담 신청 후 안내드립니다.
+                                    </div>
                                     <button
                                         type="button"
                                         className="mt-3 w-full rounded-xl py-3 text-sm font-extrabold text-white active:scale-[0.99]"
@@ -161,11 +227,10 @@ function Grid2({
                 <Link
                     key={it.id}
                     href={`/${tenant}/goods/${it.id}`}
-                    className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm overflow-hidden active:scale-[0.995]"
+                    className="overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm active:scale-[0.995]"
                 >
                     <div className="aspect-[4/3] bg-[color:var(--brand-soft)]">
                         {it.thumbnailUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
                             <img src={it.thumbnailUrl} alt={it.title} className="h-full w-full object-cover" />
                         ) : (
                             <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />

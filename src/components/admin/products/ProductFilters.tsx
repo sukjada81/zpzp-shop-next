@@ -37,54 +37,60 @@ export default function ProductFilters({ tenants }: { tenants: AdminTenant[] }) 
     };
 
     return (
-        <div className="space-y-3">
-            <label className="block">
-                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">지점</div>
+        <div className="flex flex-wrap items-end gap-3">
+
+            {/* 검색 */}
+            <div className="flex flex-col">
+                <div className="text-xs font-extrabold text-[var(--dad-muted)]">검색</div>
+                <input
+                    className="h-11 w-[240px] rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="상품명 검색"
+                />
+            </div>
+
+            {/* 지점 */}
+            <div className="flex flex-col">
+                <div className="text-xs font-extrabold text-[var(--dad-muted)]">지점</div>
                 <select
-                    className="h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
+                    className="h-11 w-[180px] rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
                     value={tenant}
                     onChange={(e) => setTenant(e.target.value)}
                 >
                     {tenantOptions.map((t: any) => (
                         <option key={t.slug} value={t.slug}>
-                            {t.name} ({t.slug})
+                            {t.name}
                         </option>
                     ))}
                 </select>
-            </label>
+            </div>
 
-            <label className="block">
-                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">상태</div>
+            {/* 상태 */}
+            <div className="flex flex-col">
+                <div className="text-xs font-extrabold text-[var(--dad-muted)]">상태</div>
                 <select
-                    className="h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
+                    className="h-11 w-[160px] rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
                 >
                     <option value="">전체</option>
-                    <option value="draft">draft</option>
-                    <option value="active">active</option>
-                    <option value="archived">archived</option>
+                    <option value="draft">임시저장</option>
+                    <option value="active">판매중</option>
+                    <option value="archived">보관</option>
                 </select>
-            </label>
+            </div>
 
-            <label className="block">
-                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">검색</div>
-                <input
-                    className="h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)] outline-none focus:ring-2 focus:ring-[var(--dad-orange)]"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="상품명/설명 검색"
-                />
-            </label>
-
-            <div className="flex gap-2 pt-1">
-                <button onClick={apply} className="dad-btn dad-btn-primary h-10 flex-1 text-sm">
-                    적용
+            {/* 버튼 */}
+            <div className="flex gap-2 pb-[2px]">
+                <button onClick={apply} className="dad-btn dad-btn-primary h-11 px-4 text-sm">
+                    검색
                 </button>
-                <button onClick={reset} className="dad-btn dad-btn-ghost h-10 px-4 text-sm">
+                <button onClick={reset} className="dad-btn dad-btn-ghost h-11 px-4 text-sm">
                     초기화
                 </button>
             </div>
+
         </div>
     );
 }

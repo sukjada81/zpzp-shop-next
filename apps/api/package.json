@@ -13,12 +13,14 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@fastify/cookie": "^9.4.0",
-    "@fastify/session": "^10.9.0",
+    "@fastify/cookie": "9.4.0",
+    "@fastify/multipart": "7.7.3",
+    "@fastify/session": "10.9.0",
+    "@fastify/static": "7.0.4",
     "@prisma/client": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
-    "fastify": "^4.28.1",
+    "fastify": "4.29.1",
     "zod": "^3.23.8",
     "zustand": "^5.0.11"
   },

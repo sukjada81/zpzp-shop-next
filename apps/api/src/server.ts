@@ -1,6 +1,9 @@
-// apps/api/src/server.ts
 import "dotenv/config";
 import Fastify from "fastify";
+import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
+import path from "path";
+
 import { tenantPlugin } from "./plugins/tenant.js";
 import { sessionPlugin } from "./plugins/session.js";
 
@@ -11,45 +14,63 @@ import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
 import { adminDashboardRoutes } from "./modules/admin/dashboard.routes.js";
 import { adminOrdersRoutes } from "./modules/admin/orders.routes.js";
 import { adminProductsRoutes } from "./modules/admin/products.routes.js";
+import { adminUploadsRoutes } from "./modules/admin/uploads.routes.js";
 
-// ✅ 추가: /admin/v1/* 통합 라우트(tenants 포함)
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
 const app = Fastify({ logger: true });
 
 /**
+ * multipart (파일 업로드)
+ */
+await app.register(multipart);
+
+/**
+ * 정적 파일 서빙
+ * /uploads/* → 실제 서버 uploads 폴더
+ */
+await app.register(fastifyStatic, {
+    root: path.join(process.cwd(), "uploads"),
+    prefix: "/uploads/",
+});
+
+/**
  * Prisma 사용 여부
- * - USE_PRISMA=0 이면 prismaPlugin 로딩/실행 안 함
- * - 그 외(미설정 포함)는 prismaPlugin 사용
  */
 const usePrisma = process.env.USE_PRISMA !== "0";
 
 if (usePrisma) {
-    // ✅ Prisma를 정적 import하면 로드 단계에서 터질 수 있어 동적 import로 처리
     const mod = await import("./plugins/prisma.js");
-    // mod.prismaPlugin(app) 형태로 호출 (기존 코드 스타일 유지)
     await mod.prismaPlugin(app);
 } else {
-    app.log.warn("USE_PRISMA=0 (Prisma disabled) - prismaPlugin is not loaded.");
+    app.log.warn("USE_PRISMA=0 (Prisma disabled)");
 }
 
 await tenantPlugin(app);
 await sessionPlugin(app);
 
-// tenant 없이도 되는 라우트
+/**
+ * 공통 라우트
+ */
 await healthRoutes(app);
 
-// ✅ 통합 admin (tenant prefix 없음) — 각 라우트는 "딱 1번만" 등록해야 함
+/**
+ * Admin 라우트
+ */
 await adminAuthRoutes(app);
 await adminDashboardRoutes(app);
 await adminOrdersRoutes(app);
 await adminProductsRoutes(app);
+await adminUploadsRoutes(app);
 
-// ✅ 추가: /admin/v1/tenants, /admin/v1/dashboard, /admin/v1/products, /admin/v1/orders, /admin/v1/points 등
-// (BFF가 /admin/v1/* 를 호출 중이므로 반드시 필요)
+/**
+ * /admin/v1/*
+ */
 await adminRoutes(app);
 
-// ✅ tenant prefix 아래 public API
+/**
+ * tenant public api
+ */
 app.register(
     async (tenantScoped) => {
         await publicProductRoutes(tenantScoped);

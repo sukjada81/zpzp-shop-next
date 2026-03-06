@@ -19,7 +19,7 @@ model Tenant {
   updatedAt     DateTime           @updatedAt @map("updated_at")
   orders        Order[]
   points        PointsLedger[]
-  products      Product[]
+  Product       Product[]
   memberships   TenantMembership[]
 
   @@map("dad_tenants")
@@ -1138,139 +1138,105 @@ model mallRN_favorite_store {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model mallRN_goods {
-  uid Int @id @default(autoincrement()) @db.UnsignedInt
+  uid                      Int                  @id @default(autoincrement()) @db.UnsignedInt
+  tenant_id                BigInt?              @db.UnsignedBigInt
+  status                   String               @default("draft") @db.VarChar(32)
+  pickup_only              Boolean              @default(true)
+  min_qty                  Int?                 @db.UnsignedInt
+  max_qty                  Int?                 @db.UnsignedInt
+  sale_start_at            DateTime?
+  sale_end_at              DateTime?
+  sort_order               Int                  @default(0)
+  deleted_at               DateTime?
+  re_uid                   Int                  @default(99999999) @db.UnsignedInt
+  cate                     BigInt               @default(0) @db.UnsignedBigInt
+  vendor                   String               @default("") @db.VarChar(50)
+  name                     String               @default("") @db.VarChar(250)
+  name_code_able           String               @default("") @db.VarChar(250)
+  price                    Int                  @default(0) @db.UnsignedInt
+  orig_price               Int                  @default(0) @db.UnsignedInt
+  consumer_price           Int                  @default(0) @db.UnsignedInt
+  price_ment               String               @default("") @db.VarChar(100)
+  commission_type          Int                  @default(0) @db.UnsignedTinyInt
+  commission               Float                @default(0.00) @db.Float
+  image1                   String?              @db.VarChar(255)
+  image2                   String?              @db.VarChar(255)
+  image3                   String?              @db.VarChar(255)
+  other_image              String               @db.Text
+  detail_image             String               @db.Text
+  detail_image_only        Int                  @default(0) @db.UnsignedTinyInt
+  detail_image_type        Int                  @default(1) @db.UnsignedTinyInt
+  explains                 String               @db.Text
+  option_use               Int                  @default(0) @db.UnsignedTinyInt
+  option_info              String               @db.Text
+  option_soldout           Int                  @default(0) @db.UnsignedInt
+  qty_type                 Int                  @default(0) @db.UnsignedTinyInt
+  qty                      Int                  @default(0) @db.UnsignedInt
+  limit_qty                Int                  @default(0) @db.UnsignedInt
+  require_info             String               @db.Text
+  display_use              Int                  @default(0) @db.UnsignedTinyInt
+  sale_use                 Int                  @default(0) @db.UnsignedTinyInt
+  order_priority           Int                  @default(5) @db.UnsignedTinyInt
+  main1_display1           Int                  @default(0) @db.UnsignedTinyInt
+  main1_display2           Int                  @default(0) @db.UnsignedTinyInt
+  main1_display3           Int                  @default(0) @db.UnsignedTinyInt
+  main2_display1           Int                  @default(0) @db.UnsignedTinyInt
+  main2_display2           Int                  @default(0) @db.UnsignedTinyInt
+  main2_display3           Int                  @default(0) @db.UnsignedTinyInt
+  store_display1           Int                  @default(0) @db.UnsignedTinyInt
+  store_display2           Int                  @default(0) @db.UnsignedTinyInt
+  store_display3           Int                  @default(0) @db.UnsignedTinyInt
+  main1_display1_sequence  Int                  @default(99999) @db.UnsignedInt
+  main1_display2_sequence  Int                  @default(99999) @db.UnsignedInt
+  main1_display3_sequence  Int                  @default(99999) @db.UnsignedInt
+  main2_display1_sequence  Int                  @default(99999) @db.UnsignedInt
+  main2_display2_sequence  Int                  @default(99999) @db.UnsignedInt
+  main2_display3_sequence  Int                  @default(99999) @db.UnsignedInt
+  store_display1_sequence  Int                  @default(99999) @db.UnsignedInt
+  store_display2_sequence  Int                  @default(99999) @db.UnsignedInt
+  store_display3_sequence  Int                  @default(99999) @db.UnsignedInt
+  icon                     String               @default("") @db.VarChar(250)
+  goods_code               String               @default("") @db.VarChar(50)
+  detail                   String               @db.Text
+  brand                    String               @default("") @db.VarChar(50)
+  make                     String               @default("") @db.VarChar(50)
+  origin                   String               @default("") @db.VarChar(50)
+  model                    String               @default("") @db.VarChar(50)
+  making_info              String               @db.Text
+  mileage_type             Int                  @default(1) @db.UnsignedTinyInt
+  mileage_common           Int                  @default(0) @db.UnsignedInt
+  mileage_level            String               @db.Text
+  delivery_type            Int                  @default(1) @db.UnsignedTinyInt
+  delivery_type_qty        Int                  @default(1) @db.UnsignedInt
+  delivery_price           Int                  @default(0) @db.UnsignedInt
+  delivery_im_areas1_used  Int                  @default(0) @db.UnsignedTinyInt
+  delivery_im_areas1_price Int                  @default(0) @db.UnsignedInt
+  delivery_im_areas2_used  Int                  @default(0) @db.UnsignedTinyInt
+  delivery_im_areas2_price Int                  @default(0) @db.UnsignedInt
+  keyword                  String               @db.Text
+  related_goods_type       Int                  @default(0) @db.UnsignedTinyInt
+  related_goods            String               @default("") @db.VarChar(250)
+  information_use          Int                  @default(1) @db.UnsignedTinyInt
+  delivery_info            String               @db.Text
+  refund_info              String               @db.Text
+  exchange_info            String               @db.Text
+  as_info                  String               @db.Text
+  exhibition               String               @db.Text
+  engine_use               Int                  @default(1) @db.UnsignedTinyInt
+  view_cnt                 Int                  @default(0) @db.UnsignedInt
+  order_cnt                Int                  @default(0) @db.UnsignedInt
+  cate_hide                Int                  @default(0) @db.UnsignedTinyInt
+  vendor_hide              Int                  @default(0) @db.UnsignedTinyInt
+  auth_ck                  mallRN_goods_auth_ck @default(Y)
+  moddate                  Int                  @default(0) @db.UnsignedInt
+  signdate                 Int                  @default(0) @db.UnsignedInt
 
-  // ✅ dad_products 확장 컬럼 (DB 기준으로 전부 포함)
-  tenant_id     BigInt?   @db.UnsignedBigInt
-  status        String    @default("draft") @db.VarChar(32)
-  pickup_only   Boolean   @default(true)
-  min_qty       Int?      @db.UnsignedInt
-  max_qty       Int?      @db.UnsignedInt
-  sale_start_at DateTime? @db.DateTime(3)
-  sale_end_at   DateTime? @db.DateTime(3)
-  sort_order    Int       @default(0)
-  deleted_at    DateTime? @db.DateTime(3)
-
-  // =========================
-  // 기존 더도매 컬럼들
-  // =========================
-  re_uid Int    @default(99999999) @db.UnsignedInt
-  cate   BigInt @default(0) @db.UnsignedBigInt
-  vendor String @default("") @db.VarChar(50)
-
-  name           String @default("") @db.VarChar(250)
-  name_code_able String @default("") @db.VarChar(250)
-  price          Int    @default(0) @db.UnsignedInt
-  orig_price     Int    @default(0) @db.UnsignedInt
-  consumer_price Int    @default(0) @db.UnsignedInt
-  price_ment     String @default("") @db.VarChar(100)
-
-  commission_type Int   @default(0) @db.UnsignedTinyInt
-  commission      Float @default(0.0) @db.Float
-
-  image1       String @default("") @db.VarChar(50)
-  image2       String @default("") @db.VarChar(50)
-  image3       String @default("") @db.VarChar(50)
-  other_image  String @db.Text
-  detail_image String @db.Text
-
-  detail_image_only Int @default(0) @db.UnsignedTinyInt
-  detail_image_type Int @default(1) @db.UnsignedTinyInt
-
-  explains       String @db.Text
-  option_use     Int    @default(0) @db.UnsignedTinyInt
-  option_info    String @db.Text
-  option_soldout Int    @default(0) @db.UnsignedInt
-
-  qty_type  Int @default(0) @db.UnsignedTinyInt
-  qty       Int @default(0) @db.UnsignedInt
-  limit_qty Int @default(0) @db.UnsignedInt
-
-  require_info String @db.Text
-
-  display_use    Int @default(0) @db.UnsignedTinyInt
-  sale_use       Int @default(0) @db.UnsignedTinyInt
-  order_priority Int @default(5) @db.UnsignedTinyInt
-
-  main1_display1 Int @default(0) @db.UnsignedTinyInt
-  main1_display2 Int @default(0) @db.UnsignedTinyInt
-  main1_display3 Int @default(0) @db.UnsignedTinyInt
-
-  main2_display1 Int @default(0) @db.UnsignedTinyInt
-  main2_display2 Int @default(0) @db.UnsignedTinyInt
-  main2_display3 Int @default(0) @db.UnsignedTinyInt
-
-  store_display1 Int @default(0) @db.UnsignedTinyInt
-  store_display2 Int @default(0) @db.UnsignedTinyInt
-  store_display3 Int @default(0) @db.UnsignedTinyInt
-
-  main1_display1_sequence Int @default(99999) @db.UnsignedInt
-  main1_display2_sequence Int @default(99999) @db.UnsignedInt
-  main1_display3_sequence Int @default(99999) @db.UnsignedInt
-  main2_display1_sequence Int @default(99999) @db.UnsignedInt
-  main2_display2_sequence Int @default(99999) @db.UnsignedInt
-  main2_display3_sequence Int @default(99999) @db.UnsignedInt
-  store_display1_sequence Int @default(99999) @db.UnsignedInt
-  store_display2_sequence Int @default(99999) @db.UnsignedInt
-  store_display3_sequence Int @default(99999) @db.UnsignedInt
-
-  icon       String @default("") @db.VarChar(250)
-  goods_code String @default("") @db.VarChar(50)
-
-  detail String @db.Text
-
-  brand  String @default("") @db.VarChar(50)
-  make   String @default("") @db.VarChar(50)
-  origin String @default("") @db.VarChar(50)
-  model  String @default("") @db.VarChar(50)
-
-  making_info String @db.Text
-
-  mileage_type   Int    @default(1) @db.UnsignedTinyInt
-  mileage_common Int    @default(0) @db.UnsignedInt
-  mileage_level  String @db.Text
-
-  delivery_type     Int @default(1) @db.UnsignedTinyInt
-  delivery_type_qty Int @default(1) @db.UnsignedInt
-  delivery_price    Int @default(0) @db.UnsignedInt
-
-  delivery_im_areas1_used  Int @default(0) @db.UnsignedTinyInt
-  delivery_im_areas1_price Int @default(0) @db.UnsignedInt
-  delivery_im_areas2_used  Int @default(0) @db.UnsignedTinyInt
-  delivery_im_areas2_price Int @default(0) @db.UnsignedInt
-
-  keyword String @db.Text
-
-  related_goods_type Int    @default(0) @db.UnsignedTinyInt
-  related_goods      String @default("") @db.VarChar(250)
-
-  information_use Int @default(1) @db.UnsignedTinyInt
-
-  delivery_info String @db.Text
-  refund_info   String @db.Text
-  exchange_info String @db.Text
-  as_info       String @db.Text
-
-  exhibition  String @db.Text
-  engine_use  Int    @default(1) @db.UnsignedTinyInt
-  view_cnt    Int    @default(0) @db.UnsignedInt
-  order_cnt   Int    @default(0) @db.UnsignedInt
-  cate_hide   Int    @default(0) @db.UnsignedTinyInt
-  vendor_hide Int    @default(0) @db.UnsignedTinyInt
-
-  auth_ck mallRN_goods_auth_ck @default(Y)
-
-  moddate  Int @default(0) @db.UnsignedInt
-  signdate Int @default(0) @db.UnsignedInt
-
-  // =========================
-  // Index (DB와 동일하게 맞춤)
-  // =========================
   @@index([name], map: "name")
   @@index([tenant_id, status, moddate], map: "idx_goods_tenant_status_updated")
   @@index([tenant_id, sort_order], map: "idx_goods_tenant_sort")
   @@index([tenant_id, sale_end_at], map: "idx_goods_tenant_sale_end")
   @@index([deleted_at], map: "idx_goods_deleted")
+  @@map("mallRN_goods")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
