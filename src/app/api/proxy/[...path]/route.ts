@@ -9,13 +9,17 @@ function baseApi() {
 function toUpstreamHeaders(req: NextRequest) {
     const h = new Headers(req.headers);
 
-    // hop-by-hop / problematic
     h.delete("host");
     h.delete("connection");
     h.delete("content-length");
 
-    // Accept 기본
     if (!h.get("accept")) h.set("accept", "application/json");
+
+    // ⭐ 세션 쿠키 전달 (핵심)
+    const cookie = req.headers.get("cookie");
+    if (cookie) {
+        h.set("cookie", cookie);
+    }
 
     return h;
 }

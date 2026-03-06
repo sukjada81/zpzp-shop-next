@@ -1,8 +1,9 @@
-// src/components/admin/products/ProductEditForm.tsx
 "use client";
 
+// src/components/admin/products/ProductEditForm.tsx
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PRODUCT_STATUS_OPTIONS, statusLabel } from "@/lib/admin/productStatus";
 
 type OptionRow = {
     id?: string | number;
@@ -13,6 +14,37 @@ type OptionRow = {
     isActive?: boolean;
     sortOrder?: number;
 };
+
+function getAssetOrigin() {
+    return (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "https://discountallday.kr").replace(/\/+$/, "");
+}
+
+function toPreviewUrl(input: string) {
+    const v = (input || "").trim();
+    if (!v) return "";
+    if (/^https?:\/\//i.test(v)) return v;
+    if (/^\/\//.test(v)) return `https:${v}`;
+    const assetOrigin = getAssetOrigin();
+    const path = v.startsWith("/") ? v : `/${v}`;
+    return `${assetOrigin}${path}`;
+}
+
+function toStoredPath(input: string) {
+    const v = (input || "").trim();
+    if (!v) return "";
+    if (!/^https?:\/\//i.test(v)) return v.replace(/^\/+/, "");
+
+    try {
+        const u = new URL(v);
+        const asset = new URL(getAssetOrigin());
+        if (u.origin === asset.origin) {
+            return `${u.pathname}${u.search || ""}`.replace(/^\/+/, "");
+        }
+        return v;
+    } catch {
+        return v;
+    }
+}
 
 export default function ProductEditForm({ product }: { product: any }) {
     const router = useRouter();
@@ -26,6 +58,8 @@ export default function ProductEditForm({ product }: { product: any }) {
     const [pickupOnly, setPickupOnly] = useState<boolean>(Boolean(product?.pickupOnly ?? true));
     const [minQty, setMinQty] = useState<string>(product?.minQty == null ? "" : String(product.minQty));
     const [maxQty, setMaxQty] = useState<string>(product?.maxQty == null ? "" : String(product.maxQty));
+
+    // ✅ 상대경로/절대URL 모두 허용
     const [thumbnailUrl, setThumbnailUrl] = useState<string>(product?.thumbnailUrl ?? "");
     const [imagesJson, setImagesJson] = useState<string>(product?.imagesJson ?? "");
 
@@ -34,6 +68,12 @@ export default function ProductEditForm({ product }: { product: any }) {
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
     const [okMsg, setOkMsg] = useState<string | null>(null);
+
+    const thumbPreview = useMemo(() => {
+        const v = (thumbnailUrl || "").trim();
+        if (!v) return "";
+        return toPreviewUrl(v);
+    }, [thumbnailUrl]);
 
     const addOption = () => {
         setOptions((prev) => [
@@ -65,7 +105,6 @@ export default function ProductEditForm({ product }: { product: any }) {
 
         setLoading(true);
         try {
-            // ✅ 중요: 프론트는 무조건 Next proxy를 통해 API 호출 (세션 쿠키 포함)
             const res = await fetch(`/api/proxy/admin/products/${encodeURIComponent(productId)}`, {
                 method: "PUT",
                 headers: {
@@ -82,9 +121,13 @@ export default function ProductEditForm({ product }: { product: any }) {
                     pickupOnly: Boolean(pickupOnly),
                     minQty: minQty === "" ? null : Number(minQty),
                     maxQty: maxQty === "" ? null : Number(maxQty),
-                    thumbnailUrl: thumbnailUrl.trim() || null,
+
+                    // ✅ 저장값 정규화 (assetOrigin과 같으면 상대경로)
+                    thumbnailUrl: thumbnailUrl.trim() ? toStoredPath(thumbnailUrl.trim()) : null,
+
                     imagesJson: imagesJson.trim() || null,
-                    // 옵션은 서버에서 update 로직이 준비되어 있을 때만 의미있음 (현재는 유지용으로 같이 전송)
+
+                    // 옵션은 서버 update 로직이 준비되어 있을 때만 의미있음
                     options,
                 }),
             });
@@ -96,7 +139,6 @@ export default function ProductEditForm({ product }: { product: any }) {
             }
 
             setOkMsg("수정 완료");
-            // ✅ 목록/상세 데이터 갱신
             router.refresh();
         } catch (e: any) {
             setErr(String(e?.message ?? e));
@@ -153,10 +195,15 @@ export default function ProductEditForm({ product }: { product: any }) {
                         value={status}
                         onChange={(e) => setStatus(e.target.value)}
                     >
-                        <option value="draft">draft</option>
-                        <option value="active">active</option>
-                        <option value="archived">archived</option>
+                        {PRODUCT_STATUS_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                                {o.label}
+                            </option>
+                        ))}
                     </select>
+                    <div className="mt-1 text-[11px] font-bold text-[var(--dad-muted)]">
+                        현재: {statusLabel(status)}
+                    </div>
                 </label>
 
                 <label className="block">
@@ -202,14 +249,27 @@ export default function ProductEditForm({ product }: { product: any }) {
                 </label>
 
                 <label className="block sm:col-span-2">
-                    <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">썸네일 URL</div>
+                    <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">썸네일 URL/경로</div>
                     <input
                         className="h-12 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-4 text-sm font-bold text-[var(--dad-ink)] outline-none focus:ring-2 focus:ring-[var(--dad-orange)]"
                         value={thumbnailUrl}
                         onChange={(e) => setThumbnailUrl(e.target.value)}
-                        placeholder="https://..."
+                        placeholder='예: image/goods/img2/1/10002.jpg 또는 https://discountallday.kr/image/...'
                     />
+                    <div className="mt-1 text-[11px] font-bold text-[var(--dad-muted)]">
+                        상대경로를 넣어도 미리보기는 {getAssetOrigin()} 기준으로 보여줍니다.
+                    </div>
                 </label>
+
+                {thumbPreview ? (
+                    <div className="sm:col-span-2 rounded-2xl border border-[var(--dad-border)] overflow-hidden bg-white/70">
+                        <div className="px-4 py-3 text-xs font-extrabold text-[var(--dad-muted)]">썸네일 미리보기</div>
+                        <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={thumbPreview} alt="thumbnail preview" className="h-full w-full object-cover" />
+                        </div>
+                    </div>
+                ) : null}
 
                 <label className="block sm:col-span-2">
                     <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">추가 이미지 JSON(선택)</div>
@@ -232,6 +292,7 @@ export default function ProductEditForm({ product }: { product: any }) {
                 </label>
             </div>
 
+            {/* 옵션 (현재 구조 유지: rows 형태) */}
             <div className="rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4">
                 <div className="flex items-center justify-between">
                     <div className="text-sm font-extrabold text-[var(--dad-ink)]">옵션</div>
@@ -245,7 +306,10 @@ export default function ProductEditForm({ product }: { product: any }) {
                         <div className="text-xs text-[var(--dad-muted)]">옵션이 없습니다.</div>
                     ) : (
                         options.map((o, idx) => (
-                            <div key={idx} className="grid grid-cols-1 gap-2 rounded-2xl border border-[var(--dad-border)] bg-white p-3 sm:grid-cols-12">
+                            <div
+                                key={idx}
+                                className="grid grid-cols-1 gap-2 rounded-2xl border border-[var(--dad-border)] bg-white p-3 sm:grid-cols-12"
+                            >
                                 <input
                                     className="sm:col-span-5 h-10 rounded-xl border border-[var(--dad-border)] px-3 text-sm font-bold outline-none"
                                     value={o.name ?? ""}
