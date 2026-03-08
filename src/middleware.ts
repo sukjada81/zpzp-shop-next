@@ -284,6 +284,11 @@ export async function middleware(req: NextRequest) {
     if (isSellerHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
+        // ✅ 이미 내부 seller 경로로 rewrite된 경우는 다시 처리하지 않음
+        if (pathname === "/seller" || pathname.startsWith("/seller/")) {
+            return NextResponse.next();
+        }
+
         // ✅ seller 루트는 자동 이동하지 않고 seller root page 로 보냄
         if (pathname === "/" || pathname === "") {
             return NextResponse.rewrite(makeInternalRewriteUrl(req, "/seller", search));
@@ -298,7 +303,6 @@ export async function middleware(req: NextRequest) {
             firstSeg === "select-tenant" ||
             firstSeg === "admin" ||
             firstSeg === "auth" ||
-            firstSeg === "seller" ||
             firstSeg === "api"
         ) {
             return NextResponse.rewrite(makeInternalRewriteUrl(req, "/seller", search));
