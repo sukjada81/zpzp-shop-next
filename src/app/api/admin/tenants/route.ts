@@ -1,4 +1,4 @@
-// src/app/api/admin/tenants/route.ts
+// src/app/api/admin/tenants/page.tsx
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 

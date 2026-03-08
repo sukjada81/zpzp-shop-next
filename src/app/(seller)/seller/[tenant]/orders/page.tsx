@@ -1,8 +1,17 @@
-export default function SellerOrdersPage() {
-    return (
-        <div className="p-4">
-            <h2 className="text-base font-extrabold">주문 목록</h2>
-            <p className="mt-2 text-sm text-gray-600">목데이터/연동 예정</p>
-        </div>
-    );
+// src/app/(seller)/seller/[tenant]/orders/page.tsx
+import SellerOrdersClient from "@/components/seller/SellerOrdersClient";
+
+export default async function SellerOrdersPage({
+                                                   params,
+                                               }: {
+    params: Promise<{ tenant: string }> | { tenant: string };
+}) {
+    const resolved = await Promise.resolve(params);
+    const tenant = resolved?.tenant;
+
+    if (!tenant) {
+        return <div className="p-6">tenant 정보가 없습니다.</div>;
+    }
+
+    return <SellerOrdersClient tenant={tenant} />;
 }

@@ -68,14 +68,24 @@ export default function OrderDetailPage({
                 </div>
 
                 <div className="mt-4 space-y-3">
-                    {order.lines.map((l) => (
-                        <div key={l.productId} className="rounded-xl border p-3">
-                            <div className="font-extrabold">{l.name}</div>
-                            <div className="mt-1 flex justify-between text-sm">
-                                <span>{l.quantity}개</span>
-                                <span>
-                  {(l.price * l.quantity).toLocaleString()}원
-                </span>
+                    {order.lines.map((l, idx) => (
+                        <div key={`${l.productId}_${idx}`} className="rounded-xl border p-3">
+                            <div className="flex items-center gap-3">
+                                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border bg-[color:var(--brand-soft)]">
+                                    {l.thumbnailUrl ? (
+                                        <img src={l.thumbnailUrl} alt={l.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                        <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
+                                    )}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                    <div className="font-extrabold line-clamp-2">{l.name}</div>
+                                    <div className="mt-1 flex justify-between text-sm">
+                                        <span>{l.quantity}개</span>
+                                        <span>{(l.price * l.quantity).toLocaleString()}원</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -87,7 +97,6 @@ export default function OrderDetailPage({
                 </div>
             </div>
 
-            {/* 상태 변경 버튼 */}
             <div className="mt-6 space-y-3">
                 {isCancelable && (
                     <button

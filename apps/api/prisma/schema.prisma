@@ -1166,7 +1166,7 @@ model mallRN_goods {
   detail_image             String               @db.Text
   detail_image_only        Int                  @default(0) @db.UnsignedTinyInt
   detail_image_type        Int                  @default(1) @db.UnsignedTinyInt
-  explains                 String               @db.Text
+  explains                 String               @db.MediumText
   option_use               Int                  @default(0) @db.UnsignedTinyInt
   option_info              String               @db.Text
   option_soldout           Int                  @default(0) @db.UnsignedInt
@@ -1197,7 +1197,7 @@ model mallRN_goods {
   store_display3_sequence  Int                  @default(99999) @db.UnsignedInt
   icon                     String               @default("") @db.VarChar(250)
   goods_code               String               @default("") @db.VarChar(50)
-  detail                   String               @db.Text
+  detail                   String               @db.MediumText
   brand                    String               @default("") @db.VarChar(50)
   make                     String               @default("") @db.VarChar(50)
   origin                   String               @default("") @db.VarChar(50)
@@ -1256,8 +1256,8 @@ model mallRN_goods_backup {
   image1                   String                      @default("") @db.VarChar(50)
   image2                   String                      @default("") @db.VarChar(50)
   image3                   String                      @default("") @db.VarChar(50)
-  other_image              String                      @db.Text
-  detail_image             String                      @db.Text
+  other_image              String                      @db.MediumText
+  detail_image             String                      @db.MediumText
   detail_image_only        Int                         @default(0) @db.UnsignedTinyInt
   detail_image_type        Int                         @default(1) @db.UnsignedTinyInt
   explains                 String                      @db.Text

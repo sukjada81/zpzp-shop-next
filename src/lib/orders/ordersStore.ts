@@ -1,5 +1,3 @@
-// src/lib/orders/ordersStore.ts
-
 export type OrderStatus = "주문완료" | "결제완료" | "픽업대기" | "픽업완료" | "취소";
 
 export type OrderLine = {
@@ -7,15 +5,16 @@ export type OrderLine = {
     name: string;
     price: number;
     quantity: number;
+    thumbnailUrl?: string;
 };
 
 export type OrderRecord = {
     orderNo: string;
     tenant: string;
     status: OrderStatus;
-    title: string; // 대표 상품명
+    title: string;
     totalPrice: number;
-    createdAt: string; // "YYYY-MM-DD HH:mm"
+    createdAt: string;
     lines: OrderLine[];
 };
 
@@ -24,7 +23,6 @@ function pad2(n: number) {
 }
 
 function formatKST(d: Date) {
-    // 브라우저 로컬이 한국이라 가정 (지금 프로젝트 환경 기준)
     const y = d.getFullYear();
     const m = pad2(d.getMonth() + 1);
     const day = pad2(d.getDate());
@@ -34,7 +32,6 @@ function formatKST(d: Date) {
 }
 
 function makeOrderNo() {
-    // 예: 20260222-001530-4832
     const d = new Date();
     const y = d.getFullYear();
     const m = pad2(d.getMonth() + 1);
@@ -47,7 +44,6 @@ function makeOrderNo() {
 }
 
 function storageKey(tenant: string) {
-    // ✅ tenant별 주문 분리 (중요)
     return `orders:${tenant}`;
 }
 
@@ -92,6 +88,14 @@ export function addOrder(tenant: string, lines: OrderLine[]): OrderRecord {
                 ? lines[0].name
                 : `${lines[0].name} 외 ${lines.length - 1}건`;
 
+    const normalizedLines = lines.map((line) => ({
+        productId: String(line.productId),
+        name: String(line.name ?? ""),
+        price: Number(line.price ?? 0),
+        quantity: Number(line.quantity ?? 0),
+        thumbnailUrl: String(line.thumbnailUrl ?? ""),
+    }));
+
     const record: OrderRecord = {
         orderNo: makeOrderNo(),
         tenant,
@@ -99,11 +103,11 @@ export function addOrder(tenant: string, lines: OrderLine[]): OrderRecord {
         title,
         totalPrice,
         createdAt: formatKST(new Date()),
-        lines,
+        lines: normalizedLines,
     };
 
     const prev = loadOrders(tenant);
-    saveOrders(tenant, [record, ...prev]); // 최신순
+    saveOrders(tenant, [record, ...prev]);
     return record;
 }
 
@@ -111,4 +115,3 @@ export function findOrder(tenant: string, orderNo: string): OrderRecord | null {
     const orders = loadOrders(tenant);
     return orders.find((o) => o.orderNo === orderNo) ?? null;
 }
-

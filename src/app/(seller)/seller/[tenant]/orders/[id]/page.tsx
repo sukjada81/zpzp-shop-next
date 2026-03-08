@@ -1,10 +1,20 @@
-type Props = { params: { id: string } };
+// src/app/(seller)/seller/[tenant]/orders/[id]/page.tsx
+import SellerOrderDetailClient from "@/components/seller/SellerOrderDetailClient";
 
-export default function SellerOrderDetailPage({ params }: Props) {
-    return (
-        <div className="p-4">
-            <h2 className="text-base font-extrabold">주문 상세</h2>
-            <p className="mt-2 text-sm text-gray-600">주문 ID: {params.id}</p>
-        </div>
-    );
+export default async function SellerOrderDetailPage({
+                                                        params,
+                                                    }: {
+    params:
+        | Promise<{ tenant: string; id: string }>
+        | { tenant: string; id: string };
+}) {
+    const resolved = await Promise.resolve(params);
+    const tenant = resolved?.tenant;
+    const id = resolved?.id;
+
+    if (!tenant || !id) {
+        return <div className="p-6">tenant 또는 주문 ID가 없습니다.</div>;
+    }
+
+    return <SellerOrderDetailClient tenant={tenant} id={id} />;
 }

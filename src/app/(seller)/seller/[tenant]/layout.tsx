@@ -1,18 +1,19 @@
-import type { ReactNode } from "react";
+// src/app/(seller)/seller/[tenant]/layout.tsx
+import SellerShell from "@/components/seller/SellerShell";
 
-export default function SellerTenantLayout({
-                                               children,
-                                           }: {
-    children: ReactNode;
+export default async function SellerTenantLayout({
+                                                     children,
+                                                     params,
+                                                 }: {
+    children: React.ReactNode;
+    params: Promise<{ tenant: string }> | { tenant: string };
 }) {
-    return (
-        <div className="min-h-dvh bg-gray-50">
-            <div className="mx-auto max-w-md p-4">
-                <div className="rounded-2xl border bg-white p-3 text-sm font-semibold">
-                    셀러 영역
-                </div>
-            </div>
-            <div className="mx-auto max-w-md">{children}</div>
-        </div>
-    );
+    const resolved = await Promise.resolve(params);
+    const tenant = resolved?.tenant;
+
+    if (!tenant) {
+        return <div className="p-6">tenant 정보가 없습니다.</div>;
+    }
+
+    return <SellerShell tenant={tenant}>{children}</SellerShell>;
 }

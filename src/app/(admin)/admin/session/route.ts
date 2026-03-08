@@ -1,4 +1,4 @@
-// src/app/api/admin/session/route.ts
+// src/app/api/admin/session/page.tsx
 import { NextResponse } from "next/server";
 
 function baseApi() {

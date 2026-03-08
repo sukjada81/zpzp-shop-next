@@ -1,8 +1,17 @@
-export default function SellerHomePage() {
-    return (
-        <div className="p-4">
-            <h2 className="text-base font-extrabold">셀러 홈</h2>
-            <p className="mt-2 text-sm text-gray-600">상품/주문 메뉴로 이동 예정</p>
-        </div>
-    );
+// src/app/(seller)/seller/[tenant]/page.tsx
+import SellerDashboardClient from "@/components/seller/SellerDashboardClient";
+
+export default async function SellerTenantDashboardPage({
+                                                            params,
+                                                        }: {
+    params: Promise<{ tenant: string }> | { tenant: string };
+}) {
+    const resolved = await Promise.resolve(params);
+    const tenant = resolved?.tenant;
+
+    if (!tenant) {
+        return <div className="p-6">tenant 정보가 없습니다.</div>;
+    }
+
+    return <SellerDashboardClient tenant={tenant} />;
 }

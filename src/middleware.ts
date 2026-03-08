@@ -1,18 +1,32 @@
 // src/middleware.ts
 import { NextRequest, NextResponse } from "next/server";
 
+const RESERVED_SUBDOMAINS = new Set([
+    "www",
+    "admin",
+    "auth",
+    "api",
+    "select-tenant",
+    "seller",
+]);
+
 function isPublicAsset(pathname: string) {
     return (
         pathname.startsWith("/_next") ||
+        pathname.startsWith("/images") ||
+        pathname.startsWith("/uploads") ||
+        pathname.startsWith("/assets") ||
         pathname === "/favicon.ico" ||
         pathname === "/robots.txt" ||
-        pathname === "/sitemap.xml"
+        pathname === "/sitemap.xml" ||
+        pathname === "/manifest.json" ||
+        pathname === "/site.webmanifest" ||
+        /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i.test(pathname)
     );
 }
 
 function isPublicPath(pathname: string) {
-    if (pathname.startsWith("/_next")) return true;
-    if (pathname === "/favicon.ico") return true;
+    if (isPublicAsset(pathname)) return true;
     if (pathname.startsWith("/api")) return true;
     return false;
 }
@@ -21,15 +35,21 @@ function isAdminPath(pathname: string) {
     return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+function isSellerInternalPath(pathname: string) {
+    return pathname === "/seller" || pathname.startsWith("/seller/");
+}
+
 /**
- * ✅ 보호 경로
- * - tenant 서브도메인에서 "/"도 보호로 취급
+ * 보호 경로
+ * - tenant 서브도메인 "/" -> "/home" 성격으로 보호
+ * - seller "/seller/[tenant]" 루트도 보호
  */
 function needsAuth(pathname: string) {
     if (pathname === "/" || pathname === "/home") return true;
 
     const siteProtected = /^\/[^/]+\/(home|cart|order|orders|goods|points|settings)(\/|$)/;
-    const sellerProtected = /^\/seller\/[^/]+\/(products|orders)(\/|$)/;
+    const sellerProtected = /^\/seller\/[^/]+(\/|$)/;
+
     return siteProtected.test(pathname) || sellerProtected.test(pathname);
 }
 
@@ -41,73 +61,123 @@ function getHost(req: NextRequest) {
 }
 
 function makeInternalRewriteUrl(req: NextRequest, pathname: string, search: string) {
-    const INTERNAL_ORIGIN = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
-    const url = new URL(pathname, INTERNAL_ORIGIN);
+    const internalOrigin = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
+    const url = new URL(pathname, internalOrigin);
     url.search = search || "";
     return url;
 }
 
 function getExternalOrigin(req: NextRequest) {
-    const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
-    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
-        .split(",")[0]
-        .trim();
+    const proto =
+        (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
+    const host =
+        (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+            .split(",")[0]
+            .trim();
+
     if (!host) return req.nextUrl.origin;
     return `${proto}://${host}`;
 }
 
+function getHostOnly(host: string) {
+    return (host || "").split(":")[0].toLowerCase();
+}
+
+function isLikelyLocalHost(host: string) {
+    const h = (host || "").split(",")[0].trim().toLowerCase();
+    const hostOnly = getHostOnly(h);
+
+    if (!hostOnly) return true;
+    if (hostOnly === "localhost") return true;
+    if (hostOnly.endsWith(".localhost")) return true;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return true;
+    if (h.includes(":3000") || h.includes(":5173") || h.includes(":8080")) return true;
+
+    return false;
+}
+
+function getBaseDomain() {
+    return process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+}
+
 function getSubdomain(host: string) {
-    const h = host.split(":")[0].toLowerCase();
-    if (!h) return null;
+    const hostOnly = getHostOnly(host);
+    if (!hostOnly) return null;
 
-    if (h === "localhost") return null;
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
+    if (hostOnly === "localhost") return null;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return null;
 
-    const parts = h.split(".");
+    const parts = hostOnly.split(".");
     if (parts.length < 3) return null;
 
     const sub = parts[0];
-    if (["www", "admin", "auth", "api", "select-tenant", "discountallday"].includes(sub)) return null;
+    if (!sub || RESERVED_SUBDOMAINS.has(sub)) return null;
 
     return sub;
 }
 
-function getEnvOrigin(kind: "AUTH" | "SITE" | "SELECT_TENANT") {
+function isSellerHost(host: string) {
+    const hostOnly = getHostOnly(host);
+    const baseDomain = getBaseDomain();
+    return hostOnly === `seller.${baseDomain}`;
+}
+
+function isAdminHost(host: string) {
+    const hostOnly = getHostOnly(host);
+    const baseDomain = getBaseDomain();
+    return hostOnly === `admin.${baseDomain}`;
+}
+
+function isAuthHost(host: string) {
+    const hostOnly = getHostOnly(host);
+    const baseDomain = getBaseDomain();
+    return hostOnly === `auth.${baseDomain}`;
+}
+
+function isSelectTenantHost(host: string) {
+    const hostOnly = getHostOnly(host);
+    const baseDomain = getBaseDomain();
+    return hostOnly === `select-tenant.${baseDomain}`;
+}
+
+function getEnvOrigin(kind: "AUTH" | "SITE" | "SELECT_TENANT" | "SELLER") {
     if (kind === "AUTH") {
         return process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
     }
     if (kind === "SELECT_TENANT") {
         return process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
     }
-    return process.env.SITE_ORIGIN || "https://discountallday.kr";
-}
-
-function isLikelyLocalHost(host: string) {
-    const h = (host || "").split(",")[0].trim().toLowerCase();
-    const hostOnly = h.split(":")[0];
-    if (!hostOnly) return true;
-    if (hostOnly === "localhost") return true;
-    if (hostOnly.endsWith(".localhost")) return true;
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return true; // IP
-    // ✅ :3000 같은 개발 포트면 로컬 취급(현재 상황 반영)
-    if (h.includes(":3000") || h.includes(":5173") || h.includes(":8080")) return true;
-    return false;
+    if (kind === "SELLER") {
+        return process.env.SELLER_ORIGIN || `https://seller.${getBaseDomain()}`;
+    }
+    return process.env.SITE_ORIGIN || `https://${getBaseDomain()}`;
 }
 
 function buildTenantHomeAbs(req: NextRequest, tenant: string) {
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const baseDomain = getBaseDomain();
 
-    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").split(",")[0].trim();
-    const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
+    const host =
+        (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+            .split(",")[0]
+            .trim();
+    const proto =
+        (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http";
 
     const portMatch = host.match(/:(\d+)$/);
     const port = portMatch ? portMatch[1] : "";
     const portPart = proto === "http" && port ? `:${port}` : "";
 
-    const httpsPreferred = !isLikelyLocalHost(host) && (process.env.AUTH_ORIGIN || "").startsWith("https://");
+    const httpsPreferred =
+        !isLikelyLocalHost(host) && (process.env.AUTH_ORIGIN || "").startsWith("https://");
     const finalProto = httpsPreferred ? "https" : proto;
 
     return `${finalProto}://${tenant}.${baseDomain}${portPart}/home`;
+}
+
+function buildSellerReturnAbs(req: NextRequest, tenant: string, pathAfterTenant = "") {
+    const sellerOrigin = getEnvOrigin("SELLER");
+    const normalized = pathAfterTenant.startsWith("/") ? pathAfterTenant : `/${pathAfterTenant}`;
+    return `${sellerOrigin}/${tenant}${pathAfterTenant ? normalized : ""}`;
 }
 
 async function hasAdminSession(req: NextRequest) {
@@ -130,20 +200,17 @@ export async function middleware(req: NextRequest) {
     const host = getHost(req);
     const externalOrigin = getExternalOrigin(req);
 
-    // =========================
-    // ✅ 로컬 인증 우회 플래그
-    // =========================
     const LOCAL_BYPASS_AUTH = process.env.LOCAL_BYPASS_AUTH === "1";
     const localLike = isLikelyLocalHost(host);
     const bypassAuth = LOCAL_BYPASS_AUTH && localLike;
 
-    // ✅ auth 서브도메인은 건드리지 않음
-    if (host.startsWith("auth.")) return NextResponse.next();
+    // auth host는 그대로
+    if (isAuthHost(host)) {
+        return NextResponse.next();
+    }
 
-    // =========================
-    // select-tenant 서브도메인
-    // =========================
-    if (host.startsWith("select-tenant.")) {
+    // select-tenant host
+    if (isSelectTenantHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
         if (pathname === "/") {
@@ -157,33 +224,23 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(new URL("/", externalOrigin));
     }
 
-    // =========================
-    // ✅ admin 서브도메인 (요구사항 반영 버전)
-    // - 외부 URL: /login, /dashboard, /orders ...
-    // - 내부 라우트: /admin/login, /admin/dashboard, /admin/orders ...
-    // =========================
-    if (host.startsWith("admin.")) {
-        // 정적/내부 API는 그대로
+    // admin host
+    if (isAdminHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
-        // 1) 로그인 페이지는 항상 통과 + 내부 라우트로 rewrite
         if (pathname === "/login" || pathname.startsWith("/login/")) {
             return NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
         }
 
-        // 2) 내부 경로(/admin/...)로 직접 접근하는 경우도 허용(개발/디버깅)
-        //    단, /admin/login은 예외로 무조건 통과
         if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
             return NextResponse.next();
         }
 
-        // 3) 그 외는 세션 체크(로컬 우회면 통과)
         if (!bypassAuth) {
             try {
                 const ok = await hasAdminSession(req);
                 if (!ok) {
                     const loginUrl = new URL("/login", externalOrigin);
-                    // returnTo는 "외부 URL" 기준으로 유지 (요구사항: /dashboard 등)
                     const returnTo = pathname === "/" ? "/dashboard" : `${pathname}${search || ""}`;
                     loginUrl.searchParams.set("returnTo", returnTo);
                     return NextResponse.redirect(loginUrl);
@@ -196,35 +253,81 @@ export async function middleware(req: NextRequest) {
             }
         }
 
-        // 4) 로그인 상태면 rewrite 규칙 적용
-        //    - "/" 또는 "/dashboard" -> "/admin/dashboard"
-        //    - 나머지 "/xxx" -> "/admin/xxx"
         if (pathname === "/" || pathname === "/dashboard") {
             return NextResponse.rewrite(makeInternalRewriteUrl(req, "/admin/dashboard", search));
         }
 
-        // 이미 /admin/...이면 그대로 next
         if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-            // "/admin" 루트로 들어오면 대시보드로 넘김
             if (pathname === "/admin") {
                 return NextResponse.rewrite(makeInternalRewriteUrl(req, "/admin/dashboard", search));
             }
             return NextResponse.next();
         }
 
-        // 일반 외부 페이지: /orders -> /admin/orders
         return NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
     }
 
-    // =========================
-    // 내부 /admin 보호 (메인 도메인에서 /admin으로 들어오는 케이스)
-    // =========================
+    // seller host: seller.discountallday.kr/{tenant}/...
+    if (isSellerHost(host)) {
+        if (isPublicPath(pathname)) return NextResponse.next();
+
+        if (pathname === "/") {
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
+        }
+
+        const segs = pathname.split("/").filter(Boolean);
+        const tenant = segs[0];
+
+        if (!tenant) {
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
+        }
+
+        const rest = segs.slice(1).join("/");
+        const internalPath = rest ? `/seller/${tenant}/${rest}` : `/seller/${tenant}`;
+
+        const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
+        const mockLogin = bypassAuth ? true : mockLoginCookie;
+        const isProtected = needsAuth(internalPath);
+
+        const addDebug = (res: NextResponse, action: string) => {
+            res.headers.set("X-Dad-Debug-Action", action);
+            res.headers.set("X-Dad-Debug-Host", host);
+            res.headers.set("X-Dad-Debug-SellerTenant", tenant);
+            res.headers.set("X-Dad-Debug-Path", pathname);
+            res.headers.set("X-Dad-Debug-Internal", internalPath);
+            res.headers.set("X-Dad-Debug-Protected", String(isProtected));
+            res.headers.set("X-Dad-Debug-Mocklogin", String(mockLogin));
+            res.headers.set("X-Dad-Debug-BypassAuth", String(bypassAuth));
+            return res;
+        };
+
+        if (!isProtected || mockLogin) {
+            return addDebug(
+                NextResponse.rewrite(makeInternalRewriteUrl(req, internalPath, search)),
+                !isProtected ? "seller-rewrite(unprotected)" : "seller-rewrite(protected OK)"
+            );
+        }
+
+        const authOrigin = getEnvOrigin("AUTH");
+        const loginUrl = new URL("/login", authOrigin);
+        loginUrl.searchParams.set("tenant", tenant);
+        loginUrl.searchParams.set(
+            "returnTo",
+            buildSellerReturnAbs(req, tenant, rest ? `/${rest}` : "")
+        );
+
+        return addDebug(
+            NextResponse.redirect(loginUrl),
+            "seller-redirect(auth)"
+        );
+    }
+
+    // 메인도메인 /admin 직접 접근 보호
     if (isAdminPath(pathname)) {
         if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
             return NextResponse.next();
         }
 
-        // ✅ 로컬 인증 우회면 admin도 통과(원하면 제거 가능)
         if (bypassAuth) return NextResponse.next();
 
         try {
@@ -248,15 +351,40 @@ export async function middleware(req: NextRequest) {
         }
     }
 
-    // =========================
-    // tenant 서브도메인 처리
-    // =========================
+    // 내부 /seller 직접 접근도 허용
+    if (isSellerInternalPath(pathname)) {
+        if (isPublicPath(pathname)) return NextResponse.next();
+
+        const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
+        const mockLogin = bypassAuth ? true : mockLoginCookie;
+
+        if (!needsAuth(pathname) || mockLogin) {
+            return NextResponse.next();
+        }
+
+        const segs = pathname.split("/").filter(Boolean);
+        const tenant = segs[1] || "";
+        const rest = segs.slice(2).join("/");
+
+        const authOrigin = getEnvOrigin("AUTH");
+        const loginUrl = new URL("/login", authOrigin);
+        if (tenant) {
+            loginUrl.searchParams.set("tenant", tenant);
+            loginUrl.searchParams.set(
+                "returnTo",
+                buildSellerReturnAbs(req, tenant, rest ? `/${rest}` : "")
+            );
+        }
+
+        return NextResponse.redirect(loginUrl);
+    }
+
+    // tenant subdomain 처리
     const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
     const subdomain = ENABLE_SUBDOMAIN_TENANT ? getSubdomain(host) : null;
 
     if (!subdomain) return NextResponse.next();
 
-    // tenant 서브도메인에서 전역 라우트 bypass
     if (
         pathname === "/login" ||
         pathname.startsWith("/login/") ||
@@ -275,18 +403,19 @@ export async function middleware(req: NextRequest) {
         externalPath.startsWith("/seller/") ||
         externalPath.startsWith("/api") ||
         externalPath.startsWith("/_next") ||
+        externalPath.startsWith("/uploads") ||
+        externalPath.startsWith("/images") ||
         externalPath === "/favicon.ico";
 
-    const internalPathname = !alreadyPrefixed && !bypass ? `/${subdomain}${externalPath}` : externalPath;
+    const internalPathname =
+        !alreadyPrefixed && !bypass ? `/${subdomain}${externalPath}` : externalPath;
 
     if (isPublicPath(pathname)) return NextResponse.next();
 
     const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
     const mockLogin = bypassAuth ? true : mockLoginCookie;
-
     const isProtected = needsAuth(internalPathname);
 
-    // ✅ 디버그 헤더
     const addDebug = (res: NextResponse, action: string) => {
         res.headers.set("X-Dad-Debug-Action", action);
         res.headers.set("X-Dad-Debug-Host", host);
@@ -301,7 +430,6 @@ export async function middleware(req: NextRequest) {
         return res;
     };
 
-    // 보호 경로 아니면 rewrite/next
     if (!isProtected) {
         if (internalPathname !== pathname) {
             return addDebug(
@@ -312,7 +440,6 @@ export async function middleware(req: NextRequest) {
         return addDebug(NextResponse.next(), "next(unprotected)");
     }
 
-    // 보호 경로 + 로그인(또는 로컬 우회)면 통과
     if (mockLogin) {
         if (internalPathname !== pathname) {
             return addDebug(
@@ -323,9 +450,8 @@ export async function middleware(req: NextRequest) {
         return addDebug(NextResponse.next(), "next(protected OK)");
     }
 
-    // 보호 경로 + 미로그인 => auth로 이동 (운영용)
-    const AUTH_ORIGIN = getEnvOrigin("AUTH");
-    const loginUrl = new URL("/login", AUTH_ORIGIN);
+    const authOrigin = getEnvOrigin("AUTH");
+    const loginUrl = new URL("/login", authOrigin);
     loginUrl.searchParams.set("tenant", subdomain);
     loginUrl.searchParams.set("returnTo", buildTenantHomeAbs(req, subdomain));
 

@@ -1,4 +1,4 @@
-// src/app/api/tenant/select/route.ts
+// src/app/api/tenant/select/page.tsx
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantList } from "@/lib/tenant/tenants";
 

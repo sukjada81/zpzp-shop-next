@@ -1,4 +1,4 @@
-// src/app/api/auth/kakao/login/route.ts
+// src/app/api/auth/kakao/login/page.tsx
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 

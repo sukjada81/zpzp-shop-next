@@ -1,4 +1,3 @@
-// src/app/(site)/[tenant]/(app)/goods/[id]/page.tsx
 import { notFound } from "next/navigation";
 import GoodsDetailClient, { type GoodsDetailData } from "@/components/goods/GoodsDetailClient";
 import { endpoints } from "@/lib/api/endpoints";
@@ -9,14 +8,9 @@ function getInternalOrigin() {
     return process.env.NEXT_INTERNAL_ORIGIN || process.env.NEXT_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
 }
 
-/**
- * ✅ 1순위: 상세 API 사용
- * ✅ 2순위: 목록 fallback (최소 구성)
- */
 async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDetailData | null> {
     const origin = getInternalOrigin();
 
-    // 1) 상세 API
     {
         const path = endpoints.publicProductDetail(tenant, id);
         const url = new URL(path, origin);
@@ -60,7 +54,6 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
         }
     }
 
-    // 2) fallback: 목록에서 찾기
     {
         const path = endpoints.publicProducts(tenant, { take: 200 });
         const url = new URL(path, origin);
@@ -84,7 +77,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                 timeLeft: found.metaLeft,
                 pickup: found.metaRight,
             },
-            images: [{ key: "", label: "이미지 없음" }],
+            images: found.thumbnailUrl ? [{ key: found.thumbnailUrl, label: "대표 이미지" }] : [{ key: "", label: "이미지 없음" }],
             options: [
                 {
                     id: "default",

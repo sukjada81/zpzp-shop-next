@@ -1,4 +1,3 @@
-// src/app/(site)/[tenant]/(app)/orders/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, use } from "react";
@@ -10,7 +9,6 @@ type PageProps = {
 };
 
 export default function OrdersPage({ params }: PageProps) {
-    // ✅ Next.js 16 방식
     const { tenant } = use(params);
 
     const [orders, setOrders] = useState<OrderRecord[]>([]);
@@ -27,6 +25,7 @@ export default function OrdersPage({ params }: PageProps) {
                 title: o.title,
                 totalPrice: o.totalPrice,
                 createdAt: o.createdAt,
+                thumbnailUrl: o.lines?.[0]?.thumbnailUrl || "",
             })),
         [orders]
     );

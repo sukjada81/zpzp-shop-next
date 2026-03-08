@@ -1,4 +1,4 @@
-// src/app/api/admin/dashboard/route.ts
+// src/app/api/admin/dashboard/page.tsx
     import { NextResponse } from "next/server";
 
 function baseApi() {

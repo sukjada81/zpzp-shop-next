@@ -1,4 +1,4 @@
-// src/app/api/proxy/[...path]/route.ts
+// src/app/api/proxy/[...path]/page.tsx
 import { NextRequest, NextResponse } from "next/server";
 
 function baseApi() {

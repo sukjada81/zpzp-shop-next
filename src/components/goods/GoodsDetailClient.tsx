@@ -1,4 +1,3 @@
-// src/components/goods/GoodsDetailClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -42,7 +41,6 @@ function looksLikeHtml(s?: string | null) {
     return /<\/?[a-z][\s\S]*>/i.test(v);
 }
 
-/** 최소한의 방어 (script/inline handler 제거) */
 function sanitizeHtml(input: string) {
     let html = input;
     html = html.replace(/<\s*(script|iframe|object|embed)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "");
@@ -51,7 +49,6 @@ function sanitizeHtml(input: string) {
     return html;
 }
 
-/** src="image/..." 같은 상대경로를 절대경로로 변환 */
 function absolutizeHtmlImageSrc(html: string) {
     const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
     if (!base) return html;
@@ -63,6 +60,15 @@ function absolutizeHtmlImageSrc(html: string) {
     out = out.replace(re1, (_m, q, p) => `src=${q}${base}/${p}${q}`);
     out = out.replace(re2, (_m, q, p) => `src=${q}${base}${p}${q}`);
     return out;
+}
+
+function toAbsoluteImageUrl(input: string) {
+    const k = String(input ?? "").trim();
+    if (!k) return "";
+    if (/^https?:\/\//i.test(k)) return k;
+
+    const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
+    return base ? `${base}${k.startsWith("/") ? "" : "/"}${k}` : (k.startsWith("/") ? k : `/${k}`);
 }
 
 export default function GoodsDetailClient(props: { tenant: string; data: GoodsDetailData }) {
@@ -110,16 +116,14 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const imgLabel = safeImages?.[imgIdx]?.label?.trim();
     const [sheetOpen, setSheetOpen] = useState(false);
 
-    // ✅ 대표이미지: key가 절대URL이면 그대로, 상대면 NEXT_PUBLIC_ASSET_ORIGIN 붙이기
     const mainImg = useMemo(() => {
-        const k = String(safeImages?.[imgIdx]?.key ?? "").trim();
-        if (!k) return "";
-        if (/^https?:\/\//i.test(k)) return k;
-        const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
-        return base ? `${base}${k.startsWith("/") ? "" : "/"}${k}` : (k.startsWith("/") ? k : `/${k}`);
+        return toAbsoluteImageUrl(safeImages?.[imgIdx]?.key ?? "");
     }, [safeImages, imgIdx]);
 
-    // ✅ 상세설명: HTML이면 HTML로 렌더
+    const primaryThumb = useMemo(() => {
+        return toAbsoluteImageUrl(safeImages?.[0]?.key ?? "");
+    }, [safeImages]);
+
     const descRaw = String(data.description ?? "").trim();
     const descIsHtml = looksLikeHtml(descRaw);
 
@@ -132,9 +136,11 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     function addLinesToCart() {
         const payloadItems = selectedLines.map((l) => ({
             productId: `${data.id}__${l.optionId}`,
+            baseProductId: String(data.id),
             name: `${data.title} / ${l.optionName}`,
             price: l.unitPrice,
             quantity: l.quantity,
+            thumbnailUrl: primaryThumb || "",
         }));
 
         if (typeof cart?.addItems === "function") {
@@ -182,15 +188,13 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     return (
         <main className="mx-auto max-w-[520px] pb-24">
-            {/* 상단 카드 */}
             <section className="bg-white">
                 <div className="relative bg-slate-100">
                     {mainImg ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={mainImg}
                             alt={data.title}
-                            className="h-auto w-full object-contain"   // ✅ 잘림 방지
+                            className="h-auto w-full object-contain"
                         />
                     ) : (
                         <div className="aspect-[4/3]" />
@@ -199,21 +203,21 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     <div className="absolute left-3 top-3 flex gap-2">
                         {data.badges?.left ? (
                             <span className="rounded-full bg-[color:var(--brand)] px-2.5 py-1 text-[11px] font-extrabold text-white">
-                {data.badges.left}
-              </span>
+                                {data.badges.left}
+                            </span>
                         ) : null}
                         {data.badges?.right ? (
                             <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-extrabold text-white">
-                {data.badges.right}
-              </span>
+                                {data.badges.right}
+                            </span>
                         ) : null}
                     </div>
 
                     {imgLabel ? (
                         <div className="absolute bottom-3 left-3">
-              <span className="rounded-md bg-white/90 px-2 py-1 text-[11px] font-extrabold text-slate-900">
-                {imgLabel}
-              </span>
+                            <span className="rounded-md bg-white/90 px-2 py-1 text-[11px] font-extrabold text-slate-900">
+                                {imgLabel}
+                            </span>
                         </div>
                     ) : null}
 
@@ -239,6 +243,36 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     ) : null}
                 </div>
 
+                {safeImages.length > 1 ? (
+                    <div className="flex gap-2 overflow-x-auto px-4 pt-3">
+                        {safeImages.map((img, idx) => {
+                            const thumb = toAbsoluteImageUrl(img.key);
+                            const active = idx === imgIdx;
+
+                            return (
+                                <button
+                                    key={`${img.key}_${idx}`}
+                                    type="button"
+                                    onClick={() => setImgIdx(idx)}
+                                    className="shrink-0 overflow-hidden rounded-xl border"
+                                    style={{
+                                        borderColor: active ? "var(--brand)" : "var(--border)",
+                                        boxShadow: active ? "0 0 0 2px rgba(23,59,69,0.08)" : "none",
+                                    }}
+                                >
+                                    <div className="h-16 w-16 bg-[color:var(--brand-soft)]">
+                                        {thumb ? (
+                                            <img src={thumb} alt={`${data.title}-${idx + 1}`} className="h-full w-full object-cover" />
+                                        ) : (
+                                            <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
+                                        )}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                ) : null}
+
                 <div className="px-4 pt-4 pb-6">
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -256,19 +290,18 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                         {data.meta?.timeLeft ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[12px] font-extrabold text-rose-700">
-                ⏰ {data.meta.timeLeft}
-              </span>
+                                ⏰ {data.meta.timeLeft}
+                            </span>
                         ) : null}
                         {data.meta?.pickup ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-extrabold text-slate-700">
-                🚚 {data.meta.pickup}
-              </span>
+                                🚚 {data.meta.pickup}
+                            </span>
                         ) : null}
                     </div>
 
                     <div className="mt-5 text-center text-[12px] font-semibold text-slate-400">이미지 클릭시 상세보기 가능합니다.</div>
 
-                    {/* ✅ 상세설명: HTML이면 렌더, 아니면 텍스트 */}
                     {descRaw ? (
                         descIsHtml ? (
                             <div
@@ -298,14 +331,13 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </div>
             </section>
 
-            {/* 옵션/바텀시트 (당신이 보내준 기존 코드 그대로) */}
             <section className="px-4 pt-4">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div className="text-[15px] font-extrabold text-slate-900">구성 선택</div>
                         <span className="rounded-full bg-[color:var(--brand-weak)] px-2 py-1 text-[11px] font-extrabold text-[color:var(--brand)]">
-              {data.options.length}종
-            </span>
+                            {data.options.length}종
+                        </span>
                     </div>
 
                     <div className="mt-3 space-y-3">
@@ -321,12 +353,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                             <div className="flex items-center gap-2">
                                                 {o.soldout ? (
                                                     <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-extrabold text-rose-700">
-                            🔥 {o.stockNote ?? "품절"}
-                          </span>
+                                                        🔥 {o.stockNote ?? "품절"}
+                                                    </span>
                                                 ) : o.stockNote ? (
                                                     <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-extrabold text-amber-700">
-                            🧡 {o.stockNote}
-                          </span>
+                                                        🧡 {o.stockNote}
+                                                    </span>
                                                 ) : null}
                                             </div>
 
@@ -381,7 +413,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </div>
             </section>
 
-            {/* 바텀바/시트는 기존 그대로 사용 */}
             {!sheetOpen ? (
                 <div className="fixed bottom-0 left-0 right-0 z-[50] border-t border-slate-200 bg-white/95 backdrop-blur">
                     <div className="mx-auto max-w-[520px] px-4 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
@@ -468,8 +499,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                                 <div className="flex items-center gap-2">
                                                                     {soldout ? (
                                                                         <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-extrabold text-rose-700">
-                                      품절
-                                    </span>
+                                                                            품절
+                                                                        </span>
                                                                     ) : null}
                                                                     <div className="line-clamp-1 text-[12px] font-semibold text-slate-700">{l.optionName}</div>
                                                                 </div>
@@ -563,7 +594,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                     </div>
                                 </div>
                             </div>
-                            {/* flex-col 끝 */}
                         </div>
                     </div>
                 </>

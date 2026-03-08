@@ -2,6 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { PRODUCT_STATUS_OPTIONS, statusLabel } from "@/lib/admin/productStatus";
+import ProductHtmlEditor from "./ProductHtmlEditor";
+import {
+    PRODUCT_ADMIN_CATEGORY_OPTIONS,
+    OptionGroupRow,
+    makeGroupRow,
+    makeValueRow,
+    safeNum,
+    serializeOptionGroups,
+    textToList,
+    toPreviewUrl,
+    uploadProductImage,
+} from "./productFormUtils";
 
 type Tenant = { id: string | number; slug?: string; name?: string };
 
@@ -9,25 +21,11 @@ type Props = {
     tenants: Tenant[];
 };
 
-type OptionValueRow = {
-    id: string;
-    valueName: string;
-    addPrice: string;
-    stockQty: string;
-};
-
-type OptionGroupRow = {
-    id: string;
-    groupName: string;
-    values: OptionValueRow[];
-};
-
 type FormState = {
     tenantSlug: string;
     status: string;
 
     title: string;
-    name: string;
     price: number;
     origPrice: number;
     consumerPrice: number;
@@ -40,85 +38,41 @@ type FormState = {
     image2: string;
     image3: string;
 
+    otherImagesText: string;
+    detailImagesText: string;
+
+    detail: string;
     explains: string;
 
     optionUse: boolean;
 
     minQty: string;
     maxQty: string;
-};
 
-function safeNum(n: any, fallback = 0) {
-    const x = Number(n);
-    return Number.isFinite(x) ? x : fallback;
-}
+    saleStartAt: string;
+    saleEndAt: string;
+    sortOrder: string;
+
+    qtyType: "0" | "1";
+    qty: string;
+    limitQty: string;
+
+    goodsCode: string;
+    brand: string;
+    make: string;
+    origin: string;
+    model: string;
+
+    detailImageOnly: boolean;
+    detailImageType: "1" | "2";
+
+    categoryKeys: string[];
+};
 
 function guessTenantSlug(tenants: Tenant[], fallback = "all") {
     const first = tenants?.[0];
     const slug = (first?.slug || "").toString().trim();
     return slug || fallback;
-}
-
-function getAssetOrigin() {
-    return (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "https://discountallday.kr").replace(/\/+$/, "");
-}
-
-function toPreviewUrl(input: string) {
-    const v = (input || "").trim();
-    if (!v) return "";
-    if (/^https?:\/\//i.test(v)) return v;
-    if (/^\/\//.test(v)) return `https:${v}`;
-    const assetOrigin = getAssetOrigin();
-    const path = v.startsWith("/") ? v : `/${v}`;
-    return `${assetOrigin}${path}`;
-}
-
-function makeValueRow(): OptionValueRow {
-    return {
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        valueName: "",
-        addPrice: "0",
-        stockQty: "",
-    };
-}
-
-function makeGroupRow(): OptionGroupRow {
-    return {
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        groupName: "",
-        values: [makeValueRow()],
-    };
-}
-
-function serializeOptionGroups(groups: OptionGroupRow[]) {
-    const normalized = groups
-        .map((group) => ({
-            groupName: group.groupName.trim(),
-            values: group.values
-                .map((value) => ({
-                    valueName: value.valueName.trim(),
-                    addPrice: value.addPrice.trim(),
-                    stockQty: value.stockQty.trim(),
-                }))
-                .filter((value) => value.valueName),
-        }))
-        .filter((group) => group.groupName && group.values.length > 0);
-
-    if (!normalized.length) return "";
-
-    return normalized
-        .map((group) => {
-            const values = group.values
-                .map((value) => {
-                    const addPrice = value.addPrice === "" ? "0" : String(safeNum(value.addPrice, 0));
-                    const stockQty = value.stockQty === "" ? "" : String(safeNum(value.stockQty, 0));
-                    return [value.valueName, addPrice, stockQty].join("^");
-                })
-                .join(",");
-
-            return `${group.groupName}|${values}`;
-        })
-        .join("|*|");
 }
 
 export default function ProductCreateForm({ tenants }: Props) {
@@ -129,7 +83,6 @@ export default function ProductCreateForm({ tenants }: Props) {
         status: "draft",
 
         title: "",
-        name: "",
         price: 0,
         origPrice: 0,
         consumerPrice: 0,
@@ -142,23 +95,52 @@ export default function ProductCreateForm({ tenants }: Props) {
         image2: "",
         image3: "",
 
+        otherImagesText: "",
+        detailImagesText: "",
+
+        detail: "",
         explains: "<p></p>",
 
         optionUse: false,
 
         minQty: "",
         maxQty: "",
+
+        saleStartAt: "",
+        saleEndAt: "",
+        sortOrder: "0",
+
+        qtyType: "0",
+        qty: "",
+        limitQty: "",
+
+        goodsCode: "",
+        brand: "",
+        make: "",
+        origin: "",
+        model: "",
+
+        detailImageOnly: false,
+        detailImageType: "1",
+
+        categoryKeys: [],
     });
 
     const [optionGroups, setOptionGroups] = useState<OptionGroupRow[]>([]);
-    const [uploadingKey, setUploadingKey] = useState<"image1" | "image2" | "image3" | null>(null);
+    const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
 
     function onChange<K extends keyof FormState>(key: K, value: FormState[K]) {
         setForm((p) => ({ ...p, [key]: value }));
     }
 
-    function normalizeTitleInput(v: string) {
-        return (v ?? "").toString();
+    function toggleCategory(key: string) {
+        setForm((prev) => ({
+            ...prev,
+            categoryKeys: prev.categoryKeys.includes(key)
+                ? prev.categoryKeys.filter((x) => x !== key)
+                : [...prev.categoryKeys, key],
+        }));
     }
 
     function addOptionGroup() {
@@ -182,7 +164,7 @@ export default function ProductCreateForm({ tenants }: Props) {
         );
     }
 
-    function updateOptionValue(groupId: string, valueId: string, patch: Partial<OptionValueRow>) {
+    function updateOptionValue(groupId: string, valueId: string, patch: any) {
         setOptionGroups((prev) =>
             prev.map((group) =>
                 group.id === groupId
@@ -201,54 +183,50 @@ export default function ProductCreateForm({ tenants }: Props) {
         setOptionGroups((prev) =>
             prev.map((group) =>
                 group.id === groupId
-                    ? {
-                        ...group,
-                        values: group.values.filter((value) => value.id !== valueId),
-                    }
+                    ? { ...group, values: group.values.filter((value) => value.id !== valueId) }
                     : group
             )
         );
     }
 
-    async function uploadImage(file: File, key: "image1" | "image2" | "image3") {
+    async function uploadSingleImage(key: "image1" | "image2" | "image3", file: File) {
         setUploadingKey(key);
         try {
-            const formData = new FormData();
-            formData.append("file", file);
+            const path = await uploadProductImage(file);
+            onChange(key, path);
+        } catch (e: any) {
+            alert(e?.message || "이미지 업로드 실패");
+        } finally {
+            setUploadingKey(null);
+        }
+    }
 
-            const res = await fetch("/api/proxy/admin/uploads/product-image", {
-                method: "POST",
-                body: formData,
-                credentials: "include",
-                cache: "no-store",
-            });
-
-            const json = await res.json().catch(() => ({}));
-
-            if (!res.ok || json?.ok === false || !json?.path) {
-                alert(json?.message || `이미지 업로드 실패 (HTTP ${res.status})`);
-                return;
-            }
-
-            onChange(key, String(json.path));
+    async function appendImageToList(target: "otherImagesText" | "detailImagesText", file: File) {
+        setUploadingKey(target);
+        try {
+            const path = await uploadProductImage(file);
+            setForm((prev) => ({
+                ...prev,
+                [target]: prev[target] ? `${prev[target]}\n${path}` : path,
+            }));
+        } catch (e: any) {
+            alert(e?.message || "이미지 업로드 실패");
         } finally {
             setUploadingKey(null);
         }
     }
 
     async function submit() {
-        if (!form.tenantSlug?.trim()) return alert("지점을 선택해 주세요.(tenantSlug)");
-        if (!form.title.trim()) return alert("상품명을 입력해 주세요.(title)");
-        if (safeNum(form.price) <= 0) return alert("판매가를 입력해 주세요.");
+        if (!form.tenantSlug.trim()) return alert("지점을 선택해 주세요.");
+        if (!form.title.trim()) return alert("상품명을 입력해 주세요.");
 
         const serializedOptionInfo = form.optionUse ? serializeOptionGroups(optionGroups) : "";
 
-        const payload: any = {
+        const payload = {
             tenantSlug: form.tenantSlug.trim(),
-            status: String(form.status || "draft"),
+            status: form.status,
 
             title: form.title.trim(),
-            name: form.name?.trim() || form.title.trim(),
 
             basePrice: safeNum(form.price),
             price: safeNum(form.price),
@@ -257,50 +235,77 @@ export default function ProductCreateForm({ tenants }: Props) {
             consumerPrice: safeNum(form.consumerPrice),
             consumer_price: safeNum(form.consumerPrice),
 
-            pickupOnly: !!form.pickupOnly,
+            pickupOnly: form.pickupOnly,
             pickup_only: form.pickupOnly ? 1 : 0,
 
-            displayUse: !!form.displayUse,
+            displayUse: form.displayUse,
             display_use: form.displayUse ? 1 : 0,
 
-            saleUse: !!form.saleUse,
+            saleUse: form.saleUse,
             sale_use: form.saleUse ? 1 : 0,
 
             image1: form.image1.trim(),
             image2: form.image2.trim(),
             image3: form.image3.trim(),
-            thumbnailUrl: form.image1.trim(),
 
-            description: form.explains ?? "",
-            explains: form.explains ?? "",
+            otherImages: textToList(form.otherImagesText),
+            detailImages: textToList(form.detailImagesText),
 
-            optionUse: !!form.optionUse,
+            detail: form.detail,
+            shortDescription: form.detail,
+            explains: form.explains,
+            description: form.explains,
+
+            optionUse: form.optionUse,
             option_use: form.optionUse ? 1 : 0,
             optionInfo: serializedOptionInfo,
             option_info: serializedOptionInfo,
 
-            minQty: form.minQty ? safeNum(form.minQty) : null,
-            maxQty: form.maxQty ? safeNum(form.maxQty) : null,
-            min_qty: form.minQty ? safeNum(form.minQty) : null,
-            max_qty: form.maxQty ? safeNum(form.maxQty) : null,
+            minQty: form.minQty === "" ? null : safeNum(form.minQty),
+            maxQty: form.maxQty === "" ? null : safeNum(form.maxQty),
+
+            saleStartAt: form.saleStartAt || null,
+            saleEndAt: form.saleEndAt || null,
+            sortOrder: safeNum(form.sortOrder),
+
+            qtyType: safeNum(form.qtyType),
+            qty: safeNum(form.qty),
+            limitQty: safeNum(form.limitQty),
+
+            goodsCode: form.goodsCode.trim(),
+            brand: form.brand.trim(),
+            make: form.make.trim(),
+            origin: form.origin.trim(),
+            model: form.model.trim(),
+
+            detailImageOnly: form.detailImageOnly,
+            detailImageType: safeNum(form.detailImageType),
+
+            categoryKeys: form.categoryKeys,
         };
 
-        const res = await fetch("/api/proxy/admin/products", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify(payload),
-            cache: "no-store",
-            credentials: "include",
-        });
+        setSaving(true);
+        try {
+            const res = await fetch("/api/proxy/admin/products", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify(payload),
+                cache: "no-store",
+                credentials: "include",
+            });
 
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json?.ok === false) {
-            console.error(json);
-            return alert(json?.message || `등록 실패 (HTTP ${res.status})`);
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json?.ok === false) {
+                throw new Error(json?.message || `등록 실패 (HTTP ${res.status})`);
+            }
+
+            alert("상품 등록이 완료되었습니다.");
+            window.location.href = "/admin/products";
+        } catch (e: any) {
+            alert(e?.message || "등록 실패");
+        } finally {
+            setSaving(false);
         }
-
-        alert("상품 등록이 완료되었습니다.");
-        window.location.href = "/admin/products";
     }
 
     const preview1 = useMemo(() => toPreviewUrl(form.image1), [form.image1]);
@@ -311,7 +316,7 @@ export default function ProductCreateForm({ tenants }: Props) {
         <div className="space-y-6">
             <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div>
-                    <label className="text-xs font-extrabold text-[var(--dad-muted)]">지점(tenant)</label>
+                    <label className="text-xs font-extrabold text-[var(--dad-muted)]">지점</label>
                     <select
                         className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
                         value={form.tenantSlug}
@@ -327,9 +332,6 @@ export default function ProductCreateForm({ tenants }: Props) {
                             );
                         })}
                     </select>
-                    <div className="mt-1 text-[11px] font-bold text-[var(--dad-muted)]">
-                        현재: <span className="text-[var(--dad-ink)]">{form.tenantSlug || "-"}</span>
-                    </div>
                 </div>
 
                 <div>
@@ -351,26 +353,112 @@ export default function ProductCreateForm({ tenants }: Props) {
                 </div>
             </section>
 
-            <section className="dad-card p-4 sm:p-5 space-y-4">
+            <section className="dad-card space-y-4 p-5">
+                <div className="text-base font-extrabold text-[var(--dad-ink)]">기본 정보</div>
+
                 <div>
-                    <label className="text-xs font-extrabold text-[var(--dad-muted)]">
-                        상품명(title) <span className="text-[var(--dad-orange)]">*</span>
-                    </label>
+                    <label className="text-xs font-extrabold text-[var(--dad-muted)]">상품명</label>
                     <input
                         className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
                         value={form.title}
-                        onChange={(e) => {
-                            const v = normalizeTitleInput(e.target.value);
-                            onChange("title", v);
-                            if (!form.name || form.name === form.title) onChange("name", v);
-                        }}
+                        onChange={(e) => onChange("title", e.target.value)}
                         placeholder="예: 홍삼원골드 100ml x 24포"
                     />
                 </div>
 
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    {[
+                        ["goodsCode", "자체상품코드"],
+                        ["brand", "브랜드"],
+                        ["make", "제조사"],
+                        ["origin", "원산지"],
+                        ["model", "모델명"],
+                    ].map(([key, label]) => (
+                        <div key={key}>
+                            <label className="text-xs font-extrabold text-[var(--dad-muted)]">{label}</label>
+                            <input
+                                className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                                value={(form as any)[key]}
+                                onChange={(e) => onChange(key as any, e.target.value as any)}
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                <div>
+                    <label className="text-xs font-extrabold text-[var(--dad-muted)]">간략설명(detail)</label>
+                    <textarea
+                        className="mt-2 min-h-[90px] w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-semibold"
+                        value={form.detail}
+                        onChange={(e) => onChange("detail", e.target.value)}
+                        placeholder="목록/상단에 보여줄 짧은 설명"
+                    />
+                </div>
+            </section>
+
+            <section className="dad-card space-y-4 p-5">
+                <div className="text-base font-extrabold text-[var(--dad-ink)]">판매/노출 설정</div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <label className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
+                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">픽업 전용</div>
+                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">배송 없이 매장 픽업만 허용</div>
+                        <input
+                            className="mt-3"
+                            type="checkbox"
+                            checked={form.pickupOnly}
+                            onChange={(e) => onChange("pickupOnly", e.target.checked)}
+                        />
+                    </label>
+
+                    <label className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
+                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">진열함</div>
+                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">목록에 노출</div>
+                        <input
+                            className="mt-3"
+                            type="checkbox"
+                            checked={form.displayUse}
+                            onChange={(e) => onChange("displayUse", e.target.checked)}
+                        />
+                    </label>
+
+                    <label className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
+                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">판매함</div>
+                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">실제 주문 가능 상태</div>
+                        <input
+                            className="mt-3"
+                            type="checkbox"
+                            checked={form.saleUse}
+                            onChange={(e) => onChange("saleUse", e.target.checked)}
+                        />
+                    </label>
+
+                    <div className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
+                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">카테고리(임시)</div>
+                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">
+                            오늘의공구/바로픽업가능 다중 선택
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {PRODUCT_ADMIN_CATEGORY_OPTIONS.map((item) => (
+                                <label
+                                    key={item.key}
+                                    className="inline-flex items-center gap-2 rounded-full border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-bold"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={form.categoryKeys.includes(item.key)}
+                                        onChange={() => toggleCategory(item.key)}
+                                    />
+                                    {item.label}
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">판매가(price)</label>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">판매가</label>
                         <input
                             type="number"
                             className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
@@ -379,7 +467,7 @@ export default function ProductCreateForm({ tenants }: Props) {
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">공급가(orig_price)</label>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">공급가</label>
                         <input
                             type="number"
                             className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
@@ -388,7 +476,7 @@ export default function ProductCreateForm({ tenants }: Props) {
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">소비자가(consumer_price)</label>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">소비자가</label>
                         <input
                             type="number"
                             className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
@@ -398,88 +486,122 @@ export default function ProductCreateForm({ tenants }: Props) {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-extrabold">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">최소구매수량</label>
                         <input
-                            type="checkbox"
-                            checked={form.pickupOnly}
-                            onChange={(e) => onChange("pickupOnly", e.target.checked)}
+                            type="number"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.minQty}
+                            onChange={(e) => onChange("minQty", e.target.value)}
                         />
-                        픽업전용(pickup_only)
-                    </label>
-                    <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-extrabold">
+                    </div>
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">최대구매수량</label>
                         <input
-                            type="checkbox"
-                            checked={form.displayUse}
-                            onChange={(e) => onChange("displayUse", e.target.checked)}
+                            type="number"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.maxQty}
+                            onChange={(e) => onChange("maxQty", e.target.value)}
                         />
-                        진열함(display_use)
-                    </label>
-                    <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-extrabold">
+                    </div>
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">재고 타입</label>
+                        <select
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.qtyType}
+                            onChange={(e) => onChange("qtyType", e.target.value as "0" | "1")}
+                        >
+                            <option value="0">한정판매</option>
+                            <option value="1">무제한</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">재고수량</label>
                         <input
-                            type="checkbox"
-                            checked={form.saleUse}
-                            onChange={(e) => onChange("saleUse", e.target.checked)}
+                            type="number"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.qty}
+                            onChange={(e) => onChange("qty", e.target.value)}
+                            disabled={form.qtyType === "1"}
                         />
-                        판매함(sale_use)
-                    </label>
+                    </div>
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">구매제한수량</label>
+                        <input
+                            type="number"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.limitQty}
+                            onChange={(e) => onChange("limitQty", e.target.value)}
+                        />
+                    </div>
                 </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">판매 시작일시</label>
+                        <input
+                            type="datetime-local"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.saleStartAt}
+                            onChange={(e) => onChange("saleStartAt", e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">판매 종료일시</label>
+                        <input
+                            type="datetime-local"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.saleEndAt}
+                            onChange={(e) => onChange("saleEndAt", e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">정렬 우선순위</label>
+                        <input
+                            type="number"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.sortOrder}
+                            onChange={(e) => onChange("sortOrder", e.target.value)}
+                        />
+                    </div>
+                </div>
+            </section>
+
+            <section className="dad-card space-y-4 p-5">
+                <div className="text-base font-extrabold text-[var(--dad-ink)]">이미지</div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     {[
-                        {
-                            key: "image1" as const,
-                            label: "대표이미지(image1)",
-                            value: form.image1,
-                            preview: preview1,
-                            placeholder: "예: /uploads/products/... 또는 https://...",
-                        },
-                        {
-                            key: "image2" as const,
-                            label: "목록이미지(image2)",
-                            value: form.image2,
-                            preview: preview2,
-                            placeholder: "예: /uploads/products/... 또는 https://...",
-                        },
-                        {
-                            key: "image3" as const,
-                            label: "작은목록이미지(image3)",
-                            value: form.image3,
-                            preview: preview3,
-                            placeholder: "예: /uploads/products/... 또는 https://...",
-                        },
+                        { key: "image1", label: "대표이미지(image1)", preview: preview1 },
+                        { key: "image2", label: "목록이미지(image2)", preview: preview2 },
+                        { key: "image3", label: "작은목록이미지(image3)", preview: preview3 },
                     ].map((item) => (
                         <div key={item.key} className="space-y-2">
                             <label className="text-xs font-extrabold text-[var(--dad-muted)]">{item.label}</label>
                             <input
                                 className="w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                                value={item.value}
-                                onChange={(e) => onChange(item.key, e.target.value)}
-                                placeholder={item.placeholder}
+                                value={(form as any)[item.key]}
+                                onChange={(e) => onChange(item.key as any, e.target.value as any)}
                             />
-                            <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]">
+                            <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
                                 {uploadingKey === item.key ? "업로드 중..." : "파일 업로드"}
                                 <input
                                     type="file"
                                     accept="image/*"
                                     className="hidden"
-                                    disabled={uploadingKey !== null}
                                     onChange={(e) => {
                                         const file = e.target.files?.[0];
                                         if (!file) return;
-                                        uploadImage(file, item.key);
+                                        uploadSingleImage(item.key as any, file);
                                         e.currentTarget.value = "";
                                     }}
                                 />
                             </label>
-
-                            <div className="rounded-2xl border border-[var(--dad-border)] overflow-hidden bg-white/70">
-                                <div className="px-4 py-3 text-xs font-extrabold text-[var(--dad-muted)]">
-                                    {item.key} 미리보기
-                                </div>
+                            <div className="overflow-hidden rounded-2xl border border-[var(--dad-border)] bg-white/70">
                                 <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
                                     {item.preview ? (
-                                        <img src={item.preview} alt={`${item.key}-preview`} className="h-full w-full object-cover" />
+                                        <img src={item.preview} alt="" className="h-full w-full object-cover" />
                                     ) : (
                                         <div className="flex h-full items-center justify-center text-xs font-bold text-[var(--dad-muted)]">
                                             이미지 없음
@@ -490,11 +612,93 @@ export default function ProductCreateForm({ tenants }: Props) {
                         </div>
                     ))}
                 </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">추가이미지(other_image)</label>
+                        <textarea
+                            className="mt-2 min-h-[120px] w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-semibold"
+                            value={form.otherImagesText}
+                            onChange={(e) => onChange("otherImagesText", e.target.value)}
+                            placeholder={"한 줄에 하나씩 입력\nuploads/products/a.jpg\nuploads/products/b.jpg"}
+                        />
+                        <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
+                            {uploadingKey === "otherImagesText" ? "업로드 중..." : "추가이미지 업로드"}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    appendImageToList("otherImagesText", file);
+                                    e.currentTarget.value = "";
+                                }}
+                            />
+                        </label>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">상세설명 이미지(detail_image)</label>
+                        <textarea
+                            className="mt-2 min-h-[120px] w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-semibold"
+                            value={form.detailImagesText}
+                            onChange={(e) => onChange("detailImagesText", e.target.value)}
+                            placeholder={"한 줄에 하나씩 입력\nuploads/products/detail1.jpg\nuploads/products/detail2.jpg"}
+                        />
+                        <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
+                            {uploadingKey === "detailImagesText" ? "업로드 중..." : "상세이미지 업로드"}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    appendImageToList("detailImagesText", file);
+                                    e.currentTarget.value = "";
+                                }}
+                            />
+                        </label>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--dad-border)] bg-white/70 px-4 py-3 text-sm font-extrabold">
+                        <input
+                            type="checkbox"
+                            checked={form.detailImageOnly}
+                            onChange={(e) => onChange("detailImageOnly", e.target.checked)}
+                        />
+                        상세설명을 이미지로만 사용
+                    </label>
+
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">상세이미지 출력방식</label>
+                        <select
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.detailImageType}
+                            onChange={(e) => onChange("detailImageType", e.target.value as "1" | "2")}
+                        >
+                            <option value="1">이미지간 공백 있음</option>
+                            <option value="2">이미지간 공백 없음</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section className="dad-card p-5">
+                <ProductHtmlEditor
+                    label="상세설명(explains / HTML)"
+                    value={form.explains}
+                    onChange={(html: string) => onChange("explains", html)}
+                    height={360}
+                />
             </section>
 
             <section className="dad-card p-4 sm:p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                    <div className="text-sm font-extrabold text-[var(--dad-ink)]">옵션</div>
+                    <div className="text-base font-extrabold text-[var(--dad-ink)]">옵션</div>
                     <div className="flex items-center gap-2">
                         <label className="inline-flex items-center gap-2 text-sm font-extrabold">
                             <input
@@ -504,11 +708,7 @@ export default function ProductCreateForm({ tenants }: Props) {
                             />
                             옵션 사용
                         </label>
-                        <button
-                            type="button"
-                            className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
-                            onClick={addOptionGroup}
-                        >
+                        <button type="button" className="dad-btn dad-btn-ghost h-9 px-3 text-sm" onClick={addOptionGroup}>
                             + 옵션명 추가
                         </button>
                     </div>
@@ -520,15 +720,12 @@ export default function ProductCreateForm({ tenants }: Props) {
                     </div>
                 ) : optionGroups.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-[var(--dad-border)] bg-white/50 px-4 py-6 text-center text-sm font-bold text-[var(--dad-muted)]">
-                        등록된 옵션명이 없습니다. “옵션명 추가”를 눌러주세요.
+                        등록된 옵션명이 없습니다.
                     </div>
                 ) : (
                     <div className="space-y-4">
                         {optionGroups.map((group) => (
-                            <div
-                                key={group.id}
-                                className="rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4"
-                            >
+                            <div key={group.id} className="rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4">
                                 <div className="mb-3 flex items-center gap-2">
                                     <input
                                         className="h-11 w-full max-w-[260px] rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
@@ -536,20 +733,10 @@ export default function ProductCreateForm({ tenants }: Props) {
                                         onChange={(e) => updateOptionGroup(group.id, { groupName: e.target.value })}
                                         placeholder="옵션명 예: 색상"
                                     />
-
-                                    <button
-                                        type="button"
-                                        className="dad-btn dad-btn-ghost h-10 px-3 text-sm"
-                                        onClick={() => addOptionValue(group.id)}
-                                    >
+                                    <button type="button" className="dad-btn dad-btn-ghost h-10 px-3 text-sm" onClick={() => addOptionValue(group.id)}>
                                         + 옵션값 추가
                                     </button>
-
-                                    <button
-                                        type="button"
-                                        className="dad-btn dad-btn-ghost h-10 px-3 text-sm"
-                                        onClick={() => removeOptionGroup(group.id)}
-                                    >
+                                    <button type="button" className="dad-btn dad-btn-ghost h-10 px-3 text-sm" onClick={() => removeOptionGroup(group.id)}>
                                         옵션명 삭제
                                     </button>
                                 </div>
@@ -560,53 +747,39 @@ export default function ProductCreateForm({ tenants }: Props) {
                                             key={value.id}
                                             className="grid grid-cols-1 gap-3 rounded-xl border border-[var(--dad-border)] bg-white p-3 md:grid-cols-[1.4fr_0.8fr_0.8fr_auto]"
                                         >
-                                            <div>
-                                                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">옵션값</div>
-                                                <input
-                                                    className="h-11 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
-                                                    value={value.valueName}
-                                                    onChange={(e) =>
-                                                        updateOptionValue(group.id, value.id, { valueName: e.target.value })
-                                                    }
-                                                    placeholder="예: 레드"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">추가금액</div>
-                                                <input
-                                                    type="number"
-                                                    className="h-11 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
-                                                    value={value.addPrice}
-                                                    onChange={(e) =>
-                                                        updateOptionValue(group.id, value.id, { addPrice: e.target.value })
-                                                    }
-                                                    placeholder="0"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <div className="mb-1 text-xs font-extrabold text-[var(--dad-muted)]">재고</div>
-                                                <input
-                                                    type="number"
-                                                    className="h-11 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
-                                                    value={value.stockQty}
-                                                    onChange={(e) =>
-                                                        updateOptionValue(group.id, value.id, { stockQty: e.target.value })
-                                                    }
-                                                    placeholder="비우면 미지정"
-                                                />
-                                            </div>
-
-                                            <div className="flex items-end">
-                                                <button
-                                                    type="button"
-                                                    className="dad-btn dad-btn-ghost h-11 px-3 text-sm"
-                                                    onClick={() => removeOptionValue(group.id, value.id)}
-                                                >
-                                                    삭제
-                                                </button>
-                                            </div>
+                                            <input
+                                                className="h-11 rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                                                value={value.valueName}
+                                                onChange={(e) =>
+                                                    updateOptionValue(group.id, value.id, { valueName: e.target.value })
+                                                }
+                                                placeholder="옵션값"
+                                            />
+                                            <input
+                                                type="number"
+                                                className="h-11 rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                                                value={value.addPrice}
+                                                onChange={(e) =>
+                                                    updateOptionValue(group.id, value.id, { addPrice: e.target.value })
+                                                }
+                                                placeholder="추가금액"
+                                            />
+                                            <input
+                                                type="number"
+                                                className="h-11 rounded-xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold"
+                                                value={value.stockQty}
+                                                onChange={(e) =>
+                                                    updateOptionValue(group.id, value.id, { stockQty: e.target.value })
+                                                }
+                                                placeholder="재고"
+                                            />
+                                            <button
+                                                type="button"
+                                                className="dad-btn dad-btn-ghost h-11 px-3 text-sm"
+                                                onClick={() => removeOptionValue(group.id, value.id)}
+                                            >
+                                                삭제
+                                            </button>
                                         </div>
                                     ))}
                                 </div>
@@ -616,49 +789,9 @@ export default function ProductCreateForm({ tenants }: Props) {
                 )}
             </section>
 
-            <section className="dad-card p-4 sm:p-5 space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">최소구매(min_qty)</label>
-                        <input
-                            type="number"
-                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                            value={form.minQty}
-                            onChange={(e) => onChange("minQty", e.target.value)}
-                            placeholder="비우면 null"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">최대구매(max_qty)</label>
-                        <input
-                            type="number"
-                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                            value={form.maxQty}
-                            onChange={(e) => onChange("maxQty", e.target.value)}
-                            placeholder="비우면 null"
-                        />
-                    </div>
-                </div>
-            </section>
-
-            <section className="dad-card p-4 sm:p-5 space-y-3">
-                <div className="text-sm font-extrabold text-[var(--dad-ink)]">상세설명(explains / HTML)</div>
-                <textarea
-                    className="mt-2 h-52 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                    value={form.explains}
-                    onChange={(e) => onChange("explains", e.target.value)}
-                    placeholder="<p>상품 설명</p>"
-                />
-
-                <div className="rounded-2xl border border-[var(--dad-border)] bg-white/70 p-4">
-                    <div className="text-xs font-extrabold text-[var(--dad-muted)]">미리보기(HTML 렌더)</div>
-                    <div className="prose prose-sm mt-3 max-w-none" dangerouslySetInnerHTML={{ __html: form.explains || "" }} />
-                </div>
-            </section>
-
-            <div className="flex items-center justify-end gap-2">
-                <button className="dad-btn dad-btn-primary h-11 px-5 text-sm" onClick={submit}>
-                    저장(등록)
+            <div className="flex justify-end">
+                <button className="dad-btn dad-btn-primary h-11 px-5 text-sm" onClick={submit} disabled={saving}>
+                    {saving ? "저장 중..." : "저장(등록)"}
                 </button>
             </div>
         </div>

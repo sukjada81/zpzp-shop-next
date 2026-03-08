@@ -9,6 +9,8 @@ type AdminSession = {
     };
 };
 
+const UI_CATEGORY_PREFIX = "ui:cat:";
+
 function requireSuperAdmin(req: any, reply: any) {
     const admin = (req.session as AdminSession | undefined)?.admin;
     if (!admin?.isSuperAdmin) {
@@ -52,12 +54,13 @@ function toNullableInt(v: any): number | null {
     if (v === "" || v === null || v === undefined) return null;
     const n = Number(v);
     if (!Number.isFinite(n)) return null;
-    return Math.trunc(n);
+    return Math.max(0, Math.trunc(n));
 }
 
-function toNumberSafe(v: any, fallback = 0) {
+function toNonNegInt(v: any, fallback = 0) {
     const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.trunc(n));
 }
 
 function unixToIso(u: any): string | null {
@@ -69,7 +72,150 @@ function unixToIso(u: any): string | null {
 function normalizeImagePath(v: any): string {
     const s = String(v ?? "").trim();
     if (!s) return "";
-    return s;
+    return s.replace(/\\/g, "/");
+}
+
+function normalizeText(v: any): string {
+    return String(v ?? "");
+}
+
+function normalizeTrimmed(v: any): string {
+    return String(v ?? "").trim();
+}
+
+function parseDateTime(v: any): Date | null {
+    const s = String(v ?? "").trim();
+    if (!s) return null;
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function toTinyIntBool(...values: any[]): number {
+    for (const v of values) {
+        if (v === undefined || v === null) continue;
+
+        if (typeof v === "boolean") return v ? 1 : 0;
+        if (typeof v === "number") return v ? 1 : 0;
+
+        const s = String(v).trim().toLowerCase();
+        if (["1", "true", "y", "yes", "on"].includes(s)) return 1;
+        if (["0", "false", "n", "no", "off", ""].includes(s)) return 0;
+    }
+    return 0;
+}
+
+function toCsvText(v: any): string {
+    if (Array.isArray(v)) {
+        return v
+            .map((x) => normalizeImagePath(x))
+            .filter(Boolean)
+            .join(",");
+    }
+
+    const s = String(v ?? "").trim();
+    if (!s) return "";
+
+    return s
+        .split(/\r?\n|,/g)
+        .map((x) => normalizeImagePath(x))
+        .filter(Boolean)
+        .join(",");
+}
+
+function fromCsvText(v: any): string[] {
+    const s = String(v ?? "").trim();
+    if (!s) return [];
+    return s
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+}
+
+function parseCategoryKeysFromIcon(icon: any): string[] {
+    const raw = String(icon ?? "").trim();
+    if (!raw) return [];
+
+    return raw
+        .split("|")
+        .map((x) => x.trim())
+        .filter((x) => x.startsWith(UI_CATEGORY_PREFIX))
+        .map((x) => x.slice(UI_CATEGORY_PREFIX.length))
+        .filter(Boolean);
+}
+
+function mergeCategoryKeysIntoIcon(existingIcon: any, categoryKeys: any): string {
+    const baseTokens = String(existingIcon ?? "")
+        .split("|")
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .filter((x) => !x.startsWith(UI_CATEGORY_PREFIX));
+
+    const keys = Array.isArray(categoryKeys)
+        ? categoryKeys.map((x) => String(x).trim()).filter(Boolean)
+        : [];
+
+    const uiTokens = keys.map((key) => `${UI_CATEGORY_PREFIX}${key}`);
+    return [...baseTokens, ...uiTokens].join("|");
+}
+
+function buildAdminProduct(row: any) {
+    return {
+        id: String(row.uid),
+        tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+
+        title: row.name,
+        status: String(row.status ?? "draft"),
+
+        price: Number(row.price ?? 0),
+        basePrice: Number(row.price ?? 0),
+        origPrice: Number(row.orig_price ?? 0),
+        consumerPrice: Number(row.consumer_price ?? 0),
+
+        image1: row.image1 || "",
+        image2: row.image2 || "",
+        image3: row.image3 || "",
+        thumbnailUrl: row.image1 || row.image2 || row.image3 || null,
+
+        otherImages: fromCsvText(row.other_image),
+        detailImages: fromCsvText(row.detail_image),
+
+        description: String(row.explains ?? ""),
+        explains: String(row.explains ?? ""),
+        detail: String(row.detail ?? ""),
+        shortDescription: String(row.detail ?? ""),
+
+        pickupOnly: Number(row.pickup_only ?? 0) === 1,
+        displayUse: Number(row.display_use ?? 0) === 1,
+        saleUse: Number(row.sale_use ?? 0) === 1,
+
+        minQty: row.min_qty ?? null,
+        maxQty: row.max_qty ?? null,
+        saleStartAt: row.sale_start_at ?? null,
+        saleEndAt: row.sale_end_at ?? null,
+        sortOrder: row.sort_order ?? 0,
+
+        optionUse: Number(row.option_use ?? 0) === 1,
+        optionInfo: String(row.option_info ?? ""),
+
+        qtyType: Number(row.qty_type ?? 0),
+        qty: Number(row.qty ?? 0),
+        limitQty: Number(row.limit_qty ?? 0),
+
+        goodsCode: String(row.goods_code ?? ""),
+        brand: String(row.brand ?? ""),
+        make: String(row.make ?? ""),
+        origin: String(row.origin ?? ""),
+        model: String(row.model ?? ""),
+
+        detailImageOnly: Number(row.detail_image_only ?? 0) === 1,
+        detailImageType: Number(row.detail_image_type ?? 1),
+
+        categoryKeys: parseCategoryKeysFromIcon(row.icon),
+
+        createdAt: unixToIso(row.signdate),
+        updatedAt: unixToIso(row.moddate),
+        deletedAt: row.deleted_at ?? null,
+    };
 }
 
 export async function adminProductsRoutes(app: FastifyInstance) {
@@ -94,6 +240,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         const tenantSlug = String(q.tenant ?? "all").trim() || "all";
         const keyword = q.q ? String(q.q).trim() : "";
+        const status = q.status ? String(q.status).trim() : "";
 
         const page = Math.max(1, Number(q.page ?? 1) || 1);
         const limit = Math.min(100, Math.max(1, Number(q.limit ?? q.pageSize ?? 20) || 20));
@@ -111,12 +258,18 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         const where: any = { deleted_at: null };
         if (tenantId) where.tenant_id = tenantId;
+        if (status) where.status = status;
 
         if (keyword) {
             where.OR = [
                 { name: { contains: keyword } },
                 { explains: { contains: keyword } },
                 { detail: { contains: keyword } },
+                { brand: { contains: keyword } },
+                { make: { contains: keyword } },
+                { origin: { contains: keyword } },
+                { model: { contains: keyword } },
+                { goods_code: { contains: keyword } },
             ];
         }
 
@@ -139,6 +292,9 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                     signdate: true,
                     status: true,
                     pickup_only: true,
+                    display_use: true,
+                    sale_use: true,
+                    icon: true,
                 },
             }),
         ]);
@@ -156,9 +312,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             tenantIds.length > 0
                 ? await app.prisma.tenant.findMany({
                     where: {
-                        id: {
-                            in: tenantIds.map((v) => BigInt(v)),
-                        },
+                        id: { in: tenantIds.map((v) => BigInt(v)) },
                     },
                     select: {
                         id: true,
@@ -188,14 +342,21 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 tenantName: tenant?.name ?? null,
                 tenantSlug: tenant?.slug ?? null,
                 tenant,
+
                 title: r.name,
                 status: String(r.status ?? "draft"),
                 basePrice: Number(r.price ?? 0),
-                pickupOnly: !!r.pickup_only,
+
+                pickupOnly: Number(r.pickup_only ?? 0) === 1,
+                displayUse: Number(r.display_use ?? 0) === 1,
+                saleUse: Number(r.sale_use ?? 0) === 1,
+                categoryKeys: parseCategoryKeysFromIcon(r.icon),
+
                 image1: r.image1 || "",
                 image2: r.image2 || "",
                 image3: r.image3 || "",
                 thumbnailUrl: r.image1 || r.image2 || r.image3 || null,
+
                 createdAt: unixToIso(r.signdate),
                 updatedAt: unixToIso(r.moddate),
             };
@@ -228,6 +389,8 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 tenant_id: true,
                 name: true,
                 price: true,
+                orig_price: true,
+                consumer_price: true,
                 explains: true,
                 detail: true,
                 image1: true,
@@ -235,50 +398,37 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 image3: true,
                 other_image: true,
                 detail_image: true,
+                detail_image_only: true,
+                detail_image_type: true,
                 option_use: true,
                 option_info: true,
-                option_soldout: true,
                 moddate: true,
                 signdate: true,
                 status: true,
                 pickup_only: true,
+                display_use: true,
+                sale_use: true,
                 min_qty: true,
                 max_qty: true,
                 sale_start_at: true,
                 sale_end_at: true,
                 sort_order: true,
                 deleted_at: true,
+                qty_type: true,
+                qty: true,
+                limit_qty: true,
+                goods_code: true,
+                brand: true,
+                make: true,
+                origin: true,
+                model: true,
+                icon: true,
             },
         });
 
         if (!row) return reply.code(404).send({ ok: false, message: "not found" });
 
-        const product = {
-            id: String(row.uid),
-            tenantId: row.tenant_id == null ? null : String(row.tenant_id),
-            title: row.name,
-            description: String(row.explains ?? "").trim() || String(row.detail ?? "").trim() || null,
-            status: String(row.status ?? "draft"),
-            image1: row.image1 || "",
-            image2: row.image2 || "",
-            image3: row.image3 || "",
-            thumbnailUrl: row.image1 || row.image2 || row.image3 || null,
-            basePrice: Number(row.price ?? 0),
-            pickupOnly: !!row.pickup_only,
-            minQty: row.min_qty ?? null,
-            maxQty: row.max_qty ?? null,
-            saleStartAt: row.sale_start_at ?? null,
-            saleEndAt: row.sale_end_at ?? null,
-            createdAt: unixToIso(row.signdate),
-            updatedAt: unixToIso(row.moddate),
-            sortOrder: row.sort_order ?? 0,
-            deletedAt: row.deleted_at ?? null,
-            optionUse: Number(row.option_use ?? 0) === 1,
-            optionInfo: String(row.option_info ?? ""),
-            options: [],
-        };
-
-        return reply.send({ ok: true, product: jsonSafe(product) });
+        return reply.send({ ok: true, product: jsonSafe(buildAdminProduct(row)) });
     });
 
     app.post("/admin/products", async (req: any, reply) => {
@@ -306,11 +456,49 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 tenant_id: tenant.id,
                 name: title,
 
-                other_image: "",
-                detail_image: "",
-                option_info: String(body.optionInfo ?? body.option_info ?? ""),
+                explains: normalizeText(body.explains ?? body.description ?? ""),
+                detail: normalizeText(body.detail ?? body.shortDescription ?? ""),
+
+                price: toNonNegInt(body.basePrice ?? body.price, 0),
+                orig_price: toNonNegInt(body.origPrice ?? body.orig_price, 0),
+                consumer_price: toNonNegInt(body.consumerPrice ?? body.consumer_price, 0),
+
+                image1: normalizeImagePath(body.image1),
+                image2: normalizeImagePath(body.image2),
+                image3: normalizeImagePath(body.image3),
+                other_image: toCsvText(body.otherImages ?? body.other_image),
+                detail_image: toCsvText(body.detailImages ?? body.detail_image),
+
+                detail_image_only: toTinyIntBool(body.detailImageOnly, body.detail_image_only),
+                detail_image_type: toNonNegInt(body.detailImageType ?? body.detail_image_type, 1) === 2 ? 2 : 1,
+
+                status: String(body.status ?? "draft").trim() || "draft",
+                pickup_only: !!toTinyIntBool(body.pickupOnly, body.pickup_only),
+                display_use: toTinyIntBool(body.displayUse, body.display_use),
+                sale_use: toTinyIntBool(body.saleUse, body.sale_use),
+
+                min_qty: toNullableInt(body.minQty ?? body.min_qty),
+                max_qty: toNullableInt(body.maxQty ?? body.max_qty),
+                sale_start_at: parseDateTime(body.saleStartAt ?? body.sale_start_at),
+                sale_end_at: parseDateTime(body.saleEndAt ?? body.sale_end_at),
+                sort_order: toNonNegInt(body.sortOrder ?? body.sort_order, 0),
+
+                option_use: toTinyIntBool(body.optionUse, body.option_use),
+                option_info: normalizeText(body.optionInfo ?? body.option_info ?? ""),
+
+                qty_type: toNonNegInt(body.qtyType ?? body.qty_type, 0) === 1 ? 1 : 0,
+                qty: toNonNegInt(body.qty, 0),
+                limit_qty: toNonNegInt(body.limitQty ?? body.limit_qty, 0),
+
+                goods_code: normalizeTrimmed(body.goodsCode),
+                brand: normalizeTrimmed(body.brand),
+                make: normalizeTrimmed(body.make),
+                origin: normalizeTrimmed(body.origin),
+                model: normalizeTrimmed(body.model),
+
+                icon: mergeCategoryKeysIntoIcon("", body.categoryKeys),
+
                 require_info: "",
-                detail: "",
                 making_info: "",
                 mileage_level: "",
                 delivery_info: "",
@@ -320,36 +508,6 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 exhibition: "",
                 keyword: "",
 
-                explains:
-                    body.description != null
-                        ? String(body.description)
-                        : body.explains != null
-                            ? String(body.explains)
-                            : "",
-
-                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice ?? body.price, 0))),
-                orig_price: Math.max(0, Math.trunc(toNumberSafe(body.orig_price ?? body.origPrice, 0))),
-                consumer_price: Math.max(
-                    0,
-                    Math.trunc(toNumberSafe(body.consumer_price ?? body.consumerPrice, 0))
-                ),
-
-                image1: normalizeImagePath(body.image1 ?? body.thumbnailUrl),
-                image2: normalizeImagePath(body.image2),
-                image3: normalizeImagePath(body.image3),
-
-                status: String(body.status ?? "draft").trim() || "draft",
-                pickup_only: Boolean(body.pickupOnly ?? body.pickup_only ?? true),
-                min_qty: toNullableInt(body.minQty ?? body.min_qty),
-                max_qty: toNullableInt(body.maxQty ?? body.max_qty),
-                sale_start_at: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
-                sale_end_at: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
-                sort_order: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
-                deleted_at: null,
-
-                option_use: Number(body.optionUse ?? body.option_use ? 1 : 0),
-                sale_use: Number(body.saleUse ?? body.sale_use ? 1 : 0),
-                display_use: Number(body.displayUse ?? body.display_use ? 1 : 0),
                 auth_ck: "Y",
                 moddate: nowSec,
                 signdate: nowSec,
@@ -374,7 +532,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         const exists = await app.prisma.mallRN_goods.findUnique({
             where: { uid: parsed.value },
-            select: { uid: true },
+            select: { uid: true, icon: true },
         });
         if (!exists) return reply.code(404).send({ ok: false, message: "not found" });
 
@@ -382,36 +540,48 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             where: { uid: parsed.value },
             data: {
                 name: title,
-                explains:
-                    body.description != null
-                        ? String(body.description)
-                        : body.explains != null
-                            ? String(body.explains)
-                            : "",
-                price: Math.max(0, Math.trunc(toNumberSafe(body.basePrice ?? body.price, 0))),
-                orig_price: Math.max(0, Math.trunc(toNumberSafe(body.orig_price ?? body.origPrice, 0))),
-                consumer_price: Math.max(
-                    0,
-                    Math.trunc(toNumberSafe(body.consumer_price ?? body.consumerPrice, 0))
-                ),
 
-                image1: normalizeImagePath(body.image1 ?? body.thumbnailUrl),
+                explains: normalizeText(body.explains ?? body.description ?? ""),
+                detail: normalizeText(body.detail ?? body.shortDescription ?? ""),
+
+                price: toNonNegInt(body.basePrice ?? body.price, 0),
+                orig_price: toNonNegInt(body.origPrice ?? body.orig_price, 0),
+                consumer_price: toNonNegInt(body.consumerPrice ?? body.consumer_price, 0),
+
+                image1: normalizeImagePath(body.image1),
                 image2: normalizeImagePath(body.image2),
                 image3: normalizeImagePath(body.image3),
+                other_image: toCsvText(body.otherImages ?? body.other_image),
+                detail_image: toCsvText(body.detailImages ?? body.detail_image),
+
+                detail_image_only: toTinyIntBool(body.detailImageOnly, body.detail_image_only),
+                detail_image_type: toNonNegInt(body.detailImageType ?? body.detail_image_type, 1) === 2 ? 2 : 1,
 
                 status: String(body.status ?? "draft").trim() || "draft",
-                pickup_only: Boolean(body.pickupOnly ?? body.pickup_only ?? true),
+                pickup_only: !!toTinyIntBool(body.pickupOnly, body.pickup_only),
+                display_use: toTinyIntBool(body.displayUse, body.display_use),
+                sale_use: toTinyIntBool(body.saleUse, body.sale_use),
+
                 min_qty: toNullableInt(body.minQty ?? body.min_qty),
                 max_qty: toNullableInt(body.maxQty ?? body.max_qty),
-                sale_start_at: body.saleStartAt ? new Date(String(body.saleStartAt)) : null,
-                sale_end_at: body.saleEndAt ? new Date(String(body.saleEndAt)) : null,
-                sort_order: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
-                deleted_at: body.deletedAt ? new Date(String(body.deletedAt)) : null,
+                sale_start_at: parseDateTime(body.saleStartAt ?? body.sale_start_at),
+                sale_end_at: parseDateTime(body.saleEndAt ?? body.sale_end_at),
+                sort_order: toNonNegInt(body.sortOrder ?? body.sort_order, 0),
 
-                option_use: Number(body.optionUse ?? body.option_use ? 1 : 0),
-                option_info: String(body.optionInfo ?? body.option_info ?? ""),
-                sale_use: Number(body.saleUse ?? body.sale_use ? 1 : 0),
-                display_use: Number(body.displayUse ?? body.display_use ? 1 : 0),
+                option_use: toTinyIntBool(body.optionUse, body.option_use),
+                option_info: normalizeText(body.optionInfo ?? body.option_info ?? ""),
+
+                qty_type: toNonNegInt(body.qtyType ?? body.qty_type, 0) === 1 ? 1 : 0,
+                qty: toNonNegInt(body.qty, 0),
+                limit_qty: toNonNegInt(body.limitQty ?? body.limit_qty, 0),
+
+                goods_code: normalizeTrimmed(body.goodsCode),
+                brand: normalizeTrimmed(body.brand),
+                make: normalizeTrimmed(body.make),
+                origin: normalizeTrimmed(body.origin),
+                model: normalizeTrimmed(body.model),
+
+                icon: mergeCategoryKeysIntoIcon(exists.icon ?? "", body.categoryKeys),
 
                 moddate: Math.floor(Date.now() / 1000),
             },

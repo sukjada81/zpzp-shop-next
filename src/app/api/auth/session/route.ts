@@ -1,4 +1,4 @@
-// src/app/api/auth/session/route.ts
+// src/app/api/auth/session/page.tsx
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
