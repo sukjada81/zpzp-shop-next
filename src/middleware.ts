@@ -271,17 +271,28 @@ export async function middleware(req: NextRequest) {
     if (isSellerHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
-        if (pathname === "/") {
-            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
+        // ✅ seller 루트는 같은 호스트에서 /select-tenant 로 rewrite 하지 말고
+        //    실제 select-tenant 도메인으로 보내야 함
+        if (pathname === "/" || pathname === "") {
+            return NextResponse.redirect(new URL("/", getEnvOrigin("SELECT_TENANT")));
         }
 
+        // ✅ select-tenant 같은 예약어가 tenant로 들어오지 않게 방지
         const segs = pathname.split("/").filter(Boolean);
-        const tenant = segs[0];
+        const firstSeg = segs[0] || "";
 
-        if (!tenant) {
-            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/select-tenant", search));
+        if (
+            !firstSeg ||
+            firstSeg === "select-tenant" ||
+            firstSeg === "admin" ||
+            firstSeg === "auth" ||
+            firstSeg === "seller" ||
+            firstSeg === "api"
+        ) {
+            return NextResponse.redirect(new URL("/", getEnvOrigin("SELECT_TENANT")));
         }
 
+        const tenant = firstSeg;
         const rest = segs.slice(1).join("/");
         const internalPath = rest ? `/seller/${tenant}/${rest}` : `/seller/${tenant}`;
 
