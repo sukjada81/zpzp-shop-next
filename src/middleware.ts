@@ -180,6 +180,19 @@ function buildSellerReturnAbs(req: NextRequest, tenant: string, pathAfterTenant 
     return `${sellerOrigin}/${tenant}${pathAfterTenant ? normalized : ""}`;
 }
 
+function resolveSellerTenant(req: NextRequest) {
+    const fromSellerCookie = req.cookies.get("sellerTenant")?.value?.trim();
+    if (fromSellerCookie) return fromSellerCookie;
+
+    const fromMockTenant = req.cookies.get("mockTenant")?.value?.trim();
+    if (fromMockTenant) return fromMockTenant;
+
+    const fromEnv = (process.env.DEFAULT_SELLER_TENANT || "").trim();
+    if (fromEnv) return fromEnv;
+
+    return "";
+}
+
 async function hasAdminSession(req: NextRequest) {
     const internalOrigin = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
     const internalSessionUrl = new URL("/api/admin/session", internalOrigin);
@@ -271,16 +284,25 @@ export async function middleware(req: NextRequest) {
     if (isSellerHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
-        // ✅ seller 루트는 같은 호스트에서 /select-tenant 로 rewrite 하지 말고
-        //    실제 select-tenant 도메인으로 보내야 함
+        // ✅ seller 루트는 지점선택으로 보내지 않고, 바로 자기 tenant로 이동
         if (pathname === "/" || pathname === "") {
-            return NextResponse.redirect(new URL("/", getEnvOrigin("SELECT_TENANT")));
+            const sellerTenant = resolveSellerTenant(req);
+
+            if (sellerTenant) {
+                return NextResponse.redirect(
+                    new URL(`/${sellerTenant}`, externalOrigin)
+                );
+            }
+
+            // tenant를 모르면 auth 로그인으로 보내고, 로그인 후 tenant 기준으로 들어오게 처리
+            const loginUrl = new URL("/login", getEnvOrigin("AUTH"));
+            return NextResponse.redirect(loginUrl);
         }
 
-        // ✅ select-tenant 같은 예약어가 tenant로 들어오지 않게 방지
         const segs = pathname.split("/").filter(Boolean);
         const firstSeg = segs[0] || "";
 
+        // 예약어가 tenant처럼 들어오는 경우 차단
         if (
             !firstSeg ||
             firstSeg === "select-tenant" ||
@@ -289,7 +311,16 @@ export async function middleware(req: NextRequest) {
             firstSeg === "seller" ||
             firstSeg === "api"
         ) {
-            return NextResponse.redirect(new URL("/", getEnvOrigin("SELECT_TENANT")));
+            const sellerTenant = resolveSellerTenant(req);
+
+            if (sellerTenant) {
+                return NextResponse.redirect(
+                    new URL(`/${sellerTenant}`, externalOrigin)
+                );
+            }
+
+            const loginUrl = new URL("/login", getEnvOrigin("AUTH"));
+            return NextResponse.redirect(loginUrl);
         }
 
         const tenant = firstSeg;
