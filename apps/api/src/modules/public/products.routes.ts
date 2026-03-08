@@ -45,10 +45,10 @@ function goodsImageUrl(raw: string | null | undefined): string {
 }
 
 function normalizeImages(row: {
-    other_image?: string;
-    image1?: string;
-    image2?: string;
-    image3?: string;
+    other_image?: string | null;
+    image1?: string | null;
+    image2?: string | null;
+    image3?: string | null;
 }): ImageItem[] {
     const out: ImageItem[] = [];
 
