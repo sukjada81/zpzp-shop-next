@@ -284,25 +284,15 @@ export async function middleware(req: NextRequest) {
     if (isSellerHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
-        // ✅ seller 루트는 지점선택으로 보내지 않고, 바로 자기 tenant로 이동
+        // ✅ seller 루트는 자동 이동하지 않고 seller root page 로 보냄
         if (pathname === "/" || pathname === "") {
-            const sellerTenant = resolveSellerTenant(req);
-
-            if (sellerTenant) {
-                return NextResponse.redirect(
-                    new URL(`/${sellerTenant}`, externalOrigin)
-                );
-            }
-
-            // tenant를 모르면 auth 로그인으로 보내고, 로그인 후 tenant 기준으로 들어오게 처리
-            const loginUrl = new URL("/login", getEnvOrigin("AUTH"));
-            return NextResponse.redirect(loginUrl);
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/seller", search));
         }
 
         const segs = pathname.split("/").filter(Boolean);
         const firstSeg = segs[0] || "";
 
-        // 예약어가 tenant처럼 들어오는 경우 차단
+        // ✅ 예약어는 tenant로 취급하지 않음
         if (
             !firstSeg ||
             firstSeg === "select-tenant" ||
@@ -311,16 +301,7 @@ export async function middleware(req: NextRequest) {
             firstSeg === "seller" ||
             firstSeg === "api"
         ) {
-            const sellerTenant = resolveSellerTenant(req);
-
-            if (sellerTenant) {
-                return NextResponse.redirect(
-                    new URL(`/${sellerTenant}`, externalOrigin)
-                );
-            }
-
-            const loginUrl = new URL("/login", getEnvOrigin("AUTH"));
-            return NextResponse.redirect(loginUrl);
+            return NextResponse.rewrite(makeInternalRewriteUrl(req, "/seller", search));
         }
 
         const tenant = firstSeg;
