@@ -1,17 +1,52 @@
 // src/app/(seller)/seller/[tenant]/members/page.tsx
-import SellerMembersClient from "@/components/seller/SellerMembersClient";
+import { notFound } from "next/navigation";
+import SellerMembersClient, {
+    type SellerMemberItem,
+} from "@/components/seller/SellerMembersClient";
+
+function getInternalOrigin() {
+    return (
+        process.env.NEXT_INTERNAL_ORIGIN ||
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        "http://127.0.0.1:3000"
+    );
+}
+
+type MembersResponse = {
+    ok: boolean;
+    items?: SellerMemberItem[];
+};
+
+async function fetchSellerMembers(
+    tenant: string
+): Promise<SellerMemberItem[]> {
+    const origin = getInternalOrigin();
+    const url = new URL(`/api/seller/${tenant}/members`, origin);
+
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) return [];
+
+    const data = (await res.json().catch(() => null)) as MembersResponse | null;
+    if (!data?.ok) return [];
+
+    return Array.isArray(data.items) ? data.items : [];
+}
 
 export default async function SellerMembersPage({
                                                     params,
+                                                    searchParams,
                                                 }: {
     params: Promise<{ tenant: string }> | { tenant: string };
+    searchParams?: Promise<{ q?: string }> | { q?: string };
 }) {
     const resolved = await Promise.resolve(params);
-    const tenant = resolved?.tenant;
+    const resolvedSearch = await Promise.resolve(searchParams);
+    const tenant = String(resolved?.tenant ?? "").trim();
+    const keyword = String(resolvedSearch?.q ?? "").trim();
 
-    if (!tenant) {
-        return <div className="p-6">tenant 정보가 없습니다.</div>;
-    }
+    if (!tenant) notFound();
 
-    return <SellerMembersClient tenant={tenant} />;
+    const items = await fetchSellerMembers(tenant);
+
+    return <SellerMembersClient tenant={tenant} items={items} keyword={keyword} />;
 }

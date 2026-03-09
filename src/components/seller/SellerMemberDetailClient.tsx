@@ -1,8 +1,7 @@
+// src/components/seller/SellerMemberDetailClient.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-
-type Member = {
+export type SellerMemberDetail = {
     id: string;
     name: string;
     phone: string;
@@ -12,27 +11,10 @@ type Member = {
 };
 
 export default function SellerMemberDetailClient({
-                                                     tenant,
-                                                     id,
+                                                     item,
                                                  }: {
-    tenant: string;
-    id: string;
+    item: SellerMemberDetail;
 }) {
-    const [item, setItem] = useState<Member | null>(null);
-
-    useEffect(() => {
-        (async () => {
-            const res = await fetch(`/api/seller/${tenant}/members/${id}`, {
-                cache: "no-store",
-            });
-
-            const json = await res.json();
-            setItem(json.item);
-        })();
-    }, [tenant, id]);
-
-    if (!item) return <div className="p-6">Loading...</div>;
-
     return (
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
             <div className="text-2xl font-extrabold text-slate-900">

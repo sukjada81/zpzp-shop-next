@@ -1,17 +1,44 @@
 // src/app/(seller)/seller/[tenant]/page.tsx
-import SellerDashboardClient from "@/components/seller/SellerDashboardClient";
+import { notFound } from "next/navigation";
+import SellerDashboardClient, {
+    type SellerDashboardData,
+} from "@/components/seller/SellerDashboardClient";
 
-export default async function SellerTenantDashboardPage({
-                                                            params,
-                                                        }: {
+function getInternalOrigin() {
+    return (
+        process.env.NEXT_INTERNAL_ORIGIN ||
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        "http://127.0.0.1:3000"
+    );
+}
+
+async function fetchSellerDashboard(
+    tenant: string
+): Promise<SellerDashboardData | null> {
+    const origin = getInternalOrigin();
+    const url = new URL(`/api/seller/${tenant}/dashboard`, origin);
+
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) return null;
+
+    const data = (await res.json().catch(() => null)) as SellerDashboardData | null;
+    if (!data?.ok) return null;
+
+    return data;
+}
+
+export default async function SellerDashboardPage({
+                                                      params,
+                                                  }: {
     params: Promise<{ tenant: string }> | { tenant: string };
 }) {
     const resolved = await Promise.resolve(params);
-    const tenant = resolved?.tenant;
+    const tenant = String(resolved?.tenant ?? "").trim();
 
-    if (!tenant) {
-        return <div className="p-6">tenant 정보가 없습니다.</div>;
-    }
+    if (!tenant) notFound();
 
-    return <SellerDashboardClient tenant={tenant} />;
+    const data = await fetchSellerDashboard(tenant);
+    if (!data) notFound();
+
+    return <SellerDashboardClient tenant={tenant} data={data} />;
 }

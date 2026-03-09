@@ -2,8 +2,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, ChevronRight, Store, ShoppingBag, Package, AlertCircle, UserPlus, Users, LogIn, TrendingUp } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+    RefreshCw,
+    ChevronRight,
+    Store,
+    ShoppingBag,
+    Package,
+    AlertCircle,
+    UserPlus,
+    Users,
+    LogIn,
+    TrendingUp,
+} from "lucide-react";
 import { getSellerHref } from "@/lib/seller/getSellerHref";
 
 type Tone = "green" | "blue" | "orange" | "red";
@@ -26,7 +38,7 @@ type DashboardKpi = {
     tone: Exclude<Tone, "red">;
 };
 
-type DashboardResponse = {
+export type SellerDashboardData = {
     ok: boolean;
     tenant: string;
     summary: {
@@ -115,41 +127,15 @@ function cardHref(tenant: string, key: string) {
     }
 }
 
-export default function SellerDashboardClient({ tenant }: { tenant: string }) {
-    const [data, setData] = useState<DashboardResponse | null>(null);
-    const [loading, setLoading] = useState(true);
+export default function SellerDashboardClient({
+                                                  tenant,
+                                                  data,
+                                              }: {
+    tenant: string;
+    data: SellerDashboardData;
+}) {
+    const router = useRouter();
     const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string>("");
-
-    const load = useCallback(async (isRefresh = false) => {
-        try {
-            setError("");
-            if (isRefresh) setRefreshing(true);
-            else setLoading(true);
-
-            const res = await fetch(`/api/seller/${tenant}/dashboard`, {
-                method: "GET",
-                cache: "no-store",
-            });
-
-            const json = await res.json();
-
-            if (!res.ok || !json?.ok) {
-                throw new Error(json?.message || "SELLER_DASHBOARD_FETCH_FAILED");
-            }
-
-            setData(json);
-        } catch (e: any) {
-            setError(e?.message || "대시보드를 불러오지 못했습니다.");
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    }, [tenant]);
-
-    useEffect(() => {
-        load(false);
-    }, [load]);
 
     const summary = data?.summary;
 
@@ -157,50 +143,10 @@ export default function SellerDashboardClient({ tenant }: { tenant: string }) {
         return summary?.title || `매장 ${tenant}`;
     }, [summary?.title, tenant]);
 
-    if (loading) {
-        return (
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-                <div className="animate-pulse space-y-4">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-2">
-                            <div className="h-7 w-36 rounded-xl bg-slate-200" />
-                            <div className="h-4 w-28 rounded-lg bg-slate-100" />
-                        </div>
-                        <div className="h-10 w-28 rounded-full bg-slate-200" />
-                    </div>
-
-                    <div className="h-px bg-slate-200" />
-
-                    <div className="grid grid-cols-2 gap-3">
-                        {Array.from({ length: 4 }).map((_, idx) => (
-                            <div key={idx} className="h-28 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200" />
-                        ))}
-                    </div>
-
-                    <div className="h-72 rounded-3xl bg-white shadow-sm ring-1 ring-slate-200" />
-                </div>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="rounded-[28px] border border-rose-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-                <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5 text-rose-700">
-                    <div className="text-base font-semibold">대시보드를 불러오지 못했습니다.</div>
-                    <div className="mt-1 text-sm">{error}</div>
-
-                    <button
-                        type="button"
-                        onClick={() => load(true)}
-                        className="mt-4 inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-                    >
-                        <RefreshCw className="h-4 w-4" />
-                        다시 시도
-                    </button>
-                </div>
-            </div>
-        );
+    function handleRefresh() {
+        setRefreshing(true);
+        router.refresh();
+        setTimeout(() => setRefreshing(false), 700);
     }
 
     return (
@@ -223,7 +169,7 @@ export default function SellerDashboardClient({ tenant }: { tenant: string }) {
                         </div>
                         <button
                             type="button"
-                            onClick={() => load(true)}
+                            onClick={handleRefresh}
                             className="inline-flex h-9 items-center gap-2 bg-blue-600 px-4 text-xs font-bold text-white transition hover:bg-blue-700 active:translate-y-px"
                         >
                             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
