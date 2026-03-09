@@ -15,9 +15,6 @@ export default function LoginPage() {
         process.env.NEXT_PUBLIC_SITE_ORIGIN ||
         "https://select-tenant.discountallday.kr";
 
-    // ✅ 기본 returnTo 정책
-    // - tenant가 있으면: 해당 tenant 홈
-    // - tenant가 없으면: select-tenant
     const defaultReturnTo = tenant
         ? `https://${tenant}.${baseDomain}/home`
         : `${selectTenantOrigin}/`;
@@ -34,7 +31,7 @@ export default function LoginPage() {
 
                 <div className="w-full rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="text-sm text-slate-700 leading-6">
-                        <div>• 필수 · 선택 모두 동의해야</div>
+                        <div>• 필수 / 선택 동의 후 이용 가능합니다.</div>
                         <div>• 픽업 안내 알림을 받을 수 있습니다.</div>
                     </div>
                 </div>
@@ -47,7 +44,7 @@ export default function LoginPage() {
                         if (tenant) qs.set("tenant", tenant);
                         qs.set("returnTo", returnTo);
                         qs.set("auto", "0");
-                        window.location.href = `/api/auth/kakao/login?${qs.toString()}`;
+                        window.location.href = `/auth/kakao/login?${qs.toString()}`;
                     }}
                 >
                     카카오로 시작하기

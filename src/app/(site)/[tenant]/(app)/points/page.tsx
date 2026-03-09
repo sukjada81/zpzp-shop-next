@@ -1,8 +1,68 @@
-// src/app/(site)/[tenant]/(app)/points/page.tsx
 "use client";
 
-export default function PointsPage({ params }: { params: { tenant: string } }) {
-    const points = 0; // 프론트-only 단계: 추후 PHP/DB 연동
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+
+type AuthSession = {
+    ok: boolean;
+    loggedIn: boolean;
+    tenant?: string;
+    user?: { id: string; provider: string } | null;
+};
+
+export default function PointsPage() {
+    const { tenant } = useParams<{ tenant: string }>();
+    const [checking, setChecking] = useState(true);
+    const points = 0;
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function run() {
+            try {
+                const res = await fetch("/auth/session", { cache: "no-store" });
+                const data = (await res.json()) as AuthSession;
+
+                if (cancelled) return;
+
+                if (!data.loggedIn) {
+                    const authOrigin =
+                        process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+                    const returnTo = window.location.href;
+                    const loginUrl = new URL("/login", authOrigin);
+                    if (tenant) loginUrl.searchParams.set("tenant", tenant);
+                    loginUrl.searchParams.set("returnTo", returnTo);
+                    window.location.replace(loginUrl.toString());
+                    return;
+                }
+
+                setChecking(false);
+            } catch {
+                if (cancelled) return;
+                const authOrigin =
+                    process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+                const returnTo = window.location.href;
+                const loginUrl = new URL("/login", authOrigin);
+                if (tenant) loginUrl.searchParams.set("tenant", tenant);
+                loginUrl.searchParams.set("returnTo", returnTo);
+                window.location.replace(loginUrl.toString());
+            }
+        }
+
+        if (tenant) run();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [tenant]);
+
+    if (!tenant || checking) {
+        return (
+            <main className="mx-auto w-full max-w-[520px] px-4 py-10 text-center text-slate-500">
+                로그인 상태를 확인하는 중입니다.
+            </main>
+        );
+    }
 
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 py-5">

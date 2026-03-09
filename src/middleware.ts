@@ -28,6 +28,7 @@ function isPublicAsset(pathname: string) {
 function isPublicPath(pathname: string) {
     if (isPublicAsset(pathname)) return true;
     if (pathname.startsWith("/api")) return true;
+    if (pathname.startsWith("/auth")) return true;
     return false;
 }
 
@@ -39,11 +40,6 @@ function isSellerInternalPath(pathname: string) {
     return pathname === "/seller" || pathname.startsWith("/seller/");
 }
 
-/**
- * 보호 경로
- * - tenant 서브도메인 "/" -> "/home" 성격으로 보호
- * - seller "/seller/[tenant]" 루트도 보호
- */
 function needsAuth(pathname: string) {
     if (pathname === "/" || pathname === "/home") return true;
 
@@ -180,19 +176,6 @@ function buildSellerReturnAbs(req: NextRequest, tenant: string, pathAfterTenant 
     return `${sellerOrigin}/${tenant}${pathAfterTenant ? normalized : ""}`;
 }
 
-function resolveSellerTenant(req: NextRequest) {
-    const fromSellerCookie = req.cookies.get("sellerTenant")?.value?.trim();
-    if (fromSellerCookie) return fromSellerCookie;
-
-    const fromMockTenant = req.cookies.get("mockTenant")?.value?.trim();
-    if (fromMockTenant) return fromMockTenant;
-
-    const fromEnv = (process.env.DEFAULT_SELLER_TENANT || "").trim();
-    if (fromEnv) return fromEnv;
-
-    return "";
-}
-
 async function hasAdminSession(req: NextRequest) {
     const internalOrigin = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
     const internalSessionUrl = new URL("/api/admin/session", internalOrigin);
@@ -217,12 +200,10 @@ export async function middleware(req: NextRequest) {
     const localLike = isLikelyLocalHost(host);
     const bypassAuth = LOCAL_BYPASS_AUTH && localLike;
 
-    // auth host는 그대로
     if (isAuthHost(host)) {
         return NextResponse.next();
     }
 
-    // select-tenant host
     if (isSelectTenantHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
@@ -237,7 +218,6 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(new URL("/", externalOrigin));
     }
 
-    // admin host
     if (isAdminHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
@@ -280,16 +260,13 @@ export async function middleware(req: NextRequest) {
         return NextResponse.rewrite(makeInternalRewriteUrl(req, `/admin${pathname}`, search));
     }
 
-    // seller host: seller.discountallday.kr/{tenant}/...
     if (isSellerHost(host)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
-        // ✅ 이미 내부 seller 경로로 rewrite된 경우는 다시 처리하지 않음
         if (pathname === "/seller" || pathname.startsWith("/seller/")) {
             return NextResponse.next();
         }
 
-        // ✅ seller 루트는 자동 이동하지 않고 seller root page 로 보냄
         if (pathname === "/" || pathname === "") {
             return NextResponse.rewrite(makeInternalRewriteUrl(req, "/seller", search));
         }
@@ -297,7 +274,6 @@ export async function middleware(req: NextRequest) {
         const segs = pathname.split("/").filter(Boolean);
         const firstSeg = segs[0] || "";
 
-        // ✅ 예약어는 tenant로 취급하지 않음
         if (
             !firstSeg ||
             firstSeg === "select-tenant" ||
@@ -349,7 +325,6 @@ export async function middleware(req: NextRequest) {
         );
     }
 
-    // 메인도메인 /admin 직접 접근 보호
     if (isAdminPath(pathname)) {
         if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
             return NextResponse.next();
@@ -378,7 +353,6 @@ export async function middleware(req: NextRequest) {
         }
     }
 
-    // 내부 /seller 직접 접근도 허용
     if (isSellerInternalPath(pathname)) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
@@ -406,7 +380,6 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(loginUrl);
     }
 
-    // tenant subdomain 처리
     const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
     const subdomain = ENABLE_SUBDOMAIN_TENANT ? getSubdomain(host) : null;
 
@@ -429,6 +402,7 @@ export async function middleware(req: NextRequest) {
     const bypass =
         externalPath.startsWith("/seller/") ||
         externalPath.startsWith("/api") ||
+        externalPath.startsWith("/auth") ||
         externalPath.startsWith("/_next") ||
         externalPath.startsWith("/uploads") ||
         externalPath.startsWith("/images") ||

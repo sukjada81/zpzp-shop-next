@@ -44,7 +44,7 @@ export default function SideDrawer({
 
         async function run() {
             try {
-                const res = await fetch("/api/auth/session", { cache: "no-store" });
+                const res = await fetch("/auth/session", { cache: "no-store" });
                 const data = (await res.json()) as AuthSession;
                 if (cancelled) return;
                 setSession(data);
@@ -75,25 +75,34 @@ export default function SideDrawer({
 
     function goLogin() {
         onCloseAction();
-        window.location.href = `/${tenant}/login`;
+
+        const authOrigin =
+            process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+
+        const returnTo =
+            typeof window !== "undefined"
+                ? window.location.href
+                : `https://${tenant}.discountallday.kr/home`;
+
+        const url = new URL("/login", authOrigin);
+        if (tenant) url.searchParams.set("tenant", tenant);
+        url.searchParams.set("returnTo", returnTo);
+
+        window.location.href = url.toString();
     }
 
     function doLogout() {
         onCloseAction();
         const t = tenant && tenant !== "undefined" ? tenant : "";
-        window.location.href = `/api/auth/logout?tenant=${encodeURIComponent(t)}`;
+        window.location.href = `/auth/logout?tenant=${encodeURIComponent(t)}`;
     }
 
-    // ✅ "현재 지점 · a · A 지점" -> "A 지점"만 표시
     const cleanStoreName = (brandLabel || "").trim();
     const storeName = cleanStoreName || "가맹점";
-
-    // (옵션) subtitle은 작은 안내 텍스트로만 유지
     const headerSubText = subLabel?.trim() ? subLabel : "";
 
     return (
         <>
-            {/* overlay */}
             <div
                 className={[
                     "fixed inset-0 z-40 transition-all",
@@ -104,7 +113,6 @@ export default function SideDrawer({
                 aria-hidden="true"
             />
 
-            {/* drawer */}
             <aside
                 className={[
                     "fixed left-0 top-0 z-50 h-dvh w-[300px]",
@@ -116,11 +124,9 @@ export default function SideDrawer({
                 role="dialog"
                 aria-modal="true"
             >
-                {/* header */}
                 <div className="px-5 pt-5 pb-4 border-b border-[color:var(--border)]">
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                            {/* ✅ 로고 + 브랜드 문구 + 지점 뱃지(NAME만) */}
                             <div className="flex items-center gap-3">
                                 <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-[color:var(--border)] bg-white">
                                     <Image
@@ -139,18 +145,23 @@ export default function SideDrawer({
                                     </div>
 
                                     <div className="mt-1 flex items-center gap-2">
-                    <span
-                        className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-extrabold"
-                        style={{
-                            background: "var(--brand-soft)",
-                            color: "var(--brand)",
-                            border: "1px solid var(--border)",
-                        }}
-                        // title={storeName}
-                    >
-                      {storeName}
-                    </span>
+                                        <span
+                                            className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-extrabold"
+                                            style={{
+                                                background: "var(--brand-soft)",
+                                                color: "var(--brand)",
+                                                border: "1px solid var(--border)",
+                                            }}
+                                        >
+                                            {storeName}
+                                        </span>
                                     </div>
+
+                                    {headerSubText ? (
+                                        <div className="mt-2 text-[11px] text-[color:var(--muted)]">
+                                            {headerSubText}
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
@@ -166,7 +177,6 @@ export default function SideDrawer({
                     </div>
                 </div>
 
-                {/* menu */}
                 <nav className="px-3 py-3 flex-1 overflow-auto">
                     <div className="space-y-1">
                         {items.map((it, idx) => {
@@ -193,7 +203,6 @@ export default function SideDrawer({
                     <div className="mt-6 px-2 text-[11px] text-[color:var(--muted)]">v1.0</div>
                 </nav>
 
-                {/* bottom action */}
                 <div className="p-4 border-t border-[color:var(--border)]">
                     {isLoggedIn ? (
                         <button
@@ -211,7 +220,7 @@ export default function SideDrawer({
                             className="w-full rounded-2xl py-3 text-[14px] font-extrabold text-[color:var(--fg)] active:scale-[0.99]"
                             style={{ background: "var(--kakao)" }}
                         >
-                            카카오로 로그인
+                            카카오 로그인
                         </button>
                     )}
                 </div>
@@ -242,18 +251,18 @@ function DrawerItem({
     if (disabled) {
         return (
             <div className={[base, "text-[color:var(--muted)] opacity-60"].join(" ")}>
-        <span
-            className={[
-                iconWrapBase,
-                "border-[color:var(--border)] bg-[color:var(--brand-soft)]",
-            ].join(" ")}
-        >
-          <Icon className="h-[18px] w-[18px]" />
-        </span>
+                <span
+                    className={[
+                        iconWrapBase,
+                        "border-[color:var(--border)] bg-[color:var(--brand-soft)]",
+                    ].join(" ")}
+                >
+                    <Icon className="h-[18px] w-[18px]" />
+                </span>
                 <span className="flex-1">{label}</span>
                 <span className="text-[11px] rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-[color:var(--brand)]">
-          준비중
-        </span>
+                    준비중
+                </span>
             </div>
         );
     }
@@ -269,25 +278,21 @@ function DrawerItem({
                     : "text-[color:var(--fg)] hover:bg-[color:var(--accent-soft)]",
             ].join(" ")}
         >
-      <span className={[iconWrapBase, "border-[color:var(--border)] bg-white"].join(" ")}>
-        <Icon
-            className={[
-                "h-[18px] w-[18px]",
-                active ? "text-[color:var(--brand)]" : "text-[color:var(--muted)]",
-            ].join(" ")}
-        />
-      </span>
+            <span className={[iconWrapBase, "border-[color:var(--border)] bg-white"].join(" ")}>
+                <Icon
+                    className={[
+                        "h-[18px] w-[18px]",
+                        active ? "text-[color:var(--brand)]" : "text-[color:var(--muted)]",
+                    ].join(" ")}
+                />
+            </span>
             <span className="flex-1">{label}</span>
             <span className="text-[color:var(--muted)]/50">›</span>
         </Link>
     );
 }
 
-/* -------------------------
- * Inline SVG Icons (no deps)
- * ------------------------- */
-
-function Svg({ className, children }: { className?: string; children: ReactNode }) {
+function Svg({ className, children }: { className?: string; children: React.ReactNode }) {
     return (
         <svg
             className={className ?? "h-5 w-5"}
