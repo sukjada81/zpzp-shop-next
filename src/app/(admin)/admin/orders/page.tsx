@@ -16,7 +16,7 @@ type OrderRow = {
     receiverPhone: string;
     payTotal: number;
     payStatus: string;
-    payStatusLabel: string;
+    payStatusLabel?: string;
     pickupAt: string | null;
     createdAt: string | null;
     status: number;
@@ -52,7 +52,28 @@ async function fetchOrders(qs: URLSearchParams): Promise<OrdersRes> {
         headers: { cookie },
     });
 
-    return res.json();
+    const text = await res.text().catch(() => "");
+    const json = text ? (JSON.parse(text) as OrdersRes) : ({ ok: false, total: 0, page: 1, limit: 20, rows: [] } as OrdersRes);
+
+    if (!res.ok) {
+        return {
+            ok: false,
+            total: 0,
+            page: 1,
+            limit: 20,
+            rows: [],
+            message: json?.message || `HTTP ${res.status}`,
+        };
+    }
+
+    return {
+        ok: Boolean(json?.ok),
+        total: Number(json?.total ?? 0) || 0,
+        page: Number(json?.page ?? 1) || 1,
+        limit: Number(json?.limit ?? 20) || 20,
+        rows: Array.isArray(json?.rows) ? json.rows : [],
+        message: json?.message,
+    };
 }
 
 async function resolveSearchParams(searchParams: unknown): Promise<SP> {
@@ -84,6 +105,38 @@ function formatDateText(value?: string | null) {
     return d.toLocaleString("ko-KR");
 }
 
+function normalizeTenantOptions(currentTenant: string) {
+    const base = [
+        { value: "all", label: "전체" },
+        { value: "hq", label: "본사 상품" },
+        { value: "a", label: "A 지점" },
+    ];
+
+    if (!currentTenant || base.some((x) => x.value === currentTenant)) {
+        return base;
+    }
+
+    return [...base, { value: currentTenant, label: `${currentTenant.toUpperCase()} 지점` }];
+}
+
+function getPayStatusLabel(row: OrderRow) {
+    if (row.payStatusLabel?.trim()) return row.payStatusLabel;
+
+    const payStatus = String(row.payStatus ?? "").toUpperCase();
+    switch (payStatus) {
+        case "A":
+            return "결제대기";
+        case "B":
+            return "가상계좌발급";
+        case "C":
+            return "결제완료";
+        case "D":
+            return "결제실패";
+        default:
+            return "오프라인결제";
+    }
+}
+
 export default async function AdminOrdersPage({
                                                   searchParams,
                                               }: {
@@ -107,6 +160,7 @@ export default async function AdminOrdersPage({
 
     const currentPage = Number(data.page || 1);
     const totalPages = Math.max(1, Math.ceil((data.total || 0) / (data.limit || 20)));
+    const tenantOptions = normalizeTenantOptions(tenant);
 
     return (
         <main className="mx-auto w-full max-w-[1600px] px-3 pb-10 pt-6 sm:px-4">
@@ -122,11 +176,7 @@ export default async function AdminOrdersPage({
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
-                        {[
-                            { value: "all", label: "전체" },
-                            { value: "hq", label: "본사 상품" },
-                            { value: "a", label: "A 지점" },
-                        ].map((t) => (
+                        {tenantOptions.map((t) => (
                             <a
                                 key={t.value}
                                 className={chipClass(tenant === t.value)}
@@ -142,6 +192,7 @@ export default async function AdminOrdersPage({
                     <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center">
                         <form className="flex w-full gap-2" action="/admin/orders" method="get">
                             <input type="hidden" name="tenant" value={tenant} />
+
                             <select
                                 name="status"
                                 defaultValue={status}
@@ -160,6 +211,7 @@ export default async function AdminOrdersPage({
                                 placeholder="주문번호/구매자/전화 검색"
                                 className="h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-4 text-sm font-bold text-[var(--dad-ink)] outline-none focus:ring-2 focus:ring-[var(--dad-orange)]"
                             />
+
                             <button className="h-11 shrink-0 rounded-2xl bg-[var(--dad-ink)] px-5 text-sm font-extrabold text-white">
                                 검색
                             </button>
@@ -169,6 +221,12 @@ export default async function AdminOrdersPage({
                             Page {currentPage} / {totalPages} · Total {data.total || 0}
                         </div>
                     </div>
+
+                    {!data.ok && data.message ? (
+                        <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                            {data.message}
+                        </div>
+                    ) : null}
                 </div>
 
                 <div className="dad-card p-5">
@@ -188,6 +246,7 @@ export default async function AdminOrdersPage({
                                 <th className="py-3 pr-3">주문일시</th>
                             </tr>
                             </thead>
+
                             <tbody>
                             {(data.rows || []).map((o) => (
                                 <tr key={String(o.id)} className="border-b border-[var(--dad-border)]">
@@ -200,7 +259,7 @@ export default async function AdminOrdersPage({
                                             href={`/admin/orders/${encodeURIComponent(o.orderNum)}`}
                                             className="hover:underline"
                                         >
-                                            {o.orderNo}
+                                            {o.orderNo || o.orderNum}
                                         </Link>
                                     </td>
 
@@ -228,7 +287,7 @@ export default async function AdminOrdersPage({
 
                                     <td className="py-3 pr-3">
                                             <span className="inline-flex items-center rounded-full border border-[var(--dad-border)] bg-white/70 px-3 py-1 text-xs font-extrabold text-[var(--dad-ink)]">
-                                                {o.payStatusLabel}
+                                                {getPayStatusLabel(o)}
                                             </span>
                                     </td>
 
@@ -269,6 +328,7 @@ export default async function AdminOrdersPage({
                         >
                             ← 이전
                         </a>
+
                         <a
                             className="dad-btn dad-btn-ghost px-4 py-2 text-sm"
                             href={`/admin/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
