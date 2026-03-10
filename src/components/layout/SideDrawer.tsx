@@ -23,6 +23,11 @@ type AuthSession = {
 
 const BRAND_NAME = "디스카운트 올데이";
 
+// 임시 숨김 정책
+const HIDE_POINTS_MENU = true;
+const HIDE_SELECT_TENANT_MENU = true;
+const HIDE_AUTH_BUTTON = true;
+
 export default function SideDrawer({
                                        open,
                                        onCloseAction,
@@ -62,16 +67,33 @@ export default function SideDrawer({
 
     const isLoggedIn = !!session?.loggedIn;
 
-    const items: DrawerItemDef[] = useMemo(
-        () => [
+    const items: DrawerItemDef[] = useMemo(() => {
+        const base: DrawerItemDef[] = [
             { href: `/${tenant}/home`, label: "홈", Icon: IconToday },
             { href: `/${tenant}/orders`, label: "주문내역", Icon: IconReceipt },
-            { href: `/${tenant}/points`, label: "내 포인트", Icon: IconCoin, disabled: false },
             { href: `/${tenant}/settings`, label: "설정", Icon: IconSettings, disabled: false },
-            { href: `/select-tenant`, label: "지점 변경", Icon: IconStore, disabled: false },
-        ],
-        [tenant]
-    );
+        ];
+
+        if (!HIDE_POINTS_MENU) {
+            base.splice(2, 0, {
+                href: `/${tenant}/points`,
+                label: "내 포인트",
+                Icon: IconCoin,
+                disabled: false,
+            });
+        }
+
+        if (!HIDE_SELECT_TENANT_MENU) {
+            base.push({
+                href: `/select-tenant`,
+                label: "지점 변경",
+                Icon: IconStore,
+                disabled: false,
+            });
+        }
+
+        return base;
+    }, [tenant]);
 
     function goLogin() {
         onCloseAction();
@@ -182,7 +204,7 @@ export default function SideDrawer({
                         {items.map((it, idx) => {
                             const active =
                                 pathname === it.href || (pathname?.startsWith(it.href + "/") ?? false);
-                            const needDivider = idx === 1 || idx === 3;
+                            const needDivider = idx === 1;
 
                             return (
                                 <div key={it.href}>
@@ -203,27 +225,29 @@ export default function SideDrawer({
                     <div className="mt-6 px-2 text-[11px] text-[color:var(--muted)]">v1.0</div>
                 </nav>
 
-                <div className="p-4 border-t border-[color:var(--border)]">
-                    {isLoggedIn ? (
-                        <button
-                            type="button"
-                            onClick={doLogout}
-                            className="w-full rounded-2xl py-3 text-[14px] font-extrabold text-white active:scale-[0.99]"
-                            style={{ background: "var(--accent)" }}
-                        >
-                            로그아웃
-                        </button>
-                    ) : (
-                        <button
-                            type="button"
-                            onClick={goLogin}
-                            className="w-full rounded-2xl py-3 text-[14px] font-extrabold text-[color:var(--fg)] active:scale-[0.99]"
-                            style={{ background: "var(--kakao)" }}
-                        >
-                            카카오 로그인
-                        </button>
-                    )}
-                </div>
+                {!HIDE_AUTH_BUTTON ? (
+                    <div className="p-4 border-t border-[color:var(--border)]">
+                        {isLoggedIn ? (
+                            <button
+                                type="button"
+                                onClick={doLogout}
+                                className="w-full rounded-2xl py-3 text-[14px] font-extrabold text-white active:scale-[0.99]"
+                                style={{ background: "var(--accent)" }}
+                            >
+                                로그아웃
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={goLogin}
+                                className="w-full rounded-2xl py-3 text-[14px] font-extrabold text-[color:var(--fg)] active:scale-[0.99]"
+                                style={{ background: "var(--kakao)" }}
+                            >
+                                카카오 로그인
+                            </button>
+                        )}
+                    </div>
+                ) : null}
             </aside>
         </>
     );
@@ -292,7 +316,7 @@ function DrawerItem({
     );
 }
 
-function Svg({ className, children }: { className?: string; children: React.ReactNode }) {
+function Svg({ className, children }: { className?: string; children: ReactNode }) {
     return (
         <svg
             className={className ?? "h-5 w-5"}

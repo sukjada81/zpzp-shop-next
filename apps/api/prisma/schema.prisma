@@ -1162,8 +1162,8 @@ model mallRN_goods {
   image1                   String?              @db.VarChar(255)
   image2                   String?              @db.VarChar(255)
   image3                   String?              @db.VarChar(255)
-  other_image              String               @db.Text
-  detail_image             String               @db.Text
+  other_image              String               @db.MediumText
+  detail_image             String               @db.MediumText
   detail_image_only        Int                  @default(0) @db.UnsignedTinyInt
   detail_image_type        Int                  @default(1) @db.UnsignedTinyInt
   explains                 String               @db.MediumText
@@ -1256,8 +1256,8 @@ model mallRN_goods_backup {
   image1                   String                      @default("") @db.VarChar(50)
   image2                   String                      @default("") @db.VarChar(50)
   image3                   String                      @default("") @db.VarChar(50)
-  other_image              String                      @db.MediumText
-  detail_image             String                      @db.MediumText
+  other_image              String                      @db.Text
+  detail_image             String                      @db.Text
   detail_image_only        Int                         @default(0) @db.UnsignedTinyInt
   detail_image_type        Int                         @default(1) @db.UnsignedTinyInt
   explains                 String                      @db.Text
@@ -2044,6 +2044,8 @@ model mallRN_order_goods {
   uid                Int     @id @default(autoincrement()) @db.UnsignedInt
   vendor             String  @default("") @db.VarChar(50)
   vendor_delivery    String  @default("") @db.VarChar(50)
+  tenant_id          BigInt  @default(0) @db.UnsignedBigInt
+  platform_type      String  @default("DTD") @db.VarChar(20)
   commission         Float   @default(0.00) @db.Float
   order_num          String  @default("") @db.VarChar(32)
   g_uid              Int     @default(0) @db.UnsignedInt
@@ -2072,12 +2074,21 @@ model mallRN_order_goods {
   status_date        Int     @default(0) @db.UnsignedInt
   reals              Int     @default(0) @db.UnsignedTinyInt
   signdate           Int     @default(0) @db.UnsignedInt
+
+  @@index([order_num], map: "idx_order_goods_order_num")
+  @@index([tenant_id, platform_type, status], map: "idx_order_goods_tenant_platform_status")
+  @@index([g_uid], map: "idx_order_goods_g_uid")
+  @@map("mallRN_order_goods")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model mallRN_order_info {
   uid            Int                          @id @default(autoincrement()) @db.UnsignedInt
   id             String                       @default("") @db.VarChar(50)
+  tenant_id      BigInt                       @default(0) @db.UnsignedBigInt
+  member_uid     BigInt?                      @db.UnsignedBigInt
+  platform_type  String                       @default("DTD") @db.VarChar(20)
+  pickup_at      DateTime?                    @db.DateTime(0)
   order_num      String                       @unique(map: "order_num") @default("") @db.VarChar(32)
   name           String                       @default("") @db.VarChar(50)
   cell           String                       @default("") @db.VarChar(30)
@@ -2118,6 +2129,10 @@ model mallRN_order_info {
   use_td_money   BigInt                       @default(0)
   use_td_point   Int                          @default(0) @db.UnsignedInt
   pay_method     String                       @default("") @db.VarChar(20)
+
+  @@index([tenant_id, platform_type, signdate], map: "idx_order_info_tenant_platform_signdate")
+  @@index([member_uid, platform_type, signdate], map: "idx_order_info_member_platform_signdate")
+  @@map("mallRN_order_info")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -2131,6 +2146,8 @@ model mallRN_order_log {
   status       Int    @default(0) @db.UnsignedTinyInt
   status2      Int    @default(0) @db.UnsignedTinyInt
   signdate     Int    @default(0) @db.UnsignedInt
+
+  @@map("mallRN_order_log")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -2980,15 +2997,6 @@ enum mallRN_member_sleep_mailling {
   N
 }
 
-enum mallRN_order_info_pay_type {
-  B
-  C
-  R
-  V
-  H
-  M
-}
-
 enum mallRN_member_mailling {
   Y
   N
@@ -2998,13 +3006,6 @@ enum mallRN_member_tmp_birth_sl {
   S
   L
   N
-}
-
-enum mallRN_order_info_pay_status {
-  A
-  B
-  C
-  D
 }
 
 enum mallRN_member_bak_20251219_sms {
@@ -3054,11 +3055,6 @@ enum mallRN_member_tmp_mailling {
 }
 
 enum mallRN_member_tmp_sms {
-  Y
-  N
-}
-
-enum mallRN_order_info_mobile {
   Y
   N
 }
@@ -3168,6 +3164,27 @@ enum mallRN_configuration_sms_yn {
 }
 
 enum mallRN_configuration_mobile_yn {
+  Y
+  N
+}
+
+enum mallRN_order_info_pay_type {
+  B
+  C
+  R
+  V
+  H
+  M
+}
+
+enum mallRN_order_info_pay_status {
+  A
+  B
+  C
+  D
+}
+
+enum mallRN_order_info_mobile {
   Y
   N
 }

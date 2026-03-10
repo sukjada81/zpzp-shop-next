@@ -10,52 +10,55 @@ import type {
 } from "./types";
 
 function getBaseUrl() {
-    const env =
+    return (
+        process.env.NEXT_INTERNAL_ORIGIN ||
         process.env.NEXT_PUBLIC_SITE_URL ||
         process.env.NEXT_PUBLIC_APP_URL ||
-        process.env.VERCEL_URL;
-
-    if (env) {
-        if (env.startsWith("http")) return env;
-        return `https://${env}`;
-    }
-    return "http://localhost:3000";
+        (process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : "http://127.0.0.1:3000")
+    );
 }
 
 /**
- * ✅ Server Component에서 내부 API(/api/...) 호출 시
- * "현재 요청의 쿠키"를 직접 헤더로 실어줘야 세션이 유지됩니다.
+ * 현재 요청의 쿠키를 그대로 전달
  */
 async function getCookieHeader(): Promise<string> {
-    const h = await headers();
-    return h.get("cookie") ?? "";
+    const reqHeaders = await headers();
+    return reqHeaders.get("cookie") ?? "";
 }
 
 async function fetchJson<T>(
     path: string,
     params?: Record<string, string | undefined>,
     init?: RequestInit
-) {
+): Promise<T> {
     const baseUrl = getBaseUrl();
     const url = new URL(path, baseUrl);
 
     if (params) {
         for (const [k, v] of Object.entries(params)) {
-            if (v != null && String(v).length > 0) url.searchParams.set(k, String(v));
+            if (v != null && String(v).length > 0) {
+                url.searchParams.set(k, String(v));
+            }
         }
     }
 
-    // ✅ 쿠키 전달(세션 유지 핵심)
-    const cookie = await getCookieHeader();
+    const cookieHeader = await getCookieHeader();
+
+    const mergedHeaders = new Headers(init?.headers || {});
+    if (cookieHeader) {
+        mergedHeaders.set("cookie", cookieHeader);
+    }
+    if (!mergedHeaders.has("accept")) {
+        mergedHeaders.set("accept", "application/json");
+    }
 
     const res = await fetch(url.toString(), {
-        cache: "no-store",
         ...init,
-        headers: {
-            Accept: "application/json",
-            ...(cookie ? { cookie } : {}),
-            ...(init?.headers ?? {}),
-        },
+        method: init?.method || "GET",
+        headers: mergedHeaders,
+        cache: "no-store",
     });
 
     if (!res.ok) {
@@ -67,8 +70,6 @@ async function fetchJson<T>(
 }
 
 export async function getAdminTenants(): Promise<AdminTenant[]> {
-    // ✅ 현재 BFF(/api/admin/tenants)는 { ok, tenants } 형태가 더 자연스럽습니다.
-    // 다만 기존 코드가 rows를 기대하므로 둘 다 대응합니다.
     const json = await fetchJson<any>("/api/admin/tenants");
     return (json?.tenants ?? json?.rows ?? []) as AdminTenant[];
 }
@@ -87,7 +88,7 @@ export async function getAdminProducts(params: {
     return fetchJson<AdminListResponse<AdminProductItem>>("/api/admin/products", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        pageSize: params.pageSize ?? "20", // ✅ limit -> pageSize
+        pageSize: params.pageSize ?? "20",
         q: params.q,
         status: params.status,
     });
@@ -103,7 +104,7 @@ export async function getAdminOrders(params: {
     return fetchJson<AdminListResponse<AdminOrderItem>>("/api/admin/orders", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        pageSize: params.pageSize ?? "20", // ✅ limit -> pageSize
+        pageSize: params.pageSize ?? "20",
         q: params.q,
         status: params.status,
     });
@@ -119,9 +120,9 @@ export async function getAdminPoints(params: {
     return fetchJson<AdminListResponse<AdminPointItem>>("/api/admin/points", {
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
-        pageSize: params.pageSize ?? "20", // ✅ limit -> pageSize
+        pageSize: params.pageSize ?? "20",
         q: params.q,
-        type: params.type, // ✅ type 그대로 전달
+        type: params.type,
     });
 }
 

@@ -12,6 +12,7 @@ import {
     serializeOptionGroups,
     textToList,
     toPreviewUrl,
+    toStoredPath,
     uploadProductImage,
 } from "./productFormUtils";
 
@@ -69,14 +70,23 @@ type FormState = {
     categoryKeys: string[];
 };
 
-function guessTenantSlug(tenants: Tenant[], fallback = "all") {
+function guessTenantSlug(tenants: Tenant[], fallback = "hq") {
     const first = tenants?.[0];
     const slug = (first?.slug || "").toString().trim();
     return slug || fallback;
 }
 
+function removeImageFromText(text: string, target: string) {
+    return text
+        .split(/\r?\n|,/g)
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .filter((x) => x !== target)
+        .join("\n");
+}
+
 export default function ProductCreateForm({ tenants }: Props) {
-    const defaultTenantSlug = useMemo(() => guessTenantSlug(tenants, "all"), [tenants]);
+    const defaultTenantSlug = useMemo(() => guessTenantSlug(tenants, "hq"), [tenants]);
 
     const [form, setForm] = useState<FormState>({
         tenantSlug: defaultTenantSlug,
@@ -189,11 +199,25 @@ export default function ProductCreateForm({ tenants }: Props) {
         );
     }
 
+    function clearSingleImage(key: "image1" | "image2" | "image3") {
+        onChange(key, "");
+    }
+
     async function uploadSingleImage(key: "image1" | "image2" | "image3", file: File) {
         setUploadingKey(key);
         try {
             const path = await uploadProductImage(file);
-            onChange(key, path);
+
+            setForm((prev) => {
+                const next: FormState = { ...prev, [key]: path };
+
+                if (key === "image1") {
+                    if (!prev.image2) next.image2 = path;
+                    if (!prev.image3) next.image3 = path;
+                }
+
+                return next;
+            });
         } catch (e: any) {
             alert(e?.message || "이미지 업로드 실패");
         } finally {
@@ -201,19 +225,42 @@ export default function ProductCreateForm({ tenants }: Props) {
         }
     }
 
-    async function appendImageToList(target: "otherImagesText" | "detailImagesText", file: File) {
+    async function appendImageToList(
+        target: "otherImagesText" | "detailImagesText",
+        files: FileList | File[]
+    ) {
+        const fileArray = Array.from(files ?? []);
+        if (!fileArray.length) return;
+
         setUploadingKey(target);
         try {
-            const path = await uploadProductImage(file);
-            setForm((prev) => ({
-                ...prev,
-                [target]: prev[target] ? `${prev[target]}\n${path}` : path,
-            }));
+            const uploadedPaths: string[] = [];
+
+            for (const file of fileArray) {
+                const path = await uploadProductImage(file);
+                uploadedPaths.push(path);
+            }
+
+            setForm((prev) => {
+                const current = textToList(prev[target]);
+                const nextList = [...current, ...uploadedPaths];
+                return {
+                    ...prev,
+                    [target]: nextList.join("\n"),
+                };
+            });
         } catch (e: any) {
             alert(e?.message || "이미지 업로드 실패");
         } finally {
             setUploadingKey(null);
         }
+    }
+
+    function removeListImage(target: "otherImagesText" | "detailImagesText", path: string) {
+        setForm((prev) => ({
+            ...prev,
+            [target]: removeImageFromText(prev[target], path),
+        }));
     }
 
     async function submit() {
@@ -244,12 +291,14 @@ export default function ProductCreateForm({ tenants }: Props) {
             saleUse: form.saleUse,
             sale_use: form.saleUse ? 1 : 0,
 
-            image1: form.image1.trim(),
-            image2: form.image2.trim(),
-            image3: form.image3.trim(),
+            image1: form.image1.trim() ? toStoredPath(form.image1.trim()) : "",
+            image2: form.image2.trim() ? toStoredPath(form.image2.trim()) : "",
+            image3: form.image3.trim() ? toStoredPath(form.image3.trim()) : "",
 
-            otherImages: textToList(form.otherImagesText),
-            detailImages: textToList(form.detailImagesText),
+            otherImages: textToList(form.otherImagesText).map(toStoredPath),
+            other_image: textToList(form.otherImagesText).map(toStoredPath),
+            detailImages: textToList(form.detailImagesText).map(toStoredPath),
+            detail_image: textToList(form.detailImagesText).map(toStoredPath),
 
             detail: form.detail,
             shortDescription: form.detail,
@@ -312,6 +361,9 @@ export default function ProductCreateForm({ tenants }: Props) {
     const preview2 = useMemo(() => toPreviewUrl(form.image2), [form.image2]);
     const preview3 = useMemo(() => toPreviewUrl(form.image3), [form.image3]);
 
+    const otherImageList = useMemo(() => textToList(form.otherImagesText), [form.otherImagesText]);
+    const detailImageList = useMemo(() => textToList(form.detailImagesText), [form.detailImagesText]);
+
     return (
         <div className="space-y-6">
             <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -322,6 +374,8 @@ export default function ProductCreateForm({ tenants }: Props) {
                         value={form.tenantSlug}
                         onChange={(e) => onChange("tenantSlug", e.target.value)}
                     >
+                        <option value="hq">본사 상품 (tenant_id = 0)</option>
+
                         {tenants.map((t) => {
                             const slug = (t.slug || "").toString().trim() || String(t.id);
                             const label = t.name ? `${t.name}${t.slug ? ` (${t.slug})` : ""}` : slug;
@@ -584,20 +638,32 @@ export default function ProductCreateForm({ tenants }: Props) {
                                 value={(form as any)[item.key]}
                                 onChange={(e) => onChange(item.key as any, e.target.value as any)}
                             />
-                            <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
-                                {uploadingKey === item.key ? "업로드 중..." : "파일 업로드"}
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (!file) return;
-                                        uploadSingleImage(item.key as any, file);
-                                        e.currentTarget.value = "";
-                                    }}
-                                />
-                            </label>
+                            <div className="flex gap-2">
+                                <label className="inline-flex flex-1 cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
+                                    {uploadingKey === item.key ? "업로드 중..." : "파일 업로드"}
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            uploadSingleImage(item.key as any, file);
+                                            e.currentTarget.value = "";
+                                        }}
+                                    />
+                                </label>
+
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600 disabled:opacity-40"
+                                    disabled={!(form as any)[item.key]}
+                                    onClick={() => clearSingleImage(item.key as "image1" | "image2" | "image3")}
+                                >
+                                    삭제
+                                </button>
+                            </div>
+
                             <div className="overflow-hidden rounded-2xl border border-[var(--dad-border)] bg-white/70">
                                 <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
                                     {item.preview ? (
@@ -623,19 +689,45 @@ export default function ProductCreateForm({ tenants }: Props) {
                             placeholder={"한 줄에 하나씩 입력\nuploads/products/a.jpg\nuploads/products/b.jpg"}
                         />
                         <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
-                            {uploadingKey === "otherImagesText" ? "업로드 중..." : "추가이미지 업로드"}
+                            {uploadingKey === "otherImagesText" ? "업로드 중..." : "추가이미지 여러장 업로드"}
                             <input
                                 type="file"
                                 accept="image/*"
+                                multiple
                                 className="hidden"
                                 onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    appendImageToList("otherImagesText", file);
+                                    const files = e.target.files;
+                                    if (!files?.length) return;
+                                    appendImageToList("otherImagesText", files);
                                     e.currentTarget.value = "";
                                 }}
                             />
                         </label>
+
+                        {otherImageList.length ? (
+                            <div className="mt-3 grid grid-cols-2 gap-3">
+                                {otherImageList.map((path) => (
+                                    <div key={path} className="rounded-2xl border border-[var(--dad-border)] bg-white p-2">
+                                        <div className="overflow-hidden rounded-xl border border-[var(--dad-border)]">
+                                            <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
+                                                <img
+                                                    src={toPreviewUrl(path)}
+                                                    alt=""
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600"
+                                            onClick={() => removeListImage("otherImagesText", path)}
+                                        >
+                                            삭제
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
                     </div>
 
                     <div>
@@ -647,19 +739,45 @@ export default function ProductCreateForm({ tenants }: Props) {
                             placeholder={"한 줄에 하나씩 입력\nuploads/products/detail1.jpg\nuploads/products/detail2.jpg"}
                         />
                         <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
-                            {uploadingKey === "detailImagesText" ? "업로드 중..." : "상세이미지 업로드"}
+                            {uploadingKey === "detailImagesText" ? "업로드 중..." : "상세이미지 여러장 업로드"}
                             <input
                                 type="file"
                                 accept="image/*"
+                                multiple
                                 className="hidden"
                                 onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    appendImageToList("detailImagesText", file);
+                                    const files = e.target.files;
+                                    if (!files?.length) return;
+                                    appendImageToList("detailImagesText", files);
                                     e.currentTarget.value = "";
                                 }}
                             />
                         </label>
+
+                        {detailImageList.length ? (
+                            <div className="mt-3 grid grid-cols-2 gap-3">
+                                {detailImageList.map((path) => (
+                                    <div key={path} className="rounded-2xl border border-[var(--dad-border)] bg-white p-2">
+                                        <div className="overflow-hidden rounded-xl border border-[var(--dad-border)]">
+                                            <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
+                                                <img
+                                                    src={toPreviewUrl(path)}
+                                                    alt=""
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600"
+                                            onClick={() => removeListImage("detailImagesText", path)}
+                                        >
+                                            삭제
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
 

@@ -1,3 +1,4 @@
+// apps/api/src/modules/admin/products.routes.ts
 import type { FastifyInstance } from "fastify";
 
 type AdminSession = {
@@ -50,6 +51,34 @@ function parseIntId(raw: unknown) {
     return { ok: true as const, value: n };
 }
 
+function isHqTenantSlug(raw: unknown) {
+    const s = String(raw ?? "").trim().toLowerCase();
+    return s === "hq" || s === "head" || s === "0" || s === "root";
+}
+
+async function resolveTenantId(app: FastifyInstance, tenantSlugRaw: unknown) {
+    const tenantSlug = String(tenantSlugRaw ?? "").trim();
+
+    if (!tenantSlug) {
+        return { ok: false as const, error: "tenantSlug required" };
+    }
+
+    if (isHqTenantSlug(tenantSlug)) {
+        return { ok: true as const, tenantId: BigInt(0), tenantSlug: "hq" };
+    }
+
+    const tenant = await app.prisma.tenant.findUnique({
+        where: { slug: tenantSlug },
+        select: { id: true, slug: true },
+    });
+
+    if (!tenant) {
+        return { ok: false as const, error: "invalid tenantSlug" };
+    }
+
+    return { ok: true as const, tenantId: tenant.id, tenantSlug: tenant.slug };
+}
+
 function toNullableInt(v: any): number | null {
     if (v === "" || v === null || v === undefined) return null;
     const n = Number(v);
@@ -72,7 +101,7 @@ function unixToIso(u: any): string | null {
 function normalizeImagePath(v: any): string {
     const s = String(v ?? "").trim();
     if (!s) return "";
-    return s.replace(/\\/g, "/");
+    return s.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
 function normalizeText(v: any): string {
@@ -162,6 +191,7 @@ function buildAdminProduct(row: any) {
     return {
         id: String(row.uid),
         tenantId: row.tenant_id == null ? null : String(row.tenant_id),
+        tenantSlug: row.tenant_id === BigInt(0) || row.tenant_id === 0 ? "hq" : (row.tenant?.slug ?? ""),
 
         title: row.name,
         status: String(row.status ?? "draft"),
@@ -246,18 +276,21 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         const limit = Math.min(100, Math.max(1, Number(q.limit ?? q.pageSize ?? 20) || 20));
         const skip = (page - 1) * limit;
 
-        let tenantId: bigint | null = null;
+        const where: any = { deleted_at: null };
+
         if (tenantSlug !== "all") {
-            const tenant = await app.prisma.tenant.findUnique({
-                where: { slug: tenantSlug },
-                select: { id: true },
-            });
-            if (!tenant) return reply.code(400).send({ ok: false, message: "invalid tenant" });
-            tenantId = tenant.id;
+            if (isHqTenantSlug(tenantSlug)) {
+                where.tenant_id = BigInt(0);
+            } else {
+                const tenant = await app.prisma.tenant.findUnique({
+                    where: { slug: tenantSlug },
+                    select: { id: true },
+                });
+                if (!tenant) return reply.code(400).send({ ok: false, message: "invalid tenant" });
+                where.tenant_id = tenant.id;
+            }
         }
 
-        const where: any = { deleted_at: null };
-        if (tenantId) where.tenant_id = tenantId;
         if (status) where.status = status;
 
         if (keyword) {
@@ -303,7 +336,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             new Set(
                 rows
                     .map((r: any) => r.tenant_id)
-                    .filter((v: any) => v !== null && v !== undefined)
+                    .filter((v: any) => v !== null && v !== undefined && String(v) !== "0")
                     .map((v: any) => String(v))
             )
         );
@@ -334,14 +367,17 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         );
 
         const mapped = (rows as any[]).map((r) => {
-            const tenant = r.tenant_id != null ? tenantMap.get(String(r.tenant_id)) ?? null : null;
+            const isHq = String(r.tenant_id ?? "") === "0";
+            const tenant = !isHq && r.tenant_id != null ? tenantMap.get(String(r.tenant_id)) ?? null : null;
 
             return {
                 id: String(r.uid),
                 tenantId: r.tenant_id == null ? null : String(r.tenant_id),
-                tenantName: tenant?.name ?? null,
-                tenantSlug: tenant?.slug ?? null,
-                tenant,
+                tenantName: isHq ? "본사 상품" : (tenant?.name ?? null),
+                tenantSlug: isHq ? "hq" : (tenant?.slug ?? null),
+                tenant: isHq
+                    ? { id: "0", slug: "hq", name: "본사 상품" }
+                    : tenant,
 
                 title: r.name,
                 status: String(r.status ?? "draft"),
@@ -428,7 +464,25 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         if (!row) return reply.code(404).send({ ok: false, message: "not found" });
 
-        return reply.send({ ok: true, product: jsonSafe(buildAdminProduct(row)) });
+        const tenant =
+            String(row.tenant_id ?? "") === "0"
+                ? null
+                : row.tenant_id != null
+                    ? await app.prisma.tenant.findUnique({
+                        where: { id: row.tenant_id },
+                        select: { slug: true, name: true },
+                    })
+                    : null;
+
+        return reply.send({
+            ok: true,
+            product: jsonSafe(
+                buildAdminProduct({
+                    ...row,
+                    tenant,
+                })
+            ),
+        });
     });
 
     app.post("/admin/products", async (req: any, reply) => {
@@ -437,14 +491,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         const body = (req.body ?? {}) as any;
 
-        const tenantSlug = String(body.tenantSlug ?? "").trim();
-        if (!tenantSlug) return reply.code(400).send({ ok: false, message: "tenantSlug required" });
-
-        const tenant = await app.prisma.tenant.findUnique({
-            where: { slug: tenantSlug },
-            select: { id: true },
-        });
-        if (!tenant) return reply.code(400).send({ ok: false, message: "invalid tenantSlug" });
+        const resolvedTenant = await resolveTenantId(app, body.tenantSlug);
+        if (!resolvedTenant.ok) {
+            return reply.code(400).send({ ok: false, message: resolvedTenant.error });
+        }
 
         const title = String(body.title ?? "").trim();
         if (!title) return reply.code(400).send({ ok: false, message: "title required" });
@@ -453,7 +503,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         const created = await app.prisma.mallRN_goods.create({
             data: {
-                tenant_id: tenant.id,
+                tenant_id: resolvedTenant.tenantId,
                 name: title,
 
                 explains: normalizeText(body.explains ?? body.description ?? ""),
@@ -530,6 +580,11 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         const title = String(body.title ?? "").trim();
         if (!title) return reply.code(400).send({ ok: false, message: "title required" });
 
+        const resolvedTenant = await resolveTenantId(app, body.tenantSlug);
+        if (!resolvedTenant.ok) {
+            return reply.code(400).send({ ok: false, message: resolvedTenant.error });
+        }
+
         const exists = await app.prisma.mallRN_goods.findUnique({
             where: { uid: parsed.value },
             select: { uid: true, icon: true },
@@ -539,6 +594,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         const updated = await app.prisma.mallRN_goods.update({
             where: { uid: parsed.value },
             data: {
+                tenant_id: resolvedTenant.tenantId,
                 name: title,
 
                 explains: normalizeText(body.explains ?? body.description ?? ""),
@@ -585,9 +641,16 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
                 moddate: Math.floor(Date.now() / 1000),
             },
-            select: { uid: true },
+            select: { uid: true, tenant_id: true },
         });
 
-        return reply.send({ ok: true, product: jsonSafe({ id: String(updated.uid) }) });
+        return reply.send({
+            ok: true,
+            product: jsonSafe({
+                id: String(updated.uid),
+                tenantId: String(updated.tenant_id ?? ""),
+                tenantSlug: resolvedTenant.tenantSlug,
+            }),
+        });
     });
 }

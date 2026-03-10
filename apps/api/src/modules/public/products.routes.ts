@@ -1,9 +1,12 @@
+// apps/api/src/modules/public/products.routes.ts
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireTenant } from "../../common/guard.js";
 
 type ImageItem = { key: string; label?: string };
+
+const HQ_TENANT_ID = BigInt(0);
 
 function toId(v: bigint | number | string): string {
     if (typeof v === "bigint") return v.toString();
@@ -143,6 +146,19 @@ function parseOptions(row: {
     return out;
 }
 
+function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput {
+    return {
+        tenant_id: {
+            in: [tenantId, HQ_TENANT_ID],
+        },
+        sale_use: 1,
+        display_use: 1,
+        auth_ck: "Y",
+        deleted_at: null,
+        status: "active",
+    };
+}
+
 export async function publicProductRoutes(app: FastifyInstance) {
     app.addHook("preHandler", requireTenant());
 
@@ -157,21 +173,29 @@ export async function publicProductRoutes(app: FastifyInstance) {
             })
             .parse(req.query);
 
-        const where: Prisma.mallRN_goodsWhereInput = {
-            tenant_id: tenantId,
-            sale_use: 1,
-            display_use: 1,
-            auth_ck: "Y",
-            deleted_at: null,
-            status: "active",
-        };
+        const where: Prisma.mallRN_goodsWhereInput = buildPublicGoodsWhere(tenantId);
+
+        if (q.q?.trim()) {
+            const keyword = q.q.trim();
+            where.OR = [
+                { name: { contains: keyword } },
+                { explains: { contains: keyword } },
+                { detail: { contains: keyword } },
+            ];
+        }
 
         const rows = await app.prisma.mallRN_goods.findMany({
             where,
-            orderBy: [{ sort_order: "desc" }, { moddate: "desc" }, { uid: "desc" }],
+            orderBy: [
+                { tenant_id: "desc" }, // 지점 상품 우선, 본사(0) 후순위
+                { sort_order: "desc" },
+                { moddate: "desc" },
+                { uid: "desc" },
+            ],
             take: q.take,
             select: {
                 uid: true,
+                tenant_id: true,
                 name: true,
                 price: true,
                 image1: true,
@@ -193,6 +217,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 metaLeft: timeLeft,
                 metaRight: r.pickup_only ? "픽업" : undefined,
                 thumbnailUrl: thumb || undefined,
+                sourceTenantId: r.tenant_id != null ? toId(r.tenant_id) : null,
             };
         });
 
@@ -218,15 +243,11 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const row = await app.prisma.mallRN_goods.findFirst({
             where: {
                 uid,
-                tenant_id: tenantId,
-                sale_use: 1,
-                display_use: 1,
-                auth_ck: "Y",
-                deleted_at: null,
-                status: "active",
+                ...buildPublicGoodsWhere(tenantId),
             },
             select: {
                 uid: true,
+                tenant_id: true,
                 name: true,
                 price: true,
                 explains: true,
@@ -267,6 +288,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
             },
             images,
             options,
+            sourceTenantId: row.tenant_id != null ? toId(row.tenant_id) : null,
         };
 
         return {

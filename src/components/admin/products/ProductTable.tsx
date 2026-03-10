@@ -1,22 +1,10 @@
+// src/components/admin/products/ProductTable.tsx
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
 import { statusLabel } from "@/lib/admin/productStatus";
-
-function getAssetOrigin() {
-    return (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "https://discountallday.kr").replace(/\/+$/, "");
-}
-
-function toPreviewUrl(input: string) {
-    const v = (input || "").trim();
-    if (!v) return "";
-    if (/^https?:\/\//i.test(v)) return v;
-    if (/^\/\//.test(v)) return `https:${v}`;
-    const assetOrigin = getAssetOrigin();
-    const path = v.startsWith("/") ? v : `/${v}`;
-    return `${assetOrigin}${path}`;
-}
+import { toPreviewUrl } from "./productFormUtils";
 
 function statusColor(status: string) {
     if (status === "active") return "bg-green-100 text-green-700 border-green-200";
@@ -98,7 +86,12 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                 {(rows || []).map((p) => {
                     const id = String(p?.id ?? p?.uid ?? "");
                     const title = String(p?.title ?? p?.name ?? "");
-                    const tenantName = p?.tenant?.name ?? p?.tenantName ?? p?.tenant_slug ?? "-";
+                    const tenantId = Number(p?.tenantId ?? p?.tenant_id ?? NaN);
+                    const tenantName =
+                        tenantId === 0
+                            ? "본사 상품"
+                            : p?.tenant?.name ?? p?.tenantName ?? p?.tenant_slug ?? "-";
+
                     const image = p?.image1 ?? p?.thumbnailUrl ?? p?.image2 ?? p?.image3 ?? "";
                     const preview = toPreviewUrl(image);
                     const status = String(p?.status ?? "");

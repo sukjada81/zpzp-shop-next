@@ -1,3 +1,4 @@
+// src/components/admin/products/productFormUtils.ts
 export type OptionValueRow = {
     id: string;
     valueName: string;
@@ -16,31 +17,49 @@ export const PRODUCT_ADMIN_CATEGORY_OPTIONS = [
     { key: "pickup-ready", label: "바로픽업가능" },
 ] as const;
 
-export function getAssetOrigin() {
-    return (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "https://discountallday.kr").replace(/\/+$/, "");
+const MAX_UPLOAD_FILE_SIZE_MB = 30;
+const MAX_UPLOAD_FILE_SIZE = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024;
+
+function toProxyUploadPath(pathname: string) {
+    const clean = pathname.replace(/^\/+/, "");
+    return `/api/proxy/${clean}`;
 }
 
 export function toPreviewUrl(input: string) {
     const v = (input || "").trim();
     if (!v) return "";
+
     if (/^https?:\/\//i.test(v)) return v;
     if (/^\/\//.test(v)) return `https:${v}`;
-    const assetOrigin = getAssetOrigin();
-    const path = v.startsWith("/") ? v : `/${v}`;
-    return `${assetOrigin}${path}`;
+
+    const normalized = v.startsWith("/") ? v : `/${v}`;
+
+    // 업로드 파일은 항상 API 프록시를 통해 표시
+    if (normalized.startsWith("/uploads/")) {
+        return toProxyUploadPath(normalized);
+    }
+
+    return normalized;
 }
 
 export function toStoredPath(input: string) {
     const v = (input || "").trim();
     if (!v) return "";
-    if (!/^https?:\/\//i.test(v)) return v.replace(/^\/+/, "");
+
+    // 이미 상대경로면 그대로 저장
+    if (!/^https?:\/\//i.test(v)) {
+        return v.replace(/^\/+/, "");
+    }
 
     try {
         const u = new URL(v);
-        const asset = new URL(getAssetOrigin());
-        if (u.origin === asset.origin) {
+
+        // uploads 경로인 경우에만 상대경로로 저장
+        if (u.pathname.startsWith("/uploads/")) {
             return `${u.pathname}${u.search || ""}`.replace(/^\/+/, "");
         }
+
+        // 외부 호스팅 이미지는 절대 URL 그대로 저장
         return v;
     } catch {
         return v;
@@ -163,6 +182,10 @@ export function insertAtCursor(
 }
 
 export async function uploadProductImage(file: File) {
+    if (file.size > MAX_UPLOAD_FILE_SIZE) {
+        throw new Error(`이미지 용량이 너무 큽니다. ${MAX_UPLOAD_FILE_SIZE_MB}MB 이하 파일만 업로드할 수 있습니다.`);
+    }
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -172,6 +195,10 @@ export async function uploadProductImage(file: File) {
         credentials: "include",
         cache: "no-store",
     });
+
+    if (res.status === 413) {
+        throw new Error(`이미지 용량이 너무 큽니다. ${MAX_UPLOAD_FILE_SIZE_MB}MB 이하로 업로드해주세요.`);
+    }
 
     const json = await res.json().catch(() => ({}));
 
