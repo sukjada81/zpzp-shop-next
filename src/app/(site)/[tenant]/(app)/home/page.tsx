@@ -1,3 +1,4 @@
+// src/app/(site)/[tenant]/(app)/home/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, Gift } from "lucide-react";
@@ -39,6 +40,7 @@ type ProductDetailResponse = {
             price: number | null;
             soldout?: boolean;
             stockNote?: string;
+            rawOptionId?: number | string;
         }>;
     };
 };
@@ -49,7 +51,7 @@ function getInternalOrigin() {
 
 async function fetchProducts(tenant: string) {
     const origin = getInternalOrigin();
-    const path = endpoints.publicProducts(tenant, { take: 50 });
+    const path = endpoints.publicProducts(tenant, { take: 100 });
     const url = new URL(path, origin);
 
     const res = await fetch(url.toString(), { cache: "no-store" });
@@ -63,7 +65,8 @@ async function fetchProducts(tenant: string) {
 
 async function fetchProductDetail(tenant: string, id: string) {
     const origin = getInternalOrigin();
-    const url = new URL(`/${tenant}/v1/public/products/${id}`, origin);
+    const path = endpoints.publicProductDetail(tenant, id);
+    const url = new URL(path, origin);
 
     const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) return null;
@@ -121,7 +124,9 @@ export default async function HomePage({
     };
 
     const mockOrders = getMockRecentOrders();
-    const ongoingBase = products.slice(0, 3);
+
+    // 판매기간 내 상품 전체 사용
+    const ongoingBase = products;
 
     const ongoingDetails = await Promise.all(
         ongoingBase.map(async (p, index) => {
@@ -148,7 +153,7 @@ export default async function HomePage({
             return item;
         })
     );
-
+    console.log("[ongoingDetails]", JSON.stringify(ongoingDetails, null, 2));
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 pb-24 pt-3">
             <HomeBannerCarousel tenant={tenant} />

@@ -1,3 +1,4 @@
+// src/app/(site)/[tenant]/(app)/order/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -22,7 +23,7 @@ export default function OrderPage() {
 
         async function run() {
             try {
-                const res = await fetch("/auth/session", { cache: "no-store" });
+                const res = await fetch("/api/auth/session", { cache: "no-store" });
                 const data = (await res.json()) as AuthSession;
 
                 if (cancelled) return;
@@ -41,6 +42,7 @@ export default function OrderPage() {
                 setChecking(false);
             } catch {
                 if (cancelled) return;
+
                 const authOrigin =
                     process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
                 const returnTo = window.location.href;
@@ -61,10 +63,10 @@ export default function OrderPage() {
     const initialItems: OrderItem[] = useMemo(
         () =>
             items.map((it: CartItem) => ({
-                id: it.productId,
+                id: String(it.productId),
                 title: it.name,
-                price: it.price,
-                qty: it.quantity,
+                price: Number(it.price ?? 0),
+                qty: Number(it.quantity ?? 0),
             })),
         [items]
     );

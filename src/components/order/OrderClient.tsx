@@ -1,9 +1,10 @@
+// src/components/order/OrderClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addOrder } from "@/lib/orders/ordersStore";
 import { useCart } from "@/lib/cart/CartProvider";
+import { endpoints } from "@/lib/api/endpoints";
 
 export type OrderItem = {
     id: string;
@@ -11,9 +12,40 @@ export type OrderItem = {
     price: number;
     qty: number;
     metaRight?: string;
+    optionId?: number | string;
+    optionName?: string;
 };
 
-type PayMethod = "card" | "bank" | "kakao";
+type CreateOrderResponse = {
+    ok: boolean;
+    orderNum?: string;
+    status?: number;
+    statusLabel?: string;
+    message?: string;
+};
+
+function onlyDigits(v: string) {
+    return String(v ?? "").replace(/[^\d]/g, "");
+}
+
+function joinPhone(a: string, b: string, c: string) {
+    return [a, b, c].map(onlyDigits).filter(Boolean).join("");
+}
+
+function nowLocalDateTimeInputValue() {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(
+        now.getHours()
+    )}:${pad(now.getMinutes())}`;
+}
+
+function toApiDateTime(value: string) {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+}
 
 export default function OrderClient(props: {
     tenant: string;
@@ -21,80 +53,44 @@ export default function OrderClient(props: {
 }) {
     const { tenant } = props;
     const router = useRouter();
-
-    // Cart clear를 위해 사용 (구현체 차이 대비)
     const cart = useCart() as any;
 
     const [items, setItems] = useState<OrderItem[]>(props.initialItems);
+    const [submitting, setSubmitting] = useState(false);
 
-    // 주문자/수령(입력)
-    const [buyerName, setBuyerName] = useState("현승우");
+    const [buyerName, setBuyerName] = useState("");
     const [buyerPhoneA, setBuyerPhoneA] = useState("010");
-    const [buyerPhoneB, setBuyerPhoneB] = useState("4936");
-    const [buyerPhoneC, setBuyerPhoneC] = useState("6328");
+    const [buyerPhoneB, setBuyerPhoneB] = useState("");
+    const [buyerPhoneC, setBuyerPhoneC] = useState("");
 
     const [receiverSame, setReceiverSame] = useState(true);
-    const [receiverName, setReceiverName] = useState("현승우");
+    const [receiverName, setReceiverName] = useState("");
     const [receiverPhoneA, setReceiverPhoneA] = useState("010");
-    const [receiverPhoneB, setReceiverPhoneB] = useState("4936");
-    const [receiverPhoneC, setReceiverPhoneC] = useState("6328");
+    const [receiverPhoneB, setReceiverPhoneB] = useState("");
+    const [receiverPhoneC, setReceiverPhoneC] = useState("");
 
-    const [addrZip, setAddrZip] = useState("");
-    const [addr1, setAddr1] = useState("");
-    const [addr2, setAddr2] = useState("");
+    const [pickupAt, setPickupAt] = useState(nowLocalDateTimeInputValue());
+    const [message, setMessage] = useState("");
     const [memo, setMemo] = useState("");
 
-    // 쿠폰/포인트 (MVP 더미)
-    const [couponTotal] = useState(1); // 사용 가능 쿠폰 1장
-    const [selectedCoupon, setSelectedCoupon] = useState<string | null>(null); // 선택된 쿠폰 id
-    const [couponSheetOpen, setCouponSheetOpen] = useState(false);
-
-    const [pointAvail] = useState(1000); // 총 보유 포인트 1,000p
-    const [usePoint, setUsePoint] = useState(0);
-
-    const [payMethod, setPayMethod] = useState<PayMethod>("kakao");
-
     const subtotal = useMemo(
-        () => items.reduce((sum, it) => sum + it.price * it.qty, 0),
-        [items],
+        () => items.reduce((sum, it) => sum + Number(it.price ?? 0) * Number(it.qty ?? 0), 0),
+        [items]
     );
 
-    // MVP: 쿠폰은 "신규 가입쿠폰(1,000원 할인)" 1장만 있다고 가정
-    const couponDiscount = useMemo(() => {
-        if (!selectedCoupon) return 0;
-        return 1000;
-    }, [selectedCoupon]);
-
-    const safeUsePoint = useMemo(() => {
-        const max = Math.max(0, subtotal - couponDiscount);
-        return Math.min(Math.max(0, usePoint), pointAvail, max);
-    }, [usePoint, pointAvail, subtotal, couponDiscount]);
-
-    const totalAfterDiscount = Math.max(0, subtotal - couponDiscount - safeUsePoint);
-
-    const deliveryFee = 4000; // ✅ 예시처럼 기본 4,000원 (추후 정책 반영)
-    const grandTotal = Math.max(0, totalAfterDiscount + (items.length > 0 ? deliveryFee : 0));
-
-    // ✅ 0원 결제면 결제수단 무관
-    const canSubmit = items.length > 0 && (grandTotal === 0 || !!payMethod);
+    const canSubmit = items.length > 0 && !submitting;
 
     function updateQty(id: string, next: number) {
         setItems((prev) =>
             prev
                 .map((it) => (it.id === id ? { ...it, qty: Math.max(0, next) } : it))
-                .filter((it) => it.qty > 0),
+                .filter((it) => it.qty > 0)
         );
-    }
-
-    function buyerPhone() {
-        return `${buyerPhoneA}-${buyerPhoneB}-${buyerPhoneC}`.replace(/--+/g, "-");
-    }
-    function receiverPhone() {
-        return `${receiverPhoneA}-${receiverPhoneB}-${receiverPhoneC}`.replace(/--+/g, "-");
     }
 
     function syncReceiverFromBuyer(nextSame: boolean) {
         setReceiverSame(nextSame);
+
         if (nextSame) {
             setReceiverName(buyerName);
             setReceiverPhoneA(buyerPhoneA);
@@ -106,49 +102,96 @@ export default function OrderClient(props: {
     async function submitOrder() {
         if (!canSubmit) return;
 
-        // MVP 최소 검증
-        if (!buyerName.trim() || !buyerPhoneA.trim() || !buyerPhoneB.trim() || !buyerPhoneC.trim()) {
-            alert("주문자 정보를 입력해 주세요.");
-            return;
-        }
-        if (!receiverName.trim() || !receiverPhoneA.trim() || !receiverPhoneB.trim() || !receiverPhoneC.trim()) {
-            alert("수령인 정보를 입력해 주세요.");
-            return;
-        }
-        if (!addr1.trim()) {
-            alert("배송지 주소를 입력해 주세요.");
+        const normalizedBuyerName = buyerName.trim();
+        const normalizedBuyerPhone = joinPhone(buyerPhoneA, buyerPhoneB, buyerPhoneC);
+
+        const normalizedReceiverName = receiverSame ? normalizedBuyerName : receiverName.trim();
+        const normalizedReceiverPhone = receiverSame
+            ? normalizedBuyerPhone
+            : joinPhone(receiverPhoneA, receiverPhoneB, receiverPhoneC);
+
+        if (!normalizedBuyerName) {
+            alert("주문자 이름을 입력해 주세요.");
             return;
         }
 
-        // ✅ 로컬 주문 저장 (현재 프로젝트 ordersStore 기반)
-        const order = addOrder(
-            tenant,
-            items.map((it) => ({
-                productId: it.id,
-                name: it.title,
-                price: it.price,
-                quantity: it.qty,
-            })),
-        );
+        if (normalizedBuyerPhone.length < 10) {
+            alert("주문자 연락처를 정확히 입력해 주세요.");
+            return;
+        }
 
-        // ✅ 장바구니 비우기 (구현체 호환)
-        if (typeof cart?.clear === "function") cart.clear();
+        if (!normalizedReceiverName) {
+            alert("수령인 이름을 입력해 주세요.");
+            return;
+        }
 
-        // ✅ 주문내역 이동
-        router.push(`/${tenant}/orders?created=${encodeURIComponent(order.orderNo)}`);
+        if (normalizedReceiverPhone.length < 10) {
+            alert("수령인 연락처를 정확히 입력해 주세요.");
+            return;
+        }
+
+        if (!items.length) {
+            alert("주문할 상품이 없습니다.");
+            return;
+        }
+
+        setSubmitting(true);
+
+        try {
+            const res = await fetch(endpoints.createOrder(tenant), {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({
+                    buyerName: normalizedBuyerName,
+                    buyerPhone: normalizedBuyerPhone,
+                    receiverName: normalizedReceiverName,
+                    receiverPhone: normalizedReceiverPhone,
+                    pickupAt: toApiDateTime(pickupAt),
+                    message: message.trim(),
+                    memo: memo.trim(),
+                    direct: 0,
+                    items: items.map((it) => ({
+                        productId: Number(it.id),
+                        optionId: it.optionId ? Number(it.optionId) : 0,
+                        optionName: it.optionName ?? "",
+                        qty: Number(it.qty ?? 0),
+                    })),
+                }),
+            });
+
+            const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
+
+            if (!res.ok || json?.ok === false || !json?.orderNum) {
+                throw new Error(json?.message || `주문 생성 실패 (HTTP ${res.status})`);
+            }
+
+            if (typeof cart?.clear === "function") {
+                cart.clear();
+            }
+
+            router.replace(
+                `/${tenant}/order/complete?orderNo=${encodeURIComponent(json.orderNum)}`
+            );
+        } catch (e: any) {
+            alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
+        } finally {
+            setSubmitting(false);
+        }
     }
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-28 pt-3">
-            {/* ✅ (요청) 주문서 페이지 내부 헤더 제거: AppShell의 MobileHeader만 사용 */}
-
-            {/* 주문 상품 */}
             <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between">
                     <div className="text-[15px] font-extrabold text-slate-900">주문 상품</div>
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">
-            {items.length}개
-          </span>
+                        {items.length}개
+                    </span>
                 </div>
 
                 {items.length === 0 ? (
@@ -163,12 +206,18 @@ export default function OrderClient(props: {
                                     {it.title}
                                 </div>
 
+                                {it.optionName ? (
+                                    <div className="mt-1 text-[11px] font-semibold text-slate-500">
+                                        옵션: {it.optionName}
+                                    </div>
+                                ) : null}
+
                                 <div className="mt-2 flex items-center justify-between gap-3">
                                     <div className="text-[13px] font-extrabold text-slate-900">
                                         {(it.price * it.qty).toLocaleString()}원
                                         <span className="ml-2 text-[11px] font-semibold text-slate-500">
-                      x {it.qty}
-                    </span>
+                                            x {it.qty}
+                                        </span>
                                     </div>
 
                                     <div className="flex items-center gap-2">
@@ -213,7 +262,6 @@ export default function OrderClient(props: {
                 )}
             </section>
 
-            {/* 주문자 */}
             <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-[15px] font-extrabold text-slate-900">주문자</div>
 
@@ -227,39 +275,35 @@ export default function OrderClient(props: {
                                 if (receiverSame) setReceiverName(e.target.value);
                             }}
                             className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
+                            placeholder="주문자 이름"
                         />
                     </label>
 
                     <div className="grid gap-1">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[12px] font-semibold text-slate-600">연락처 *</span>
-                            <span className="text-[11px] font-semibold text-slate-400">
-                알림톡/문자 수신 가능한 번호로 입력해 주세요.
-              </span>
-                        </div>
+                        <span className="text-[12px] font-semibold text-slate-600">연락처 *</span>
 
                         <div className="grid grid-cols-3 gap-2">
                             <input
                                 value={buyerPhoneA}
                                 onChange={(e) => {
-                                    setBuyerPhoneA(e.target.value);
-                                    if (receiverSame) setReceiverPhoneA(e.target.value);
+                                    setBuyerPhoneA(onlyDigits(e.target.value));
+                                    if (receiverSame) setReceiverPhoneA(onlyDigits(e.target.value));
                                 }}
                                 className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
                             />
                             <input
                                 value={buyerPhoneB}
                                 onChange={(e) => {
-                                    setBuyerPhoneB(e.target.value);
-                                    if (receiverSame) setReceiverPhoneB(e.target.value);
+                                    setBuyerPhoneB(onlyDigits(e.target.value));
+                                    if (receiverSame) setReceiverPhoneB(onlyDigits(e.target.value));
                                 }}
                                 className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
                             />
                             <input
                                 value={buyerPhoneC}
                                 onChange={(e) => {
-                                    setBuyerPhoneC(e.target.value);
-                                    if (receiverSame) setReceiverPhoneC(e.target.value);
+                                    setBuyerPhoneC(onlyDigits(e.target.value));
+                                    if (receiverSame) setReceiverPhoneC(onlyDigits(e.target.value));
                                 }}
                                 className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
                             />
@@ -268,21 +312,9 @@ export default function OrderClient(props: {
                 </div>
             </section>
 
-            {/* 배송지 */}
             <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                    <div className="text-[15px] font-extrabold text-slate-900">배송지</div>
-                    <button
-                        type="button"
-                        className="rounded-full bg-slate-600 px-4 py-2 text-[12px] font-extrabold text-white"
-                        onClick={() => alert("MVP: 배송지 불러오기 미구현")}
-                    >
-                        배송지 불러오기
-                    </button>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                    <div className="text-[12px] font-semibold text-slate-600">수령인 *</div>
+                    <div className="text-[15px] font-extrabold text-slate-900">수령 정보</div>
                     <label className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">
                         <input
                             type="checkbox"
@@ -293,213 +325,122 @@ export default function OrderClient(props: {
                     </label>
                 </div>
 
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                    <input
-                        value={receiverName}
-                        onChange={(e) => setReceiverName(e.target.value)}
-                        disabled={receiverSame}
-                        className={[
-                            "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                            receiverSame
-                                ? "border-slate-200 bg-slate-50 text-slate-400"
-                                : "border-slate-200 bg-white text-slate-900",
-                        ].join(" ")}
-                    />
-
-                    <div className="flex items-center justify-end text-[12px] font-semibold text-slate-400">
-                        {receiverSame ? "✓ 주문자와 동일" : ""}
-                    </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                    <input
-                        value={receiverPhoneA}
-                        onChange={(e) => setReceiverPhoneA(e.target.value)}
-                        disabled={receiverSame}
-                        className={[
-                            "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                            receiverSame
-                                ? "border-slate-200 bg-slate-50 text-slate-400"
-                                : "border-slate-200 bg-white text-slate-900",
-                        ].join(" ")}
-                    />
-                    <input
-                        value={receiverPhoneB}
-                        onChange={(e) => setReceiverPhoneB(e.target.value)}
-                        disabled={receiverSame}
-                        className={[
-                            "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                            receiverSame
-                                ? "border-slate-200 bg-slate-50 text-slate-400"
-                                : "border-slate-200 bg-white text-slate-900",
-                        ].join(" ")}
-                    />
-                    <input
-                        value={receiverPhoneC}
-                        onChange={(e) => setReceiverPhoneC(e.target.value)}
-                        disabled={receiverSame}
-                        className={[
-                            "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                            receiverSame
-                                ? "border-slate-200 bg-slate-50 text-slate-400"
-                                : "border-slate-200 bg-white text-slate-900",
-                        ].join(" ")}
-                    />
-                </div>
-
-                <div className="mt-4 grid gap-2">
-                    <div className="text-[12px] font-semibold text-slate-600">배송지 주소 *</div>
-
-                    <div className="grid grid-cols-[1fr_150px] gap-2">
+                <div className="mt-3 grid gap-3">
+                    <label className="grid gap-1">
+                        <span className="text-[12px] font-semibold text-slate-600">수령인 이름 *</span>
                         <input
-                            value={addrZip}
-                            onChange={(e) => setAddrZip(e.target.value)}
-                            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                            placeholder=""
+                            value={receiverName}
+                            onChange={(e) => setReceiverName(e.target.value)}
+                            disabled={receiverSame}
+                            className={[
+                                "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
+                                receiverSame
+                                    ? "border-slate-200 bg-slate-50 text-slate-400"
+                                    : "border-slate-200 bg-white text-slate-900",
+                            ].join(" ")}
+                            placeholder="수령인 이름"
                         />
-                        <button
-                            type="button"
-                            className="rounded-2xl bg-slate-600 px-4 py-3 text-sm font-extrabold text-white"
-                            onClick={() => alert("MVP: 우편번호 검색 미구현")}
-                        >
-                            우편번호 검색
-                        </button>
-                    </div>
+                    </label>
 
-                    <input
-                        value={addr1}
-                        onChange={(e) => setAddr1(e.target.value)}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                        placeholder=""
-                    />
-
-                    <input
-                        value={addr2}
-                        onChange={(e) => setAddr2(e.target.value)}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                        placeholder="상세 주소 입력"
-                    />
-                </div>
-
-                <div className="mt-4 grid gap-2">
-                    <div className="text-[12px] font-semibold text-slate-600">배송시 요청</div>
-                    <select className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none">
-                        <option>배송시 요청 사항을 선택해주세요</option>
-                        <option>문 앞에 놓아주세요</option>
-                        <option>부재 시 연락주세요</option>
-                        <option>경비실에 맡겨주세요</option>
-                    </select>
-
-                    <textarea
-                        value={memo}
-                        onChange={(e) => setMemo(e.target.value)}
-                        rows={3}
-                        className="resize-none rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                        placeholder=""
-                    />
-                </div>
-            </section>
-
-            {/* ✅ 쿠폰/포인트 (요청 반영) */}
-            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mt-1 grid gap-3">
-                    {/* 쿠폰 */}
-                    <div className="grid grid-cols-[1fr_96px] items-end gap-3">
-                        <div className="grid gap-2">
-                            <div className="text-[12px] font-semibold text-slate-600">
-                                사용 가능 쿠폰 {couponTotal}장 / 선택한 쿠폰 {selectedCoupon ? 1 : 0}장
-                            </div>
+                    <div className="grid gap-1">
+                        <span className="text-[12px] font-semibold text-slate-600">수령인 연락처 *</span>
+                        <div className="grid grid-cols-3 gap-2">
                             <input
-                                value={selectedCoupon ? "신규 가입쿠폰 (1,000원 할인)" : "0"}
-                                readOnly
-                                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                                value={receiverPhoneA}
+                                onChange={(e) => setReceiverPhoneA(onlyDigits(e.target.value))}
+                                disabled={receiverSame}
+                                className={[
+                                    "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
+                                    receiverSame
+                                        ? "border-slate-200 bg-slate-50 text-slate-400"
+                                        : "border-slate-200 bg-white text-slate-900",
+                                ].join(" ")}
+                            />
+                            <input
+                                value={receiverPhoneB}
+                                onChange={(e) => setReceiverPhoneB(onlyDigits(e.target.value))}
+                                disabled={receiverSame}
+                                className={[
+                                    "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
+                                    receiverSame
+                                        ? "border-slate-200 bg-slate-50 text-slate-400"
+                                        : "border-slate-200 bg-white text-slate-900",
+                                ].join(" ")}
+                            />
+                            <input
+                                value={receiverPhoneC}
+                                onChange={(e) => setReceiverPhoneC(onlyDigits(e.target.value))}
+                                disabled={receiverSame}
+                                className={[
+                                    "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
+                                    receiverSame
+                                        ? "border-slate-200 bg-slate-50 text-slate-400"
+                                        : "border-slate-200 bg-white text-slate-900",
+                                ].join(" ")}
                             />
                         </div>
-
-                        <button
-                            type="button"
-                            onClick={() => setCouponSheetOpen(true)}
-                            className="h-[46px] rounded-2xl bg-slate-600 text-sm font-extrabold text-white"
-                        >
-                            선택
-                        </button>
-                    </div>
-
-                    {/* 포인트 */}
-                    <div className="grid grid-cols-[1fr_96px] items-end gap-3">
-                        <div className="grid gap-2">
-                            <div className="text-[12px] font-semibold text-slate-600">
-                                총 보유 포인트 <span className="font-extrabold">{pointAvail.toLocaleString()} p</span>
-                            </div>
-                            <input
-                                type="number"
-                                value={safeUsePoint}
-                                min={0}
-                                max={pointAvail}
-                                onChange={(e) => setUsePoint(Math.max(0, Number(e.target.value || 0)))}
-                                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                            />
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={() => setUsePoint(pointAvail)}
-                            className="h-[46px] rounded-2xl bg-slate-600 text-sm font-extrabold text-white"
-                        >
-                            전액 사용
-                        </button>
                     </div>
                 </div>
             </section>
 
-            {/* 결제수단 */}
             <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[15px] font-extrabold text-slate-900">결제수단</div>
+                <div className="text-[15px] font-extrabold text-slate-900">픽업 정보</div>
 
-                {grandTotal === 0 ? (
-                    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] font-semibold text-slate-700">
-                        총 결제금액이 0원입니다. 결제수단 선택 없이 주문 가능합니다.
-                    </div>
-                ) : (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                        <PayBtn active={payMethod === "card"} onClickAction={() => setPayMethod("card")}>
-                            신용카드
-                        </PayBtn>
-                        <PayBtn active={payMethod === "kakao"} onClickAction={() => setPayMethod("kakao")}>
-                            카카오페이
-                        </PayBtn>
-                        <PayBtn active={payMethod === "bank"} onClickAction={() => setPayMethod("bank")}>
-                            무통장입금
-                        </PayBtn>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] font-semibold text-slate-400">
-                            (MVP) 기타 결제수단은 추후 연동
-                        </div>
-                    </div>
-                )}
+                <div className="mt-3 grid gap-3">
+                    <label className="grid gap-1">
+                        <span className="text-[12px] font-semibold text-slate-600">픽업 예정일시</span>
+                        <input
+                            type="datetime-local"
+                            value={pickupAt}
+                            onChange={(e) => setPickupAt(e.target.value)}
+                            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                        />
+                    </label>
+
+                    <label className="grid gap-1">
+                        <span className="text-[12px] font-semibold text-slate-600">요청사항</span>
+                        <input
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                            placeholder="예: 오후 6시 이후 방문 예정"
+                        />
+                    </label>
+
+                    <label className="grid gap-1">
+                        <span className="text-[12px] font-semibold text-slate-600">메모</span>
+                        <textarea
+                            value={memo}
+                            onChange={(e) => setMemo(e.target.value)}
+                            rows={3}
+                            className="resize-none rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                            placeholder="관리자 확인용 메모"
+                        />
+                    </label>
+                </div>
             </section>
 
-            {/* 합계 */}
             <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[15px] font-extrabold text-slate-900">결제 금액</div>
+                <div className="text-[15px] font-extrabold text-slate-900">주문 금액</div>
 
                 <div className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
                     <Row label="상품 금액" value={`${subtotal.toLocaleString()}원`} />
-                    <Row label="쿠폰 할인" value={`-${couponDiscount.toLocaleString()}원`} />
-                    <Row label="포인트 사용" value={`-${safeUsePoint.toLocaleString()}원`} />
-                    <Row label="기본 배송비" value={`+ ${items.length > 0 ? deliveryFee.toLocaleString() : 0}원`} />
                     <div className="h-px bg-slate-200" />
-                    <Row label="총 결제 금액" value={`${grandTotal.toLocaleString()}원`} strong />
+                    <Row label="현장 결제 예정 금액" value={`${subtotal.toLocaleString()}원`} strong />
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] font-semibold text-amber-700">
+                    이 주문은 온라인 선결제가 아니라 매장 방문 후 오프라인 결제로 처리됩니다.
                 </div>
             </section>
 
-            {/* 하단 고정 CTA */}
             <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur">
                 <div className="mx-auto max-w-[520px] px-4 py-3">
                     <div className="flex items-center justify-between">
                         <div>
-                            <div className="text-[11px] font-semibold text-slate-500">총 결제 금액</div>
+                            <div className="text-[11px] font-semibold text-slate-500">현장 결제 예정 금액</div>
                             <div className="mt-0.5 text-[16px] font-extrabold text-slate-900">
-                                {grandTotal.toLocaleString()}원
+                                {subtotal.toLocaleString()}원
                             </div>
                         </div>
 
@@ -514,80 +455,11 @@ export default function OrderClient(props: {
                                     : "bg-slate-200 text-slate-500",
                             ].join(" ")}
                         >
-                            결제하기
+                            {submitting ? "주문 처리 중..." : "주문하기"}
                         </button>
                     </div>
-
-                    {grandTotal !== 0 && !payMethod ? (
-                        <div className="mt-2 text-center text-[11px] font-semibold text-slate-500">
-                            결제수단을 선택해 주세요.
-                        </div>
-                    ) : null}
                 </div>
             </div>
-
-            {/* ✅ 쿠폰 선택 시트 (MVP) */}
-            {couponSheetOpen ? (
-                <>
-                    <button
-                        type="button"
-                        aria-label="닫기"
-                        className="fixed inset-0 z-[60] bg-black/30"
-                        onClick={() => setCouponSheetOpen(false)}
-                    />
-                    <div className="fixed bottom-0 left-0 right-0 z-[61]">
-                        <div className="mx-auto max-w-[520px]">
-                            <div className="rounded-t-3xl bg-white shadow-2xl">
-                                <div className="flex justify-center pt-3">
-                                    <div className="h-1.5 w-10 rounded-full bg-slate-200" />
-                                </div>
-
-                                <div className="px-4 pb-4 pt-3">
-                                    <div className="text-center text-[14px] font-extrabold text-slate-900">
-                                        쿠폰 사용
-                                    </div>
-
-                                    <div className="mt-4 text-[12px] font-semibold text-slate-600">
-                                        {items[0]?.title ?? "상품"}
-                                    </div>
-
-                                    <select
-                                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                                        value={selectedCoupon ?? ""}
-                                        onChange={(e) => setSelectedCoupon(e.target.value || null)}
-                                    >
-                                        <option value="">쿠폰 선택 안함</option>
-                                        <option value="welcome-1000">신규 가입쿠폰 (1,000원 할인)</option>
-                                    </select>
-
-                                    <div className="mt-6 grid grid-cols-2 gap-3">
-                                        <button
-                                            type="button"
-                                            className="h-12 rounded-2xl bg-slate-600 text-sm font-extrabold text-white"
-                                            onClick={() => {
-                                                // 취소: 선택값을 유지하지 않으려면 아래 주석 해제
-                                                // setSelectedCoupon(null);
-                                                setCouponSheetOpen(false);
-                                            }}
-                                        >
-                                            취소
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="h-12 rounded-2xl bg-red-500 text-sm font-extrabold text-white"
-                                            onClick={() => setCouponSheetOpen(false)}
-                                        >
-                                            적용
-                                        </button>
-                                    </div>
-
-                                    <div className="pb-2" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </>
-            ) : null}
         </main>
     );
 }
@@ -606,30 +478,5 @@ function Row({
             <span className={strong ? "font-extrabold text-slate-900" : ""}>{label}</span>
             <span className={strong ? "font-extrabold text-slate-900" : ""}>{value}</span>
         </div>
-    );
-}
-
-function PayBtn({
-                    active,
-                    onClickAction,
-                    children,
-                }: {
-    active: boolean;
-    onClickAction: () => void;
-    children: React.ReactNode;
-}) {
-    return (
-        <button
-            type="button"
-            onClick={onClickAction}
-            className={[
-                "rounded-2xl border px-3 py-3 text-sm font-extrabold transition",
-                active
-                    ? "border-[color:var(--brand)] bg-[color:var(--brand-weak)] text-[color:var(--brand)]"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-            ].join(" ")}
-        >
-            {children}
-        </button>
     );
 }

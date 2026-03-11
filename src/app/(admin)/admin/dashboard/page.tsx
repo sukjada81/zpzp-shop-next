@@ -71,9 +71,11 @@ async function getDash(tenant: string): Promise<Dash> {
 export default async function AdminDashboardPage({
                                                      searchParams,
                                                  }: {
-    searchParams: { tenant?: string };
+    searchParams: Promise<{ tenant?: string }>;
 }) {
-    const tenant = searchParams?.tenant || "all";
+    const params = await searchParams;
+    const tenant = params?.tenant || "all";
+
     const data = await getDash(tenant);
 
     return (

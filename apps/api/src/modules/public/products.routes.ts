@@ -1,9 +1,12 @@
+// apps/api/src/modules/public/products.routes.ts
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireTenant } from "../../common/guard.js";
 
 type ImageItem = { key: string; label?: string };
+
+const HQ_TENANT_ID = BigInt(0);
 
 function toId(v: bigint | number | string): string {
     if (typeof v === "bigint") return v.toString();
@@ -80,11 +83,23 @@ function normalizeImages(row: {
     return uniq.length ? uniq : [{ key: "", label: "이미지 없음" }];
 }
 
+function parseOptionStock(seg: string[] | undefined, index: number): number | null {
+    const raw = String(seg?.[index] ?? "").trim();
+    if (raw === "") return null;
+
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+
+    return Math.max(0, Math.trunc(n));
+}
+
 function parseOptions(row: {
     option_use?: number;
     option_soldout?: number;
     option_info?: string;
     price?: number | null;
+    qty_type?: number;
+    qty?: number | null;
 }) {
     const optionUse = Number(row?.option_use ?? 0);
     if (!optionUse) return [];
@@ -106,7 +121,12 @@ function parseOptions(row: {
         price: number | null;
         soldout?: boolean;
         stockNote?: string;
+        rawOptionId?: number;
     }> = [];
+
+    const basePrice = toNumber(row?.price, 0);
+    const goodsQtyType = Number(row?.qty_type ?? 1);
+    const goodsQty = toNumber(row?.qty, 0);
 
     let seq = 0;
 
@@ -125,22 +145,69 @@ function parseOptions(row: {
             if (!valueName) continue;
 
             const addPrice = seg.length >= 2 ? toNumber(seg[1], 0) : 0;
-            const stockQty = seg.length >= 3 ? toNumber(seg[2], NaN) : NaN;
+            const stockQty = parseOptionStock(seg, 2);
 
-            const soldout = allSoldout || (Number.isFinite(stockQty) && stockQty <= 0);
-            const basePrice = toNumber(row?.price, 0);
+            // 우선순위
+            // 1) option_soldout = 2 이면 전체 품절
+            // 2) 옵션 재고값이 명시되어 있으면 그 값으로 품절 판단
+            // 3) 옵션 재고값이 비어 있으면 상품 전체 재고(qty_type/qty)로 판단
+            let soldout = false;
+            let stockNote = "주문 가능";
+
+            if (allSoldout) {
+                soldout = true;
+                stockNote = "품절";
+            } else if (stockQty !== null) {
+                soldout = stockQty <= 0;
+                stockNote = soldout ? "품절" : `재고 ${stockQty}`;
+            } else if (goodsQtyType === 0) {
+                soldout = goodsQty <= 0;
+                stockNote = soldout ? "품절" : `재고 ${goodsQty}`;
+            }
 
             out.push({
-                id: `opt_${seq++}`,
-                name: groupName ? `${valueName}` : valueName,
+                id: `opt_${seq}`,
+                name: groupName ? valueName : valueName,
                 price: basePrice + addPrice,
                 soldout,
-                stockNote: soldout ? "품절" : Number.isFinite(stockQty) ? `재고 ${stockQty}` : "주문 가능",
+                stockNote,
+                rawOptionId: seq + 1,
             });
+
+            seq += 1;
         }
     }
 
     return out;
+}
+
+function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput {
+    const now = new Date();
+
+    return {
+        tenant_id: {
+            in: [tenantId, HQ_TENANT_ID],
+        },
+        sale_use: 1,
+        display_use: 1,
+        auth_ck: "Y",
+        deleted_at: null,
+        status: "active",
+        AND: [
+            {
+                OR: [
+                    { sale_start_at: null },
+                    { sale_start_at: { lte: now } },
+                ],
+            },
+            {
+                OR: [
+                    { sale_end_at: null },
+                    { sale_end_at: { gte: now } },
+                ],
+            },
+        ],
+    };
 }
 
 export async function publicProductRoutes(app: FastifyInstance) {
@@ -153,31 +220,41 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const q = z
             .object({
                 q: z.string().optional(),
-                take: z.coerce.number().min(1).max(50).default(20),
+                take: z.coerce.number().min(1).max(100).default(20),
             })
             .parse(req.query);
 
-        const where: Prisma.mallRN_goodsWhereInput = {
-            tenant_id: tenantId,
-            sale_use: 1,
-            display_use: 1,
-            auth_ck: "Y",
-            deleted_at: null,
-            status: "active",
-        };
+        const where: Prisma.mallRN_goodsWhereInput = buildPublicGoodsWhere(tenantId);
+
+        if (q.q?.trim()) {
+            const keyword = q.q.trim();
+            where.OR = [
+                { name: { contains: keyword } },
+                { explains: { contains: keyword } },
+                { detail: { contains: keyword } },
+            ];
+        }
 
         const rows = await app.prisma.mallRN_goods.findMany({
             where,
-            orderBy: [{ sort_order: "desc" }, { moddate: "desc" }, { uid: "desc" }],
+            orderBy: [
+                { tenant_id: "desc" },
+                { sale_start_at: "desc" },
+                { sort_order: "desc" },
+                { moddate: "desc" },
+                { uid: "desc" },
+            ],
             take: q.take,
             select: {
                 uid: true,
+                tenant_id: true,
                 name: true,
                 price: true,
                 image1: true,
                 image2: true,
                 image3: true,
                 pickup_only: true,
+                sale_start_at: true,
                 sale_end_at: true,
             },
         });
@@ -193,6 +270,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 metaLeft: timeLeft,
                 metaRight: r.pickup_only ? "픽업" : undefined,
                 thumbnailUrl: thumb || undefined,
+                sourceTenantId: r.tenant_id != null ? toId(r.tenant_id) : null,
             };
         });
 
@@ -218,15 +296,11 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const row = await app.prisma.mallRN_goods.findFirst({
             where: {
                 uid,
-                tenant_id: tenantId,
-                sale_use: 1,
-                display_use: 1,
-                auth_ck: "Y",
-                deleted_at: null,
-                status: "active",
+                ...buildPublicGoodsWhere(tenantId),
             },
             select: {
                 uid: true,
+                tenant_id: true,
                 name: true,
                 price: true,
                 explains: true,
@@ -239,7 +313,10 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 option_info: true,
                 option_soldout: true,
                 pickup_only: true,
+                sale_start_at: true,
                 sale_end_at: true,
+                qty_type: true,
+                qty: true,
             },
         });
 
@@ -267,6 +344,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
             },
             images,
             options,
+            sourceTenantId: row.tenant_id != null ? toId(row.tenant_id) : null,
         };
 
         return {

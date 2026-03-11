@@ -17,11 +17,19 @@ export const endpoints = {
         return url.pathname + (url.search ? url.search : "");
     },
 
-    publicProductDetail: (tenant: string, id: string | number) => apiProxy(`${tenant}/v1/public/products/${id}`),
+    publicProductDetail: (tenant: string, id: string | number) =>
+        apiProxy(`${tenant}/v1/public/products/${id}`),
 
-    // --------
-    // (다음 단계) Orders / Admin는 여기 계속 추가
-    // --------
-    // createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
-    // myOrders: (tenant: string) => apiProxy(`${tenant}/v1/orders/me`),
+    createOrder: (tenant: string) =>
+        apiProxy(`${tenant}/v1/orders`),
+
+    myOrders: (tenant: string, q?: { page?: number; limit?: number }) => {
+        const url = new URL(apiProxy(`${tenant}/v1/orders/me`), "http://local");
+        if (q?.page) url.searchParams.set("page", String(q.page));
+        if (q?.limit) url.searchParams.set("limit", String(q.limit));
+        return url.pathname + (url.search ? url.search : "");
+    },
+
+    myOrderDetail: (tenant: string, orderNum: string) =>
+        apiProxy(`${tenant}/v1/orders/${encodeURIComponent(orderNum)}`),
 };

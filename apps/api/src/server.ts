@@ -1,3 +1,4 @@
+// apps/api/src/server.ts
 import "dotenv/config";
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
@@ -9,6 +10,7 @@ import { sessionPlugin } from "./plugins/session.js";
 
 import { healthRoutes } from "./modules/health/health.routes.js";
 import { publicProductRoutes } from "./modules/public/products.routes.js";
+import { publicOrderRoutes } from "./modules/public/orders.routes.js";
 
 import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
 import { adminDashboardRoutes } from "./modules/admin/dashboard.routes.js";
@@ -20,23 +22,17 @@ import { adminRoutes } from "./modules/admin/admin.routes.js";
 
 const app = Fastify({ logger: true });
 
-/**
- * multipart (파일 업로드)
- */
-await app.register(multipart);
+await app.register(multipart, {
+    limits: {
+        fileSize: 30 * 1024 * 1024,
+    },
+});
 
-/**
- * 정적 파일 서빙
- * /uploads/* → 실제 서버 uploads 폴더
- */
 await app.register(fastifyStatic, {
     root: path.join(process.cwd(), "uploads"),
     prefix: "/uploads/",
 });
 
-/**
- * Prisma 사용 여부
- */
 const usePrisma = process.env.USE_PRISMA !== "0";
 
 if (usePrisma) {
@@ -49,31 +45,20 @@ if (usePrisma) {
 await tenantPlugin(app);
 await sessionPlugin(app);
 
-/**
- * 공통 라우트
- */
 await healthRoutes(app);
 
-/**
- * Admin 라우트
- */
 await adminAuthRoutes(app);
 await adminDashboardRoutes(app);
 await adminOrdersRoutes(app);
 await adminProductsRoutes(app);
 await adminUploadsRoutes(app);
 
-/**
- * /admin/v1/*
- */
 await adminRoutes(app);
 
-/**
- * tenant public api
- */
 app.register(
     async (tenantScoped) => {
         await publicProductRoutes(tenantScoped);
+        await publicOrderRoutes(tenantScoped);
     },
     { prefix: "/:tenant" }
 );
