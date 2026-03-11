@@ -129,7 +129,6 @@ function parseOptions(row: {
 
             const addPrice = seg.length >= 2 ? toNumber(seg[1], 0) : 0;
             const stockQty = seg.length >= 3 ? toNumber(seg[2], NaN) : NaN;
-
             const soldout = allSoldout || (Number.isFinite(stockQty) && stockQty <= 0);
             const basePrice = toNumber(row?.price, 0);
 
@@ -147,6 +146,8 @@ function parseOptions(row: {
 }
 
 function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput {
+    const now = new Date();
+
     return {
         tenant_id: {
             in: [tenantId, HQ_TENANT_ID],
@@ -156,6 +157,20 @@ function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput 
         auth_ck: "Y",
         deleted_at: null,
         status: "active",
+        AND: [
+            {
+                OR: [
+                    { sale_start_at: null },
+                    { sale_start_at: { lte: now } },
+                ],
+            },
+            {
+                OR: [
+                    { sale_end_at: null },
+                    { sale_end_at: { gte: now } },
+                ],
+            },
+        ],
     };
 }
 
@@ -169,7 +184,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const q = z
             .object({
                 q: z.string().optional(),
-                take: z.coerce.number().min(1).max(50).default(20),
+                take: z.coerce.number().min(1).max(100).default(20),
             })
             .parse(req.query);
 
@@ -187,7 +202,8 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const rows = await app.prisma.mallRN_goods.findMany({
             where,
             orderBy: [
-                { tenant_id: "desc" }, // 지점 상품 우선, 본사(0) 후순위
+                { tenant_id: "desc" },
+                { sale_start_at: "desc" },
                 { sort_order: "desc" },
                 { moddate: "desc" },
                 { uid: "desc" },
@@ -202,6 +218,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 image2: true,
                 image3: true,
                 pickup_only: true,
+                sale_start_at: true,
                 sale_end_at: true,
             },
         });
@@ -260,6 +277,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 option_info: true,
                 option_soldout: true,
                 pickup_only: true,
+                sale_start_at: true,
                 sale_end_at: true,
             },
         });

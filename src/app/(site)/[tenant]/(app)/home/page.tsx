@@ -1,3 +1,4 @@
+// src/app/(site)/[tenant]/(app)/home/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
@@ -47,7 +48,7 @@ function getInternalOrigin() {
 
 async function fetchProducts(tenant: string) {
     const origin = getInternalOrigin();
-    const path = endpoints.publicProducts(tenant, { take: 50 });
+    const path = endpoints.publicProducts(tenant, { take: 100 });
     const url = new URL(path, origin);
 
     const res = await fetch(url.toString(), { cache: "no-store" });
@@ -61,7 +62,8 @@ async function fetchProducts(tenant: string) {
 
 async function fetchProductDetail(tenant: string, id: string) {
     const origin = getInternalOrigin();
-    const url = new URL(`/${tenant}/v1/public/products/${id}`, origin);
+    const path = endpoints.publicProductDetail(tenant, id);
+    const url = new URL(path, origin);
 
     const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) return null;
@@ -118,7 +120,9 @@ export default async function HomePage({
     };
 
     const mockOrders = getMockRecentOrders();
-    const ongoingBase = products.slice(0, 3);
+
+    // 판매기간 조건에 맞아 공개 API에 노출된 상품 전부를 진행 중인 공구에 사용
+    const ongoingBase = products;
 
     const ongoingDetails = await Promise.all(
         ongoingBase.map(async (p, index) => {
@@ -134,7 +138,16 @@ export default async function HomePage({
                     : p.thumbnailUrl
                         ? [{ key: p.thumbnailUrl, label: "대표 이미지" }]
                         : [],
-                options: detail?.options ?? [],
+                options: detail?.options?.length
+                    ? detail.options
+                    : [
+                        {
+                            id: `base_${p.id}`,
+                            name: String(detail?.title ?? p.title ?? ""),
+                            price: Number(detail?.price ?? p.price ?? 0),
+                            soldout: false,
+                        },
+                    ],
                 meta: detail?.meta ?? {
                     timeLeft: p.metaLeft,
                     pickup: p.metaRight,
