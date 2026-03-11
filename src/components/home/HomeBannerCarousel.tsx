@@ -7,42 +7,53 @@ import Link from "next/link";
 type Slide = {
     id: string;
     href: string;
-    tag?: string;
-    title: string;
-    sub: string;
-    strongLeft?: string;
-    strongRight?: string;
+    imageUrl: string;
+    alt: string;
+    targetBlank?: boolean;
+    rel?: string;
+    type?: string;
+    franchise?: string;
 };
 
 export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
     const slides: Slide[] = useMemo(
         () => [
             {
-                id: "s1",
-                href: `/${tenant}/goods/p1`,
-                tag: "자세히 보기",
-                title: "여기주목! 할인받고 서해 바다가자!",
-                sub: "OCEAN THE HILL",
-                strongLeft: "90% OFF",
-                strongRight: "25,000원",
+                id: "14",
+                href: `/api/track-click?type=banner&id=14&redirect=${encodeURIComponent(
+                    "https://m.nsmall.com/store/exhibition/31139"
+                )}&franchise=${tenant}`,
+                imageUrl:
+                    "https://daiclo-admin.s3.ap-northeast-2.amazonaws.com/banners/1773056800961.jpg",
+                alt: "배너 1",
+                targetBlank: true,
+                rel: "noopener noreferrer",
+                type: "banner",
+                franchise: tenant,
             },
             {
-                id: "s2",
-                href: `/${tenant}/goods/p2`,
-                tag: "이벤트",
-                title: "라이프 라운지 가입 시, 1만원 상당 혜택 증정",
-                sub: "가입 후 이벤트 참여하고 혜택을 받아보세요.",
-                strongLeft: "혜택",
-                strongRight: "10,000원",
+                id: "15",
+                href: `/api/track-click?type=banner&id=15&redirect=${encodeURIComponent(
+                    "https://example.com/event/15"
+                )}&franchise=${tenant}`,
+                imageUrl: "https://dummyimage.com/1200x300/f3f4f6/111827&text=Banner+2",
+                alt: "배너 2",
+                targetBlank: true,
+                rel: "noopener noreferrer",
+                type: "banner",
+                franchise: tenant,
             },
             {
-                id: "s3",
-                href: `/${tenant}/goods/p3`,
-                tag: "공지",
-                title: "바로픽업 상품 모아보기",
-                sub: "빠르게 픽업 가능한 상품을 확인하세요.",
-                strongLeft: "바로",
-                strongRight: "픽업",
+                id: "16",
+                href: `/api/track-click?type=banner&id=16&redirect=${encodeURIComponent(
+                    "https://example.com/event/16"
+                )}&franchise=${tenant}`,
+                imageUrl: "https://dummyimage.com/1200x300/e5e7eb/111827&text=Banner+3",
+                alt: "배너 3",
+                targetBlank: true,
+                rel: "noopener noreferrer",
+                type: "banner",
+                franchise: tenant,
             },
         ],
         [tenant]
@@ -51,70 +62,73 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
     const [idx, setIdx] = useState(0);
 
     useEffect(() => {
+        if (slides.length <= 1) return;
+
         const t = setInterval(() => {
-            setIdx((v) => (v + 1) % slides.length);
+            setIdx((prev) => (prev + 1) % slides.length);
         }, 3500);
+
         return () => clearInterval(t);
     }, [slides.length]);
 
-    const s = slides[idx];
+    const current = slides[idx];
 
     return (
-        <div className="mt-2">
-            <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border)] shadow-sm bg-[color:var(--surface)]">
-                <Link
-                    href={s.href}
-                    className="block"
-                    style={{ background: "var(--accent-soft)" }}
-                >
-                    <div className="px-4 py-4">
-                        <div className="flex items-start justify-between gap-3">
-              <span
-                  className="inline-flex items-center rounded-full px-3 py-1 text-xs font-extrabold text-white"
-                  style={{ background: "var(--accent)" }}
-              >
-                {s.tag ?? "자세히 보기"}
-              </span>
-                            <div />
-                        </div>
-
-                        <div className="mt-2">
-                            <div className="text-base font-extrabold text-[color:var(--fg)] leading-snug">
-                                {s.title}
-                            </div>
-                            <div className="mt-1 text-xs text-[color:var(--muted)]">{s.sub}</div>
-                        </div>
-
-                        {(s.strongLeft || s.strongRight) && (
-                            <div className="mt-2 flex items-center gap-2 text-sm">
-                                {s.strongLeft ? (
-                                    <span className="font-extrabold text-[color:var(--brand)]">
-                    {s.strongLeft}
-                  </span>
-                                ) : null}
-                                <span className="text-[color:var(--muted)]/40">|</span>
-                                {s.strongRight ? (
-                                    <span className="font-extrabold text-[color:var(--fg)]">
-                    {s.strongRight}
-                  </span>
-                                ) : null}
-                            </div>
+        <div className="mb-2">
+            <div className="relative w-full overflow-hidden rounded-2xl border border-neutral-200 shadow-lg bg-white">
+                <div className="relative w-full aspect-[4/1]">
+                    <div
+                        className="absolute inset-0 cursor-grab active:cursor-grabbing"
+                        draggable={false}
+                        style={{
+                            userSelect: "none",
+                            touchAction: "pan-y",
+                        }}
+                    >
+                        {current.targetBlank ? (
+                            <a
+                                href={current.href}
+                                target="_blank"
+                                rel={current.rel ?? "noopener noreferrer"}
+                                className="block w-full h-full"
+                            >
+                                <div className="relative w-full h-full bg-neutral-100 flex items-center justify-center">
+                                    <img
+                                        src={current.imageUrl}
+                                        alt={current.alt}
+                                        className="w-full h-full object-cover"
+                                        draggable={false}
+                                    />
+                                </div>
+                            </a>
+                        ) : (
+                            <Link href={current.href} className="block w-full h-full">
+                                <div className="relative w-full h-full bg-neutral-100 flex items-center justify-center">
+                                    <img
+                                        src={current.imageUrl}
+                                        alt={current.alt}
+                                        className="w-full h-full object-cover"
+                                        draggable={false}
+                                    />
+                                </div>
+                            </Link>
                         )}
                     </div>
-                </Link>
 
-                <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2">
-                    {slides.map((_, i) => (
-                        <button
-                            key={i}
-                            type="button"
-                            onClick={() => setIdx(i)}
-                            aria-label={`slide ${i + 1}`}
-                            className={`h-2 w-2 rounded-full ${
-                                i === idx ? "bg-[color:var(--brand)]" : "bg-[color:var(--muted)]/40"
-                            }`}
-                        />
-                    ))}
+                    {slides.length > 1 && (
+                        <div className="absolute bottom-3 left-0 right-0 z-10 flex justify-center gap-2">
+                            {slides.map((slide, i) => (
+                                <button
+                                    key={slide.id}
+                                    type="button"
+                                    onClick={() => setIdx(i)}
+                                    aria-label={`${slide.alt} 이동`}
+                                    className={`h-2 w-2 rounded-full transition ${i === idx ? "bg-white shadow" : "bg-white/50"
+                                        }`}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

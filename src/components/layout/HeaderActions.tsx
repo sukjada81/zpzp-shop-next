@@ -2,11 +2,11 @@
 "use client";
 
 export default function HeaderActions({
-                                          onSearchAction,
-                                          onCartAction,
-                                          hideSearch = false,
-                                          hideCart = false,
-                                      }: {
+    onSearchAction,
+    onCartAction,
+    hideSearch = false,
+    hideCart = false,
+}: {
     onSearchAction?: () => void;
     onCartAction?: () => void;
     hideSearch?: boolean;

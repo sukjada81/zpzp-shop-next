@@ -7,17 +7,24 @@
 
 :root {
   /* Base */
-  --bg: #f7f2e8;           /* 크림 배경 */
-  --surface: #ffffff;      /* 카드/패널 */
-  --fg: #0f172a;           /* 기본 텍스트(다크) */
+  --bg: #f7f2e8;
+  /* 크림 배경 */
+  --surface: #ffffff;
+  /* 카드/패널 */
+  --fg: #0f172a;
+  /* 기본 텍스트(다크) */
   --muted: #64748b;
 
   /* Brand */
-  --brand: #173b45;        /* 네이비블루(메인) */
-  --brand-strong: #0f2a31; /* 더 진한 네이비 */
-  --brand-soft: #e7eef0;   /* 네이비 라이트 배경 */
+  --brand: #173b45;
+  /* 네이비블루(메인) */
+  --brand-strong: #0f2a31;
+  /* 더 진한 네이비 */
+  --brand-soft: #e7eef0;
+  /* 네이비 라이트 배경 */
 
-  --accent: #f08a2a;       /* 오렌지(포인트) */
+  --accent: #f08a2a;
+  /* 오렌지(포인트) */
   --accent-strong: #d87314;
   --accent-soft: #fff1e6;
 
@@ -30,7 +37,8 @@
 }
 
 /* 기본 구조 */
-html, body {
+html,
+body {
   height: 100%;
 }
 
@@ -103,7 +111,7 @@ a {
 
 
 /* ===== Admin Theme (DISCOUNT ALL DAY tone) ===== */
-:root{
+:root {
   --dad-ink: #28252A;
   --dad-orange: #F08148;
   --dad-cream: #FFF1E0;
@@ -113,43 +121,90 @@ a {
   --dad-shadow: 0 10px 25px rgba(40, 37, 42, 0.08);
 }
 
-.dad-admin{
+.dad-admin {
   background: linear-gradient(180deg, var(--dad-cream) 0%, #fff 40%, #fff 100%);
   color: var(--dad-ink);
 }
 
-.dad-card{
+.dad-card {
   background: var(--dad-paper);
   border: 1px solid var(--dad-border);
   border-radius: 18px;
   box-shadow: var(--dad-shadow);
 }
 
-.dad-chip{
+.dad-chip {
   border: 1px solid var(--dad-border);
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
   color: var(--dad-ink);
-  background: rgba(255,255,255,0.7);
+  background: rgba(255, 255, 255, 0.7);
 }
 
-.dad-btn{
+.dad-btn {
   border-radius: 14px;
   font-weight: 800;
 }
-.dad-btn-primary{
+
+.dad-btn-primary {
   background: var(--dad-orange);
   color: white;
 }
-.dad-btn-primary:hover{
+
+.dad-btn-primary:hover {
   filter: brightness(0.97);
 }
-.dad-btn-ghost{
-  background: rgba(255,255,255,0.75);
+
+.dad-btn-ghost {
+  background: rgba(255, 255, 255, 0.75);
   border: 1px solid var(--dad-border);
 }
-.dad-btn-ghost:hover{
-  background: rgba(255,255,255,0.95);
+
+.dad-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overflow-y: hidden;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
 }
