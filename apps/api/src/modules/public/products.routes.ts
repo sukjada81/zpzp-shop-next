@@ -83,11 +83,23 @@ function normalizeImages(row: {
     return uniq.length ? uniq : [{ key: "", label: "이미지 없음" }];
 }
 
+function parseOptionStock(seg: string[] | undefined, index: number): number | null {
+    const raw = String(seg?.[index] ?? "").trim();
+    if (raw === "") return null;
+
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+
+    return Math.max(0, Math.trunc(n));
+}
+
 function parseOptions(row: {
     option_use?: number;
     option_soldout?: number;
     option_info?: string;
     price?: number | null;
+    qty_type?: number;
+    qty?: number | null;
 }) {
     const optionUse = Number(row?.option_use ?? 0);
     if (!optionUse) return [];
@@ -109,7 +121,12 @@ function parseOptions(row: {
         price: number | null;
         soldout?: boolean;
         stockNote?: string;
+        rawOptionId?: number;
     }> = [];
+
+    const basePrice = toNumber(row?.price, 0);
+    const goodsQtyType = Number(row?.qty_type ?? 1);
+    const goodsQty = toNumber(row?.qty, 0);
 
     let seq = 0;
 
@@ -128,17 +145,36 @@ function parseOptions(row: {
             if (!valueName) continue;
 
             const addPrice = seg.length >= 2 ? toNumber(seg[1], 0) : 0;
-            const stockQty = seg.length >= 3 ? toNumber(seg[2], NaN) : NaN;
-            const soldout = allSoldout || (Number.isFinite(stockQty) && stockQty <= 0);
-            const basePrice = toNumber(row?.price, 0);
+            const stockQty = parseOptionStock(seg, 2);
+
+            // 우선순위
+            // 1) option_soldout = 2 이면 전체 품절
+            // 2) 옵션 재고값이 명시되어 있으면 그 값으로 품절 판단
+            // 3) 옵션 재고값이 비어 있으면 상품 전체 재고(qty_type/qty)로 판단
+            let soldout = false;
+            let stockNote = "주문 가능";
+
+            if (allSoldout) {
+                soldout = true;
+                stockNote = "품절";
+            } else if (stockQty !== null) {
+                soldout = stockQty <= 0;
+                stockNote = soldout ? "품절" : `재고 ${stockQty}`;
+            } else if (goodsQtyType === 0) {
+                soldout = goodsQty <= 0;
+                stockNote = soldout ? "품절" : `재고 ${goodsQty}`;
+            }
 
             out.push({
-                id: `opt_${seq++}`,
-                name: groupName ? `${valueName}` : valueName,
+                id: `opt_${seq}`,
+                name: groupName ? valueName : valueName,
                 price: basePrice + addPrice,
                 soldout,
-                stockNote: soldout ? "품절" : Number.isFinite(stockQty) ? `재고 ${stockQty}` : "주문 가능",
+                stockNote,
+                rawOptionId: seq + 1,
             });
+
+            seq += 1;
         }
     }
 
@@ -279,6 +315,8 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 pickup_only: true,
                 sale_start_at: true,
                 sale_end_at: true,
+                qty_type: true,
+                qty: true,
             },
         });
 

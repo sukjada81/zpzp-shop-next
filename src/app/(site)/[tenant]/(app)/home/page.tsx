@@ -38,6 +38,7 @@ type ProductDetailResponse = {
             price: number | null;
             soldout?: boolean;
             stockNote?: string;
+            rawOptionId?: number | string;
         }>;
     };
 };
@@ -121,7 +122,7 @@ export default async function HomePage({
 
     const mockOrders = getMockRecentOrders();
 
-    // 판매기간 조건에 맞아 공개 API에 노출된 상품 전부를 진행 중인 공구에 사용
+    // 판매기간 내 상품 전체 사용
     const ongoingBase = products;
 
     const ongoingDetails = await Promise.all(
@@ -138,16 +139,7 @@ export default async function HomePage({
                     : p.thumbnailUrl
                         ? [{ key: p.thumbnailUrl, label: "대표 이미지" }]
                         : [],
-                options: detail?.options?.length
-                    ? detail.options
-                    : [
-                        {
-                            id: `base_${p.id}`,
-                            name: String(detail?.title ?? p.title ?? ""),
-                            price: Number(detail?.price ?? p.price ?? 0),
-                            soldout: false,
-                        },
-                    ],
+                options: detail?.options ?? [],
                 meta: detail?.meta ?? {
                     timeLeft: p.metaLeft,
                     pickup: p.metaRight,
@@ -158,7 +150,7 @@ export default async function HomePage({
             return item;
         })
     );
-
+    console.log("[ongoingDetails]", JSON.stringify(ongoingDetails, null, 2));
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24">
             <HomeBannerCarousel tenant={tenant} />

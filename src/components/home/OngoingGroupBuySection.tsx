@@ -1,3 +1,4 @@
+// src/components/home/OngoingGroupBuySection.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,6 +17,9 @@ type OptionItem = {
     price: number | null;
     soldout?: boolean;
     stockNote?: string;
+
+    // 실제 주문 API에 전달할 원본 옵션 인덱스/번호
+    rawOptionId?: number | string;
 };
 
 export type OngoingGroupBuyItem = {
@@ -30,6 +34,9 @@ export type OngoingGroupBuyItem = {
         pickup?: string;
     };
     notice?: NoticeItem;
+
+    // 디자인/프리뷰 확인용 선택 필드
+    isMockPreview?: boolean;
 };
 
 type QuickOrderProfile = {
@@ -54,8 +61,8 @@ function formatAgo(minutesAgo: number) {
     return `${days}일 전`;
 }
 
-function formatPickupText() {
-    return "픽업일: 03/12(목) ~ 03/13(금)";
+function formatPickupText(pickup?: string) {
+    return pickup?.trim() || "픽업일 정보 없음";
 }
 
 function makeMockNotices(seed: string): NoticeItem[] {
@@ -88,6 +95,15 @@ function readQuickOrderProfile(tenant: string): QuickOrderProfile | null {
     } catch {
         return null;
     }
+}
+
+function toNumberOrZero(v: unknown) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function buildOptionKey(productId: string | number, optionId: string | number) {
+    return `${String(productId)}__${String(optionId)}`;
 }
 
 function SuccessToast({
@@ -161,7 +177,10 @@ function CompactNoticeBar({
                     ✓
                 </span>
 
-                <div className="min-w-0 truncate text-[12px] font-bold leading-none" style={{ color: "var(--brand-strong)" }}>
+                <div
+                    className="min-w-0 truncate text-[12px] font-bold leading-none"
+                    style={{ color: "var(--brand-strong)" }}
+                >
                     <span>{notice.maskedName}</span>
                     <span style={{ color: "var(--muted)" }}> 님이 </span>
                     <span style={{ color: "var(--brand)" }}>{formatAgo(notice.minutesAgo)}</span>
@@ -233,8 +252,8 @@ function GroupBuyCard({
                       }: {
     item: OngoingGroupBuyItem;
     qtyMap: Record<string, number>;
-    onMinus: (optionId: string) => void;
-    onPlus: (optionId: string) => void;
+    onMinus: (optionKey: string) => void;
+    onPlus: (optionKey: string) => void;
 }) {
     const images = useMemo(() => {
         const raw = (item.images ?? []).filter((img) => img?.key);
@@ -245,12 +264,14 @@ function GroupBuyCard({
 
     const normalizedOptions = useMemo(() => {
         if (item.options?.length) return item.options;
+
         return [
             {
                 id: `base_${item.id}`,
                 name: item.title,
                 price: item.price,
                 soldout: false,
+                rawOptionId: 0,
             },
         ];
     }, [item.id, item.options, item.price, item.title]);
@@ -298,8 +319,10 @@ function GroupBuyCard({
                         onClick={() => setSelectedImageIndex(idx)}
                         className="overflow-hidden rounded-2xl border bg-white"
                         style={{
-                            borderColor: idx === selectedImageIndex ? "var(--brand)" : "rgba(23,59,69,0.08)",
-                            boxShadow: idx === selectedImageIndex ? "0 0 0 2px rgba(23,59,69,0.08)" : "none",
+                            borderColor:
+                                idx === selectedImageIndex ? "var(--brand)" : "rgba(23,59,69,0.08)",
+                            boxShadow:
+                                idx === selectedImageIndex ? "0 0 0 2px rgba(23,59,69,0.08)" : "none",
                         }}
                     >
                         <div className="aspect-[1/1] overflow-hidden" style={{ background: "var(--brand-soft)" }}>
@@ -349,20 +372,21 @@ function GroupBuyCard({
                             color: "var(--muted)",
                         }}
                     >
-                        🚚 {formatPickupText()}
+                        🚚 {formatPickupText(item.meta?.pickup)}
                     </span>
                 </div>
             </div>
 
             <div className="mt-4 space-y-3">
                 {normalizedOptions.map((option) => {
-                    const qty = qtyMap[option.id] ?? 0;
+                    const optionKey = buildOptionKey(item.id, option.id);
+                    const qty = qtyMap[optionKey] ?? 0;
                     const soldout = !!option.soldout;
                     const displayPrice = Number(option.price ?? item.price ?? 0);
 
                     return (
                         <section
-                            key={option.id}
+                            key={optionKey}
                             className="rounded-[24px] border px-4 py-4"
                             style={{
                                 borderColor: "rgba(23,59,69,0.08)",
@@ -373,7 +397,10 @@ function GroupBuyCard({
                                 🎉 전점 한정! 조기 마감될 수 있습니다.
                             </div>
 
-                            <div className="mt-2 text-[19px] font-extrabold leading-snug" style={{ color: "var(--fg)" }}>
+                            <div
+                                className="mt-2 text-[19px] font-extrabold leading-snug"
+                                style={{ color: "var(--fg)" }}
+                            >
                                 {option.name}
                             </div>
 
@@ -389,8 +416,8 @@ function GroupBuyCard({
                                 <QtyControl
                                     value={qty}
                                     disabled={soldout}
-                                    onMinus={() => onMinus(option.id)}
-                                    onPlus={() => onPlus(option.id)}
+                                    onMinus={() => onMinus(optionKey)}
+                                    onPlus={() => onPlus(optionKey)}
                                 />
                             </div>
                         </section>
@@ -434,11 +461,13 @@ export default function OngoingGroupBuySection({
                             id: `base_${item.id}`,
                             name: item.title,
                             price: item.price,
+                            rawOptionId: 0,
                         },
                     ];
 
             for (const option of options) {
-                map[option.id] = Number(option.price ?? item.price ?? 0);
+                const optionKey = buildOptionKey(item.id, option.id);
+                map[optionKey] = Number(option.price ?? item.price ?? 0);
             }
         }
 
@@ -452,6 +481,7 @@ export default function OngoingGroupBuySection({
                 tenant: string;
                 productId: string;
                 optionId: string;
+                rawOptionId: number;
                 optionName: string;
             }
         >();
@@ -465,14 +495,19 @@ export default function OngoingGroupBuySection({
                             id: `base_${item.id}`,
                             name: item.title,
                             price: item.price,
+                            rawOptionId: 0,
                         },
                     ];
 
             for (const option of options) {
-                map.set(option.id, {
+                const rawOptionId = toNumberOrZero(option.rawOptionId);
+                const optionKey = buildOptionKey(item.id, option.id);
+
+                map.set(optionKey, {
                     tenant: item.tenant,
                     productId: String(item.id),
                     optionId: String(option.id),
+                    rawOptionId,
                     optionName: option.name,
                 });
             }
@@ -483,23 +518,23 @@ export default function OngoingGroupBuySection({
 
     const totalQty = Object.values(qtyMap).reduce((sum, qty) => sum + qty, 0);
 
-    const totalPrice = Object.entries(qtyMap).reduce((sum, [optionId, qty]) => {
-        return sum + (optionPriceMap[optionId] ?? 0) * qty;
+    const totalPrice = Object.entries(qtyMap).reduce((sum, [optionKey, qty]) => {
+        return sum + (optionPriceMap[optionKey] ?? 0) * qty;
     }, 0);
 
     const isActive = totalQty > 0;
 
-    function minus(optionId: string) {
+    function minus(optionKey: string) {
         setQtyMap((prev) => ({
             ...prev,
-            [optionId]: Math.max(0, (prev[optionId] ?? 0) - 1),
+            [optionKey]: Math.max(0, (prev[optionKey] ?? 0) - 1),
         }));
     }
 
-    function plus(optionId: string) {
+    function plus(optionKey: string) {
         setQtyMap((prev) => ({
             ...prev,
-            [optionId]: (prev[optionId] ?? 0) + 1,
+            [optionKey]: (prev[optionKey] ?? 0) + 1,
         }));
     }
 
@@ -524,11 +559,9 @@ export default function OngoingGroupBuySection({
                 const meta = optionMetaMap.get(optionKey);
                 if (!meta) return null;
 
-                const isBaseOption = meta.optionId.startsWith("base_");
-
                 return {
                     productId: Number(meta.productId),
-                    optionId: isBaseOption ? 0 : 0,
+                    optionId: meta.rawOptionId,
                     optionName: meta.optionName,
                     qty: Number(qty),
                 };
@@ -609,7 +642,13 @@ export default function OngoingGroupBuySection({
 
                 <div className="mt-3">
                     {items.map((item) => (
-                        <GroupBuyCard key={item.id} item={item} qtyMap={qtyMap} onMinus={minus} onPlus={plus} />
+                        <GroupBuyCard
+                            key={item.id}
+                            item={item}
+                            qtyMap={qtyMap}
+                            onMinus={minus}
+                            onPlus={plus}
+                        />
                     ))}
                 </div>
 
