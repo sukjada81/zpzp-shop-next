@@ -174,7 +174,7 @@ export default async function HomePage({
             <Grid2 tenant={tenant} items={pickupSection.items} emptyText="픽업 가능한 상품이 없습니다." />
 
             {/* 진행 중인 공구 */}
-            <div className="min-h-screen px-3">
+            <div className="min-h-screen">
                 <OngoingGroupBuySection
                     title="🔥 진행 중인 공구"
                     items={ongoingDetails}
