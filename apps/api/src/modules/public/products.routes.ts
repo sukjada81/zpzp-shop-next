@@ -340,7 +340,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
             description: desc,
             meta: {
                 timeLeft: calcTimeLeftFromEnd(row.sale_end_at ?? null),
-                pickup: row.pickup_only ? "픽업 상품" : undefined,
+                pickup: row.pickup_only ? "바로 픽업 가능 · 주문 후 매장에서 바로 수령" : undefined,
             },
             images,
             options,
