@@ -134,10 +134,10 @@ function buildOptionKey(productId: string | number, optionId: string | number) {
 }
 
 function SuccessToast({
-                          open,
-                          message,
-                          onClose,
-                      }: {
+    open,
+    message,
+    onClose,
+}: {
     open: boolean;
     message: string;
     onClose: () => void;
@@ -179,9 +179,9 @@ function SuccessToast({
  * 상단 실시간 주문 알림 바
  */
 function CompactNoticeBar({
-                              notice,
-                              animateClass = "",
-                          }: {
+    notice,
+    animateClass = "",
+}: {
     notice?: NoticeItem;
     animateClass?: string;
 }) {
@@ -229,11 +229,11 @@ function CompactNoticeBar({
  * 옵션 수량 컨트롤
  */
 function QtyControl({
-                        value,
-                        onMinus,
-                        onPlus,
-                        disabled,
-                    }: {
+    value,
+    onMinus,
+    onPlus,
+    disabled,
+}: {
     value: number;
     onMinus: () => void;
     onPlus: () => void;
@@ -281,8 +281,8 @@ function QtyControl({
  * 상단 썸네일 가로 리스트
  */
 function ProductThumbStrip({
-                               images,
-                           }: {
+    images,
+}: {
     images: { key: string; label?: string }[];
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
@@ -316,11 +316,11 @@ function ProductThumbStrip({
  * 공구 1개 블록
  */
 function GroupBuyItemBlock({
-                               item,
-                               qtyMap,
-                               onMinus,
-                               onPlus,
-                           }: {
+    item,
+    qtyMap,
+    onMinus,
+    onPlus,
+}: {
     item: OngoingGroupBuyItem;
     qtyMap: Record<string, number>;
     onMinus: (optionKey: string) => void;
@@ -362,7 +362,7 @@ function GroupBuyItemBlock({
 
     return (
         <article
-            className="mt-6 rounded-[28px] border px-3 py-3 shadow-sm"
+            className="mt-6 mb-6 rounded-[28px] border px-3 py-3 shadow-sm"
             style={{
                 background: "var(--surface)",
                 borderColor: "rgba(23,59,69,0.09)",
@@ -426,11 +426,11 @@ function GroupBuyItemBlock({
                     return (
                         <div
                             key={optionKey}
-                            className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow"
+                            className={`flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow`}
                             style={{
                                 borderColor: "#e5e7eb",
                                 boxShadow: "none",
-                                opacity: soldout ? 0.92 : 1,
+                                opacity: soldout ? 0.60 : 1,
                             }}
                         >
                             <div className="min-w-0 flex-1">
@@ -475,10 +475,10 @@ function GroupBuyItemBlock({
  * 진행 중인 공구 전체 섹션
  */
 export default function OngoingGroupBuySection({
-                                                   title = "🔥 진행 중인 공구",
-                                                   items,
-                                                   showOrderBar = true,
-                                               }: {
+    title = "🔥 진행 중인 공구",
+    items,
+    showOrderBar = true,
+}: {
     title?: string;
     items: OngoingGroupBuyItem[];
     showOrderBar?: boolean;
@@ -497,56 +497,10 @@ export default function OngoingGroupBuySection({
         return () => window.clearTimeout(timer);
     }, [toastOpen]);
 
-    const previewMockItem: OngoingGroupBuyItem = {
-        id: "__mock_preview__",
-        tenant: "preview",
-        title: "[어포튀각 깡사기 3종(오리지널/핫/뿌링)]",
-        price: 2500,
-        images: [
-            {
-                key: "https://images.unsplash.com/photo-1576618148400-f54bed99fcfd?q=80&w=1200&auto=format&fit=crop",
-                label: "어포튀각 이미지 1",
-            },
-            {
-                key: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?q=80&w=1200&auto=format&fit=crop",
-                label: "어포튀각 이미지 2",
-            },
-            {
-                key: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1200&auto=format&fit=crop",
-                label: "어포튀각 이미지 3",
-            },
-        ],
-        options: [
-            {
-                id: "__mock_opt_1",
-                name: "어포튀각 깡사기 (오리지널)",
-                price: 2500,
-                soldout: true,
-                stockNote: "한정수량 마감!",
-            },
-            {
-                id: "__mock_opt_2",
-                name: "어포튀각 깡사기 (핫)",
-                price: 2500,
-                soldout: false,
-                stockNote: "5개 남았습니다!",
-            },
-            {
-                id: "__mock_opt_3",
-                name: "어포튀각 깡사기 (뿌링)",
-                price: 2500,
-                soldout: false,
-                stockNote: "5개 남았습니다!",
-            },
-        ],
-        meta: {
-            pickup: "바로 픽업 가능 · 주문 후 매장에서 바로 수령",
-        },
-        isMockPreview: true,
-    };
+
 
     const displayItems = useMemo(() => {
-        return [...items, previewMockItem];
+        return [...items];
     }, [items]);
 
     const optionMetaMap = useMemo(() => {

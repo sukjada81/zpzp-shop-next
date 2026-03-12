@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import MobileHeader from "./MobileHeader";
 import SideDrawer from "./SideDrawer";
 import { getTenantList } from "@/lib/tenant/tenants";
+import Footer from "./Footer";
 
 const BRAND_NAME = "디스카운트 올데이";
 
@@ -28,9 +29,9 @@ function extractTenantFromPath(pathname?: string | null) {
 }
 
 export default function AppShellClient({
-                                           tenant: rawTenant,
-                                           children,
-                                       }: {
+    tenant: rawTenant,
+    children,
+}: {
     tenant: string;
     children: React.ReactNode;
 }) {
@@ -119,7 +120,22 @@ export default function AppShellClient({
                 />
             )}
 
-            <div className="pb-10">{children}</div>
+            <div className="relative pb-10">
+                {children}
+
+                <button
+                    onClick={() =>
+                        window.scrollTo({
+                            top: 0,
+                            behavior: "smooth",
+                        })
+                    }
+                    className="absolute right-4 bottom-6 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d8dd] bg-white shadow-md"
+                >
+                    ↑
+                </button>
+            </div>
+            <Footer />
         </div>
     );
 }
