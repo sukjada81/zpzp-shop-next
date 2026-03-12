@@ -65,7 +65,7 @@ export default function Footer() {
                 type="button"
                 onClick={handleScrollTop}
                 aria-label="맨 위로 이동"
-                className={`fixed bottom-24 right-5 z-[999] flex h-11 w-11 items-center justify-center rounded-full border border-[#d8d8dd] bg-[#f7f7f8] shadow-sm transition-all duration-300 ${showTopButton
+                className={`fixed bottom-24 right-5 z-[999] flex h-11 w-11 items-center justify-center rounded-full border border-[#d8d8dd] bg-white shadow-md transition-all duration-300 ${showTopButton
                     ? "pointer-events-auto translate-y-0 opacity-100"
                     : "pointer-events-none translate-y-2 opacity-0"
                     }`}

@@ -122,18 +122,6 @@ export default function AppShellClient({
 
             <div className="relative pb-10">
                 {children}
-
-                <button
-                    onClick={() =>
-                        window.scrollTo({
-                            top: 0,
-                            behavior: "smooth",
-                        })
-                    }
-                    className="absolute right-4 bottom-6 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d8dd] bg-white shadow-md"
-                >
-                    ↑
-                </button>
             </div>
             <Footer />
         </div>
