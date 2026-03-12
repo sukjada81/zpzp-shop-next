@@ -2,12 +2,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-<<<<<<< HEAD
 import Link from "next/link";
 import { ShoppingBag, TrendingUp, Clock3, Truck } from "lucide-react";
-=======
 import { endpoints } from "@/lib/api/endpoints";
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
 
 /**
  * 상단 실시간 주문 알림용 데이터
@@ -23,6 +20,7 @@ type NoticeItem = {
  * 옵션 데이터
  * - soldout: 품절 여부
  * - stockNote: "5개 남았습니다!", "한정수량 마감!" 같은 문구
+ * - rawOptionId: 실제 주문 API에 전달할 원본 옵션 번호
  */
 type OptionItem = {
     id: string;
@@ -30,8 +28,6 @@ type OptionItem = {
     price: number | null;
     soldout?: boolean;
     stockNote?: string;
-
-    // 실제 주문 API에 전달할 원본 옵션 인덱스/번호
     rawOptionId?: number | string;
 };
 
@@ -51,11 +47,6 @@ export type OngoingGroupBuyItem = {
         pickup?: string;
     };
     notice?: NoticeItem;
-<<<<<<< HEAD
-    isMockPreview?: boolean;
-=======
-
-    // 디자인/프리뷰 확인용 선택 필드
     isMockPreview?: boolean;
 };
 
@@ -70,7 +61,6 @@ type CreateOrderResponse = {
     status?: number;
     statusLabel?: string;
     message?: string;
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
 };
 
 /**
@@ -85,25 +75,18 @@ function formatAgo(minutesAgo: number) {
     return `${days}일 전`;
 }
 
-<<<<<<< HEAD
 /**
  * 마감 시간 문구 기본값
  */
 function formatTimeLeft(timeLeft?: string) {
-    return timeLeft || "9시간 뒤 마감";
-=======
-function formatPickupText(pickup?: string) {
-    return pickup?.trim() || "픽업일 정보 없음";
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
+    return timeLeft || "진행 중";
 }
 
 /**
  * 픽업 문구 기본값
- * - 일반 픽업일 안내
- * - "바로 픽업 가능 · 주문 후 매장에서 바로 수령" 같은 문구도 그대로 노출 가능
  */
 function formatPickupText(pickup?: string) {
-    return pickup || "픽업일: 03/16(월) ~ 03/17(화)";
+    return pickup?.trim() || "픽업일 정보 없음";
 }
 
 /**
@@ -119,11 +102,6 @@ function makeMockNotices(seed: string): NoticeItem[] {
     ];
 }
 
-<<<<<<< HEAD
-/**
- * 상단 실시간 주문 알림 바
- */
-=======
 function onlyDigits(v: string) {
     return String(v ?? "").replace(/[^\d]/g, "");
 }
@@ -149,6 +127,7 @@ function toNumberOrZero(v: unknown) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
 }
+
 
 function buildOptionKey(productId: string | number, optionId: string | number) {
     return `${String(productId)}__${String(optionId)}`;
@@ -196,11 +175,13 @@ function SuccessToast({
     );
 }
 
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
+/**
+ * 상단 실시간 주문 알림 바
+ */
 function CompactNoticeBar({
-    notice,
-    animateClass = "",
-}: {
+                              notice,
+                              animateClass = "",
+                          }: {
     notice?: NoticeItem;
     animateClass?: string;
 }) {
@@ -208,7 +189,7 @@ function CompactNoticeBar({
 
     return (
         <div
-            className={`w-full rounded-[12px] border px-3 py-2 transition-opacity duration-300 ${animateClass}`}
+            className={`w-full rounded-[12px] border px-3 py-2 transition-all duration-300 ${animateClass}`}
             style={{
                 borderColor: "rgba(240,127,34,0.30)",
                 background: "rgba(240,127,34,0.06)",
@@ -233,40 +214,26 @@ function CompactNoticeBar({
                     <span>를 주문했어요</span>
                 </span>
 
-<<<<<<< HEAD
-    <TrendingUp
-        size={14}
-        strokeWidth={2}
-        className="ml-auto flex-shrink-0"
-        style={{ color: "#f07f22" }}
-    />
-=======
-                <div
-                    className="min-w-0 truncate text-[12px] font-bold leading-none"
-                    style={{ color: "var(--brand-strong)" }}
-                >
-                    <span>{notice.maskedName}</span>
-                    <span style={{ color: "var(--muted)" }}> 님이 </span>
-                    <span style={{ color: "var(--brand)" }}>{formatAgo(notice.minutesAgo)}</span>
-                    <span style={{ color: "var(--accent-strong)" }}> {notice.qty}개</span>
-                    <span style={{ color: "var(--muted)" }}>를 주문했어요</span>
-                </div>
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
-            </div >
-        </div >
+                <TrendingUp
+                    size={14}
+                    strokeWidth={2}
+                    className="ml-auto flex-shrink-0"
+                    style={{ color: "#f07f22" }}
+                />
+            </div>
+        </div>
     );
 }
 
 /**
  * 옵션 수량 컨트롤
- * - 품절이 아니면 수량 증감 가능
  */
 function QtyControl({
-    value,
-    onMinus,
-    onPlus,
-    disabled,
-}: {
+                        value,
+                        onMinus,
+                        onPlus,
+                        disabled,
+                    }: {
     value: number;
     onMinus: () => void;
     onPlus: () => void;
@@ -312,11 +279,10 @@ function QtyControl({
 
 /**
  * 상단 썸네일 가로 리스트
- * - 이미지가 여러 장일 수 있음
  */
 function ProductThumbStrip({
-    images,
-}: {
+                               images,
+                           }: {
     images: { key: string; label?: string }[];
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
@@ -348,25 +314,18 @@ function ProductThumbStrip({
 
 /**
  * 공구 1개 블록
- * - 상단 알림
- * - 썸네일 리스트
- * - 제목 / 배지
- * - 옵션 목록
  */
 function GroupBuyItemBlock({
-    item,
-    qtyMap,
-    onMinus,
-    onPlus,
-}: {
+                               item,
+                               qtyMap,
+                               onMinus,
+                               onPlus,
+                           }: {
     item: OngoingGroupBuyItem;
     qtyMap: Record<string, number>;
     onMinus: (optionKey: string) => void;
     onPlus: (optionKey: string) => void;
 }) {
-    /**
-     * 옵션이 없으면 상품 자체를 1개 옵션처럼 처리
-     */
     const options = useMemo(() => {
         if (item.options?.length) return item.options;
 
@@ -375,11 +334,8 @@ function GroupBuyItemBlock({
                 id: `base_${item.id}`,
                 name: item.title,
                 price: item.price,
-<<<<<<< HEAD
-=======
                 soldout: false,
                 rawOptionId: 0,
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
             },
         ];
     }, [item]);
@@ -388,9 +344,6 @@ function GroupBuyItemBlock({
     const [noticeIndex, setNoticeIndex] = useState(0);
     const [noticeVisible, setNoticeVisible] = useState(true);
 
-    /**
-     * 상단 주문 알림 자동 순환
-     */
     useEffect(() => {
         if (mockNotices.length <= 1) return;
 
@@ -421,41 +374,10 @@ function GroupBuyItemBlock({
                 animateClass={noticeVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"}
             />
 
-            <div className="mt-3 grid grid-cols-3 gap-2.5">
-                {images.slice(0, 3).map((img, idx) => (
-                    <button
-                        key={`${item.id}_${idx}`}
-                        type="button"
-                        onClick={() => setSelectedImageIndex(idx)}
-                        className="overflow-hidden rounded-2xl border bg-white"
-                        style={{
-                            borderColor:
-                                idx === selectedImageIndex ? "var(--brand)" : "rgba(23,59,69,0.08)",
-                            boxShadow:
-                                idx === selectedImageIndex ? "0 0 0 2px rgba(23,59,69,0.08)" : "none",
-                        }}
-                    >
-                        <div className="aspect-[1/1] overflow-hidden" style={{ background: "var(--brand-soft)" }}>
-                            {img.key ? (
-                                <img src={img.key} alt={item.title} className="h-full w-full object-cover" />
-                            ) : (
-                                <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
-                            )}
-                        </div>
-                    </button>
-                ))}
+            <div className="mt-3">
+                <ProductThumbStrip images={item.images} />
             </div>
 
-            {images[selectedImageIndex]?.key ? (
-                <div className="sr-only">
-                    <img src={images[selectedImageIndex].key} alt={item.title} />
-                </div>
-            ) : null}
-
-            {/* 상품 썸네일 */}
-            <ProductThumbStrip images={item.images} />
-
-            {/* 상품 제목 / 상태 배지 */}
             <Link href={item.href || "#"} className="mt-3 block">
                 <div
                     className="mb-1 line-clamp-2 text-[17px] font-extrabold leading-[1.4] tracking-[-0.03em]"
@@ -465,7 +387,6 @@ function GroupBuyItemBlock({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    {/* 마감 배지 */}
                     {!item.isMockPreview ? (
                         <span
                             className="inline-flex h-[25px] items-center gap-1 rounded-full border px-3 text-[12px] font-medium"
@@ -480,7 +401,6 @@ function GroupBuyItemBlock({
                         </span>
                     ) : null}
 
-                    {/* 픽업 안내 배지 */}
                     <span
                         className="inline-flex min-h-[25px] items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium"
                         style={{
@@ -489,122 +409,76 @@ function GroupBuyItemBlock({
                             color: "#5b7cff",
                         }}
                     >
-<<<<<<< HEAD
                         <Truck size={14} strokeWidth={2} />
                         <span>{formatPickupText(item.meta?.pickup)}</span>
-=======
-                        🚚 {formatPickupText(item.meta?.pickup)}
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
-                    </span >
-                </div >
-            </Link >
+                    </span>
+                </div>
+            </Link>
 
-<<<<<<< HEAD
-        {/* 옵션 카드 리스트 */ }
-        < div className = "mt-5 space-y-2" >
-        {
-            options.map((option) => {
-                const qty = qtyMap[option.id] ?? 0;
-                const price = Number(option.price ?? item.price ?? 0);
-=======
-            <div className="mt-4 space-y-3">
-                {normalizedOptions.map((option) => {
+            <div className="mt-5 space-y-2">
+                {options.map((option) => {
                     const optionKey = buildOptionKey(item.id, option.id);
                     const qty = qtyMap[optionKey] ?? 0;
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
-                const soldout = !!option.soldout;
-                const stockText = option.stockNote?.trim();
+                    const price = Number(option.price ?? item.price ?? 0);
+                    const soldout = !!option.soldout;
+                    const stockText = option.stockNote?.trim();
 
-                return (
-<<<<<<< HEAD
-                    <div
-                        key={option.id}
-                        className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow"
-=======
-                        <section
+                    return (
+                        <div
                             key={optionKey}
-                            className="rounded-[24px] border px-4 py-4"
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
-                        style={{
-                            borderColor: "#e5e7eb",
-                            boxShadow: "none",
-                            opacity: soldout ? 0.92 : 1,
-                        }}
-                    >
-                        {/* 옵션 정보 */}
-                        <div className="min-w-0 flex-1">
-                            <span
-                                className="inline-flex items-center gap-1 text-xs"
-                                style={{ color: "#ff6b6b" }}
-                            >
-                                <span>{stockText ? "🔥" : "🚨"}</span>
-                                <span>{stockText || "전점 한정! 조기 마감될 수 있습니다."}</span>
-                            </span>
+                            className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow"
+                            style={{
+                                borderColor: "#e5e7eb",
+                                boxShadow: "none",
+                                opacity: soldout ? 0.92 : 1,
+                            }}
+                        >
+                            <div className="min-w-0 flex-1">
+                                <span
+                                    className="inline-flex items-center gap-1 text-xs"
+                                    style={{ color: "#ff6b6b" }}
+                                >
+                                    <span>{stockText ? "🔥" : "🚨"}</span>
+                                    <span>{stockText || "전점 한정! 조기 마감될 수 있습니다."}</span>
+                                </span>
 
-<<<<<<< HEAD
-                <div className="mt-1 font-medium text-neutral-900">
-                    {option.name}
-=======
-                            <div
-                        className="mt-2 text-[19px] font-extrabold leading-snug"
-                        style={{ color: "var(--fg)" }}
-                    >
-                        {option.name}
-                    </div>
+                                <div className="mt-1 font-medium text-neutral-900">
+                                    {option.name}
+                                </div>
 
-                    <div className="mt-2 text-[15px] font-extrabold" style={{ color: "var(--brand)" }}>
-                        {displayPrice.toLocaleString()}원
-                    </div>
+                                <div className="mt-1 text-sm text-neutral-600">
+                                    {price.toLocaleString()}원
+                                </div>
+                            </div>
 
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                        <div className="text-[13px] font-semibold" style={{ color: "var(--muted)" }}>
-                            {soldout ? "품절" : option.stockNote || "주문 가능"}
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
-                        </div>
-
-                        <div className="mt-1 text-sm text-neutral-600">
-                            {price.toLocaleString()}원
-                        </div>
-                    </div>
-
-                    {/* 품절이면 품절 표시, 아니면 수량 버튼 노출 */}
-                    {soldout ? (
-                        <div className="flex h-10 min-w-[68px] items-center justify-center rounded-xl bg-[#f3f4f6] px-4 text-sm font-bold text-[#9ca3af]">
-                            품절
-                        </div>
-                    ) : (
-                        <QtyControl
-                            value={qty}
-<<<<<<< HEAD
-                            disabled={false}
-                            onMinus={() => onMinus(option.id)}
-                            onPlus={() => onPlus(option.id)}
-=======
-                                    disabled={soldout}
+                            {soldout ? (
+                                <div className="flex h-10 min-w-[68px] items-center justify-center rounded-xl bg-[#f3f4f6] px-4 text-sm font-bold text-[#9ca3af]">
+                                    품절
+                                </div>
+                            ) : (
+                                <QtyControl
+                                    value={qty}
+                                    disabled={!!item.isMockPreview}
                                     onMinus={() => onMinus(optionKey)}
                                     onPlus={() => onPlus(optionKey)}
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
-                        />
-                    )}
-                </div>
+                                />
+                            )}
+                        </div>
                     );
-        })
-}
-            </div >
-        </div >
+                })}
+            </div>
+        </article>
     );
 }
 
 /**
  * 진행 중인 공구 전체 섹션
- * - 여러 공구 블록 렌더링
- * - 하단 주문하기 바 렌더링
  */
 export default function OngoingGroupBuySection({
-    title = "🔥 진행 중인 공구",
-    items,
-    showOrderBar = true,
-}: {
+                                                   title = "🔥 진행 중인 공구",
+                                                   items,
+                                                   showOrderBar = true,
+                                               }: {
     title?: string;
     items: OngoingGroupBuyItem[];
     showOrderBar?: boolean;
@@ -675,35 +549,6 @@ export default function OngoingGroupBuySection({
         return [...items, previewMockItem];
     }, [items]);
 
-    /**
-     * 옵션별 가격 맵
-     * - 총 주문 금액 계산용
-     */
-    const optionPriceMap = useMemo(() => {
-        const map: Record<string, number> = {};
-
-        for (const item of displayItems ?? []) {
-            const options =
-                item.options?.length
-                    ? item.options
-                    : [
-                        {
-                            id: `base_${item.id}`,
-                            name: item.title,
-                            price: item.price,
-                            rawOptionId: 0,
-                        },
-                    ];
-
-            for (const option of options) {
-                const optionKey = buildOptionKey(item.id, option.id);
-                map[optionKey] = Number(option.price ?? item.price ?? 0);
-            }
-        }
-
-        return map;
-    }, [items]);
-
     const optionMetaMap = useMemo(() => {
         const map = new Map<
             string,
@@ -744,123 +589,68 @@ export default function OngoingGroupBuySection({
         }
 
         return map;
+    }, [items]);
+
+    /**
+     * 금액 계산은 화면에 보이는 아이템 기준
+     */
+    const optionPriceMap = useMemo(() => {
+        const map: Record<string, number> = {};
+
+        for (const item of displayItems ?? []) {
+            const options =
+                item.options?.length
+                    ? item.options
+                    : [
+                        {
+                            id: `base_${item.id}`,
+                            name: item.title,
+                            price: item.price,
+                            rawOptionId: 0,
+                        },
+                    ];
+
+            for (const option of options) {
+                const optionKey = buildOptionKey(item.id, option.id);
+                map[optionKey] = Number(option.price ?? item.price ?? 0);
+            }
+        }
+
+        return map;
     }, [displayItems]);
 
     /**
-     * 총 수량
+     * 실제 주문 가능한 선택만 집계
+     * - preview 선택은 주문 활성화에 포함하지 않음
      */
-    const totalQty = Object.values(qtyMap).reduce((sum, qty) => sum + qty, 0);
+    const realSelectedEntries = useMemo(() => {
+        return Object.entries(qtyMap).filter(
+            ([optionKey, qty]) => Number(qty) > 0 && optionMetaMap.has(optionKey)
+        );
+    }, [qtyMap, optionMetaMap]);
 
-<<<<<<< HEAD
-    /**
-     * 총 금액
-     */
-    const totalPrice = Object.entries(qtyMap).reduce((sum, [optionId, qty]) => {
-        return sum + (optionPriceMap[optionId] ?? 0) * qty;
-=======
-    const totalPrice = Object.entries(qtyMap).reduce((sum, [optionKey, qty]) => {
+    const totalQty = realSelectedEntries.reduce((sum, [, qty]) => sum + qty, 0);
+
+    const totalPrice = realSelectedEntries.reduce((sum, [optionKey, qty]) => {
         return sum + (optionPriceMap[optionKey] ?? 0) * qty;
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
     }, 0);
 
-    /**
-     * 1개 이상 선택 시 주문 버튼 활성화
-     */
     const isActive = totalQty > 0;
 
-<<<<<<< HEAD
-    /**
-     * 수량 감소
-     */
-    function minus(optionId: string) {
-=======
     function minus(optionKey: string) {
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
         setQtyMap((prev) => ({
             ...prev,
             [optionKey]: Math.max(0, (prev[optionKey] ?? 0) - 1),
         }));
     }
 
-<<<<<<< HEAD
-    /**
-     * 수량 증가
-     */
-    function plus(optionId: string) {
-=======
     function plus(optionKey: string) {
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
         setQtyMap((prev) => ({
             ...prev,
             [optionKey]: (prev[optionKey] ?? 0) + 1,
         }));
     }
 
-<<<<<<< HEAD
-    return (
-        <section className="mt-6 pb-0">
-            {/* 섹션 타이틀 */}
-            <div className="text-xl font-bold text-neutral-1" style={{ color: "#222222" }}>
-                {title}
-            </div>
-
-            {/* 공구 목록 */}
-            <div className="pb-0">
-                {displayItems.map((item, index) => (
-                    <div key={item.id}>
-                        <GroupBuyItemBlock
-                            item={item}
-                            qtyMap={qtyMap}
-                            onMinus={minus}
-                            onPlus={plus}
-                        />
-
-                        {index !== displayItems.length - 1 && (
-                            <div className="w-full border-t" style={{ borderColor: "#d9d9d9" }} />
-                        )}
-                    </div>
-                ))}
-            </div>
-
-
-            {/* 하단 주문 바 */}
-            {showOrderBar ? (
-                <div className="fixed bottom-0 inset-x-0 z-30 px-3">
-                    <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
-                        <button
-                            type="button"
-                            disabled={!isActive}
-                            className="relative h-12 w-full rounded-[12px] text-white font-bold transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
-                            style={{
-                                background: isActive
-                                    ? "linear-gradient(180deg, #f6a45d 0%, #f07f22 0%)"
-                                    : "#ffb224",
-                                boxShadow: isActive
-                                    ? "0 10px 22px rgba(240,127,34,0.35)"
-                                    : "none",
-                                opacity: isActive ? 1 : 0.5,
-                            }}
-                        >
-                            {/* 가운데 주문 버튼 텍스트 */}
-                            <div className="relative flex w-full items-center justify-center">
-                                <span className="inline-flex items-center gap-2">
-                                    <ShoppingBag size={18} />
-                                    주문하기
-                                </span>
-
-                                {/* 오른쪽 총 수량 / 금액 */}
-                                {isActive ? (
-                                    <span className="absolute right-4 inset-y-0 flex flex-col items-end justify-center text-right">
-                                        <span className="text-[13px] opacity-90">총 {totalQty}개</span>
-                                    </span>
-                                ) : null}
-                            </div>
-                        </button>
-                    </div>
-                </div>
-            ) : null}
-        </section>
-=======
     async function submitQuickOrder() {
         if (!isActive || submitting) return;
 
@@ -876,8 +666,7 @@ export default function OngoingGroupBuySection({
             return;
         }
 
-        const selectedItems = Object.entries(qtyMap)
-            .filter(([, qty]) => Number(qty) > 0)
+        const selectedItems = realSelectedEntries
             .map(([optionKey, qty]) => {
                 const meta = optionMetaMap.get(optionKey);
                 if (!meta) return null;
@@ -935,81 +724,67 @@ export default function OngoingGroupBuySection({
         }
     }
 
-    if (!items?.length) {
-        return (
-            <section className="mt-8">
-                <div className="text-[28px] font-extrabold tracking-[-0.03em]" style={{ color: "var(--fg)" }}>
-                    🔥 {title}
-                </div>
-
-                <div
-                    className="mt-3 rounded-2xl border p-4 text-sm font-semibold"
-                    style={{
-                        background: "var(--surface)",
-                        borderColor: "var(--border)",
-                        color: "var(--muted)",
-                    }}
-                >
-                    진행 중인 공구가 없습니다.
-                </div>
-            </section>
-        );
-    }
-
     return (
         <>
-            <section className="mt-8 pb-28">
-                <div className="text-[28px] font-extrabold tracking-[-0.03em]" style={{ color: "var(--fg)" }}>
-                    🔥 {title}
+            <section className="mt-6 pb-0">
+                <div className="text-xl font-bold text-neutral-1" style={{ color: "#222222" }}>
+                    {title}
                 </div>
 
-                <div className="mt-3">
-                    {items.map((item) => (
-                        <GroupBuyCard
-                            key={item.id}
-                            item={item}
-                            qtyMap={qtyMap}
-                            onMinus={minus}
-                            onPlus={plus}
-                        />
+                <div className="pb-0">
+                    {displayItems.map((item, index) => (
+                        <div key={item.id}>
+                            <GroupBuyItemBlock
+                                item={item}
+                                qtyMap={qtyMap}
+                                onMinus={minus}
+                                onPlus={plus}
+                            />
+
+                            {index !== displayItems.length - 1 && (
+                                <div className="w-full border-t" style={{ borderColor: "#d9d9d9" }} />
+                            )}
+                        </div>
                     ))}
                 </div>
 
-                <div className="fixed bottom-4 left-0 right-0 z-40">
-                    <div className="mx-auto w-full max-w-[520px] px-4">
-                        <button
-                            type="button"
-                            onClick={submitQuickOrder}
-                            disabled={!isActive || submitting}
-                            className="relative flex h-14 w-full items-center justify-center rounded-[18px] px-5 text-white transition-all duration-200"
-                            style={{
-                                background: isActive
-                                    ? "linear-gradient(180deg, var(--brand) 0%, var(--brand-strong) 100%)"
-                                    : "linear-gradient(180deg, rgba(23,59,69,0.42) 0%, rgba(15,42,49,0.38) 100%)",
-                                color: "#ffffff",
-                                opacity: isActive ? 1 : 0.45,
-                                boxShadow: isActive
-                                    ? "0 12px 28px rgba(15,42,49,0.22)"
-                                    : "0 8px 18px rgba(15,42,49,0.10)",
-                                backdropFilter: "blur(6px)",
-                            }}
-                        >
-                            <div className="flex items-center gap-2">
-                                <span className="text-[20px]">🛒</span>
-                                <span className="text-[16px] font-extrabold tracking-[-0.02em]">
-                                    {submitting ? "주문 처리 중..." : "주문하기"}
-                                </span>
-                            </div>
+                {showOrderBar ? (
+                    <div className="fixed bottom-0 inset-x-0 z-30 px-3">
+                        <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
+                            <button
+                                type="button"
+                                onClick={submitQuickOrder}
+                                disabled={!isActive || submitting}
+                                className="relative h-12 w-full rounded-[12px] text-white font-bold transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
+                                style={{
+                                    background: isActive
+                                        ? "linear-gradient(180deg, #f6a45d 0%, #f07f22 0%)"
+                                        : "#ffb224",
+                                    boxShadow: isActive
+                                        ? "0 10px 22px rgba(240,127,34,0.35)"
+                                        : "none",
+                                    opacity: isActive ? 1 : 0.5,
+                                }}
+                            >
+                                <div className="relative flex w-full items-center justify-center">
+                                    <span className="inline-flex items-center gap-2">
+                                        <ShoppingBag size={18} />
+                                        {submitting ? "주문 처리 중..." : "주문하기"}
+                                    </span>
 
-                            {isActive ? (
-                                <div className="absolute right-5 text-right">
-                                    <div className="text-[13px] font-bold opacity-90">총 {totalQty}개</div>
-                                    <div className="text-[15px] font-extrabold">{totalPrice.toLocaleString()}원</div>
+                                    {isActive ? (
+                                        <span className="absolute right-4 inset-y-0 flex flex-col items-end justify-center text-right">
+                                            <span className="text-[13px] opacity-90">총 {totalQty}개</span>
+                                            <span className="text-[13px] opacity-90">
+                                                {totalPrice.toLocaleString()}원
+                                            </span>
+                                        </span>
+                                    ) : null}
                                 </div>
-                            ) : null}
-                        </button>
+                            </button>
+                        </div>
                     </div>
-                </div>
+                ) : null}
             </section>
 
             <SuccessToast
@@ -1018,6 +793,5 @@ export default function OngoingGroupBuySection({
                 onClose={() => setToastOpen(false)}
             />
         </>
->>>>>>> c2c234bd11de0226f38cc3166a777336a44afdc7
     );
 }

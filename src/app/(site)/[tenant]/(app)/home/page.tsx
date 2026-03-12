@@ -153,7 +153,7 @@ export default async function HomePage({
             return item;
         })
     );
-    console.log("[ongoingDetails]", JSON.stringify(ongoingDetails, null, 2));
+    // console.log("[ongoingDetails]", JSON.stringify(ongoingDetails, null, 2));
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 pb-24 pt-3">
             <HomeBannerCarousel tenant={tenant} />
