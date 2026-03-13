@@ -9,11 +9,20 @@ export const endpoints = {
     // --------
     // Public (고객)
     // --------
-    publicProducts: (tenant: string, q?: { q?: string; take?: number; cursor?: string }) => {
+    publicProducts: (
+        tenant: string,
+        q?: {
+            q?: string;
+            take?: number;
+            cursor?: string;
+            type?: "today" | "pickup" | "ongoing";
+        }
+    ) => {
         const url = new URL(apiProxy(`${tenant}/v1/public/products`), "http://local");
         if (q?.q) url.searchParams.set("q", q.q);
         if (q?.take) url.searchParams.set("take", String(q.take));
         if (q?.cursor) url.searchParams.set("cursor", q.cursor);
+        if (q?.type) url.searchParams.set("type", q.type);
         return url.pathname + (url.search ? url.search : "");
     },
 

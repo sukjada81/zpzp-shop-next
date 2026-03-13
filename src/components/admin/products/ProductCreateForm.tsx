@@ -1,3 +1,4 @@
+// src/components/admin/products/ProductCreateForm.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -6,6 +7,7 @@ import ProductHtmlEditor from "./ProductHtmlEditor";
 import {
     PRODUCT_ADMIN_CATEGORY_OPTIONS,
     OptionGroupRow,
+    categoryKeysFromCateCode,
     makeGroupRow,
     makeValueRow,
     safeNum,
@@ -67,7 +69,7 @@ type FormState = {
     detailImageOnly: boolean;
     detailImageType: "1" | "2";
 
-    categoryKeys: string[];
+    cateCode: string;
 };
 
 function guessTenantSlug(tenants: Tenant[], fallback = "hq") {
@@ -83,6 +85,49 @@ function removeImageFromText(text: string, target: string) {
         .filter(Boolean)
         .filter((x) => x !== target)
         .join("\n");
+}
+
+function SettingToggleCard({
+                               title,
+                               description,
+                               checked,
+                               onChange,
+                           }: {
+    title: string;
+    description: string;
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+}) {
+    return (
+        <div className="rounded-2xl border border-[var(--dad-border)] bg-white px-4 py-4 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <div className="text-sm font-extrabold text-[var(--dad-ink)]">{title}</div>
+                    <div className="mt-1 text-xs font-semibold leading-relaxed text-[var(--dad-muted)]">
+                        {description}
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={checked}
+                    onClick={() => onChange(!checked)}
+                    className={[
+                        "relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition-colors overflow-hidden",
+                        checked ? "bg-[var(--dad-orange)]" : "bg-slate-300",
+                    ].join(" ")}
+                >
+                    <span
+                        className={[
+                            "absolute top-1 left-1 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                            checked ? "translate-x-5" : "translate-x-0",
+                        ].join(" ")}
+                    />
+                </button>
+            </div>
+        </div>
+    );
 }
 
 export default function ProductCreateForm({ tenants }: Props) {
@@ -133,7 +178,7 @@ export default function ProductCreateForm({ tenants }: Props) {
         detailImageOnly: false,
         detailImageType: "1",
 
-        categoryKeys: [],
+        cateCode: "0",
     });
 
     const [optionGroups, setOptionGroups] = useState<OptionGroupRow[]>([]);
@@ -142,15 +187,6 @@ export default function ProductCreateForm({ tenants }: Props) {
 
     function onChange<K extends keyof FormState>(key: K, value: FormState[K]) {
         setForm((p) => ({ ...p, [key]: value }));
-    }
-
-    function toggleCategory(key: string) {
-        setForm((prev) => ({
-            ...prev,
-            categoryKeys: prev.categoryKeys.includes(key)
-                ? prev.categoryKeys.filter((x) => x !== key)
-                : [...prev.categoryKeys, key],
-        }));
     }
 
     function addOptionGroup() {
@@ -268,6 +304,8 @@ export default function ProductCreateForm({ tenants }: Props) {
         if (!form.title.trim()) return alert("상품명을 입력해 주세요.");
 
         const serializedOptionInfo = form.optionUse ? serializeOptionGroups(optionGroups) : "";
+        const cateNumber = safeNum(form.cateCode, 0);
+        const categoryKeys = categoryKeysFromCateCode(form.cateCode);
 
         const payload = {
             tenantSlug: form.tenantSlug.trim(),
@@ -330,7 +368,8 @@ export default function ProductCreateForm({ tenants }: Props) {
             detailImageOnly: form.detailImageOnly,
             detailImageType: safeNum(form.detailImageType),
 
-            categoryKeys: form.categoryKeys,
+            cate: cateNumber,
+            categoryKeys,
         };
 
         setSaving(true);
@@ -407,8 +446,24 @@ export default function ProductCreateForm({ tenants }: Props) {
                 </div>
             </section>
 
-            <section className="dad-card space-y-4 p-5">
+            <section className="dad-card space-y-5 p-5">
                 <div className="text-base font-extrabold text-[var(--dad-ink)]">기본 정보</div>
+
+                <div>
+                    <label className="text-xs font-extrabold text-[var(--dad-muted)]">카테고리</label>
+                    <select
+                        className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 py-3 text-sm font-bold"
+                        value={form.cateCode}
+                        onChange={(e) => onChange("cateCode", e.target.value)}
+                    >
+                        <option value="0">선택 안함</option>
+                        {PRODUCT_ADMIN_CATEGORY_OPTIONS.map((item) => (
+                            <option key={item.code} value={item.code}>
+                                {item.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
 
                 <div>
                     <label className="text-xs font-extrabold text-[var(--dad-muted)]">상품명</label>
@@ -416,7 +471,28 @@ export default function ProductCreateForm({ tenants }: Props) {
                         className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
                         value={form.title}
                         onChange={(e) => onChange("title", e.target.value)}
-                        placeholder="예: 홍삼원골드 100ml x 24포"
+                        placeholder="예: A지점 오늘의 공구 상품"
+                    />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <SettingToggleCard
+                        title="픽업 전용"
+                        description="배송 없이 매장 픽업 주문만 받습니다."
+                        checked={form.pickupOnly}
+                        onChange={(checked) => onChange("pickupOnly", checked)}
+                    />
+                    <SettingToggleCard
+                        title="진열함"
+                        description="유저 상품 목록과 홈 화면에 노출합니다."
+                        checked={form.displayUse}
+                        onChange={(checked) => onChange("displayUse", checked)}
+                    />
+                    <SettingToggleCard
+                        title="판매함"
+                        description="실제 주문 가능한 상태로 처리합니다."
+                        checked={form.saleUse}
+                        onChange={(checked) => onChange("saleUse", checked)}
                     />
                 </div>
 
@@ -451,64 +527,7 @@ export default function ProductCreateForm({ tenants }: Props) {
             </section>
 
             <section className="dad-card space-y-4 p-5">
-                <div className="text-base font-extrabold text-[var(--dad-ink)]">판매/노출 설정</div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <label className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
-                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">픽업 전용</div>
-                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">배송 없이 매장 픽업만 허용</div>
-                        <input
-                            className="mt-3"
-                            type="checkbox"
-                            checked={form.pickupOnly}
-                            onChange={(e) => onChange("pickupOnly", e.target.checked)}
-                        />
-                    </label>
-
-                    <label className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
-                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">진열함</div>
-                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">목록에 노출</div>
-                        <input
-                            className="mt-3"
-                            type="checkbox"
-                            checked={form.displayUse}
-                            onChange={(e) => onChange("displayUse", e.target.checked)}
-                        />
-                    </label>
-
-                    <label className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
-                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">판매함</div>
-                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">실제 주문 가능 상태</div>
-                        <input
-                            className="mt-3"
-                            type="checkbox"
-                            checked={form.saleUse}
-                            onChange={(e) => onChange("saleUse", e.target.checked)}
-                        />
-                    </label>
-
-                    <div className="rounded-xl border border-[var(--dad-border)] bg-white/70 p-4">
-                        <div className="text-sm font-extrabold text-[var(--dad-ink)]">카테고리(임시)</div>
-                        <div className="mt-1 text-xs font-bold text-[var(--dad-muted)]">
-                            오늘의공구/바로픽업가능 다중 선택
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            {PRODUCT_ADMIN_CATEGORY_OPTIONS.map((item) => (
-                                <label
-                                    key={item.key}
-                                    className="inline-flex items-center gap-2 rounded-full border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-bold"
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={form.categoryKeys.includes(item.key)}
-                                        onChange={() => toggleCategory(item.key)}
-                                    />
-                                    {item.label}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                </div>
+                <div className="text-base font-extrabold text-[var(--dad-ink)]">판매 정보</div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
@@ -622,198 +641,6 @@ export default function ProductCreateForm({ tenants }: Props) {
                 </div>
             </section>
 
-            <section className="dad-card space-y-4 p-5">
-                <div className="text-base font-extrabold text-[var(--dad-ink)]">이미지</div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    {[
-                        { key: "image1", label: "대표이미지(image1)", preview: preview1 },
-                        { key: "image2", label: "목록이미지(image2)", preview: preview2 },
-                        { key: "image3", label: "작은목록이미지(image3)", preview: preview3 },
-                    ].map((item) => (
-                        <div key={item.key} className="space-y-2">
-                            <label className="text-xs font-extrabold text-[var(--dad-muted)]">{item.label}</label>
-                            <input
-                                className="w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                                value={(form as any)[item.key]}
-                                onChange={(e) => onChange(item.key as any, e.target.value as any)}
-                            />
-                            <div className="flex gap-2">
-                                <label className="inline-flex flex-1 cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
-                                    {uploadingKey === item.key ? "업로드 중..." : "파일 업로드"}
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (!file) return;
-                                            uploadSingleImage(item.key as any, file);
-                                            e.currentTarget.value = "";
-                                        }}
-                                    />
-                                </label>
-
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600 disabled:opacity-40"
-                                    disabled={!(form as any)[item.key]}
-                                    onClick={() => clearSingleImage(item.key as "image1" | "image2" | "image3")}
-                                >
-                                    삭제
-                                </button>
-                            </div>
-
-                            <div className="overflow-hidden rounded-2xl border border-[var(--dad-border)] bg-white/70">
-                                <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
-                                    {item.preview ? (
-                                        <img src={item.preview} alt="" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <div className="flex h-full items-center justify-center text-xs font-bold text-[var(--dad-muted)]">
-                                            이미지 없음
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">추가이미지(other_image)</label>
-                        <textarea
-                            className="mt-2 min-h-[120px] w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-semibold"
-                            value={form.otherImagesText}
-                            onChange={(e) => onChange("otherImagesText", e.target.value)}
-                            placeholder={"한 줄에 하나씩 입력\nuploads/products/a.jpg\nuploads/products/b.jpg"}
-                        />
-                        <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
-                            {uploadingKey === "otherImagesText" ? "업로드 중..." : "추가이미지 여러장 업로드"}
-                            <input
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                className="hidden"
-                                onChange={(e) => {
-                                    const files = e.target.files;
-                                    if (!files?.length) return;
-                                    appendImageToList("otherImagesText", files);
-                                    e.currentTarget.value = "";
-                                }}
-                            />
-                        </label>
-
-                        {otherImageList.length ? (
-                            <div className="mt-3 grid grid-cols-2 gap-3">
-                                {otherImageList.map((path) => (
-                                    <div key={path} className="rounded-2xl border border-[var(--dad-border)] bg-white p-2">
-                                        <div className="overflow-hidden rounded-xl border border-[var(--dad-border)]">
-                                            <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
-                                                <img
-                                                    src={toPreviewUrl(path)}
-                                                    alt=""
-                                                    className="h-full w-full object-cover"
-                                                />
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600"
-                                            onClick={() => removeListImage("otherImagesText", path)}
-                                        >
-                                            삭제
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : null}
-                    </div>
-
-                    <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">상세설명 이미지(detail_image)</label>
-                        <textarea
-                            className="mt-2 min-h-[120px] w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-semibold"
-                            value={form.detailImagesText}
-                            onChange={(e) => onChange("detailImagesText", e.target.value)}
-                            placeholder={"한 줄에 하나씩 입력\nuploads/products/detail1.jpg\nuploads/products/detail2.jpg"}
-                        />
-                        <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
-                            {uploadingKey === "detailImagesText" ? "업로드 중..." : "상세이미지 여러장 업로드"}
-                            <input
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                className="hidden"
-                                onChange={(e) => {
-                                    const files = e.target.files;
-                                    if (!files?.length) return;
-                                    appendImageToList("detailImagesText", files);
-                                    e.currentTarget.value = "";
-                                }}
-                            />
-                        </label>
-
-                        {detailImageList.length ? (
-                            <div className="mt-3 grid grid-cols-2 gap-3">
-                                {detailImageList.map((path) => (
-                                    <div key={path} className="rounded-2xl border border-[var(--dad-border)] bg-white p-2">
-                                        <div className="overflow-hidden rounded-xl border border-[var(--dad-border)]">
-                                            <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
-                                                <img
-                                                    src={toPreviewUrl(path)}
-                                                    alt=""
-                                                    className="h-full w-full object-cover"
-                                                />
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600"
-                                            onClick={() => removeListImage("detailImagesText", path)}
-                                        >
-                                            삭제
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : null}
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--dad-border)] bg-white/70 px-4 py-3 text-sm font-extrabold">
-                        <input
-                            type="checkbox"
-                            checked={form.detailImageOnly}
-                            onChange={(e) => onChange("detailImageOnly", e.target.checked)}
-                        />
-                        상세설명을 이미지로만 사용
-                    </label>
-
-                    <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">상세이미지 출력방식</label>
-                        <select
-                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
-                            value={form.detailImageType}
-                            onChange={(e) => onChange("detailImageType", e.target.value as "1" | "2")}
-                        >
-                            <option value="1">이미지간 공백 있음</option>
-                            <option value="2">이미지간 공백 없음</option>
-                        </select>
-                    </div>
-                </div>
-            </section>
-
-            <section className="dad-card p-5">
-                <ProductHtmlEditor
-                    label="상세설명(explains / HTML)"
-                    value={form.explains}
-                    onChange={(html: string) => onChange("explains", html)}
-                    height={360}
-                />
-            </section>
-
             <section className="dad-card p-4 sm:p-5 space-y-4">
                 <div className="flex items-center justify-between">
                     <div className="text-base font-extrabold text-[var(--dad-ink)]">옵션</div>
@@ -905,6 +732,198 @@ export default function ProductCreateForm({ tenants }: Props) {
                         ))}
                     </div>
                 )}
+            </section>
+
+            <section className="dad-card space-y-4 p-5">
+                <div className="text-base font-extrabold text-[var(--dad-ink)]">이미지</div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {[
+                        { key: "image1", label: "대표이미지(image1)", preview: preview1 },
+                        { key: "image2", label: "목록이미지(image2)", preview: preview2 },
+                        { key: "image3", label: "작은목록이미지(image3)", preview: preview3 },
+                    ].map((item) => (
+                        <div key={item.key} className="space-y-2">
+                            <label className="text-xs font-extrabold text-[var(--dad-muted)]">{item.label}</label>
+                            <input
+                                className="w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                                value={(form as any)[item.key]}
+                                onChange={(e) => onChange(item.key as any, e.target.value as any)}
+                            />
+                            <div className="flex gap-2">
+                                <label className="inline-flex flex-1 cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
+                                    {uploadingKey === item.key ? "업로드 중..." : "파일 업로드"}
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            uploadSingleImage(item.key as any, file);
+                                            e.currentTarget.value = "";
+                                        }}
+                                    />
+                                </label>
+
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600 disabled:opacity-40"
+                                    disabled={!(form as any)[item.key]}
+                                    onClick={() => clearSingleImage(item.key as "image1" | "image2" | "image3")}
+                                >
+                                    삭제
+                                </button>
+                            </div>
+
+                            <div className="overflow-hidden rounded-2xl border border-[var(--dad-border)] bg-white/70">
+                                <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
+                                    {item.preview ? (
+                                        <img src={item.preview} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <div className="flex h-full items-center justify-center text-xs font-bold text-[var(--dad-muted)]">
+                                            이미지 없음
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">추가이미지(other_image)</label>
+                        <textarea
+                            className="mt-2 min-h-[120px] w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-semibold"
+                            value={form.otherImagesText}
+                            onChange={(e) => onChange("otherImagesText", e.target.value)}
+                            placeholder={"한 줄에 하나씩 입력\nuploads/products/a.jpg\nuploads/products/b.jpg"}
+                        />
+                        <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
+                            {uploadingKey === "otherImagesText" ? "업로드 중..." : "추가이미지 여러장 업로드"}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => {
+                                    const files = e.target.files;
+                                    if (!files?.length) return;
+                                    appendImageToList("otherImagesText", files);
+                                    e.currentTarget.value = "";
+                                }}
+                            />
+                        </label>
+
+                        {otherImageList.length ? (
+                            <div className="mt-3 grid grid-cols-2 gap-3">
+                                {otherImageList.map((path, idx) => (
+                                    <div key={`${path}_${idx}`} className="rounded-2xl border border-[var(--dad-border)] bg-white p-2">
+                                        <div className="overflow-hidden rounded-xl border border-[var(--dad-border)]">
+                                            <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
+                                                <img
+                                                    src={toPreviewUrl(path)}
+                                                    alt=""
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600"
+                                            onClick={() => removeListImage("otherImagesText", path)}
+                                        >
+                                            삭제
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">상세설명 이미지(detail_image)</label>
+                        <textarea
+                            className="mt-2 min-h-[120px] w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-semibold"
+                            value={form.detailImagesText}
+                            onChange={(e) => onChange("detailImagesText", e.target.value)}
+                            placeholder={"한 줄에 하나씩 입력\nuploads/products/detail1.jpg\nuploads/products/detail2.jpg"}
+                        />
+                        <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold">
+                            {uploadingKey === "detailImagesText" ? "업로드 중..." : "상세이미지 여러장 업로드"}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => {
+                                    const files = e.target.files;
+                                    if (!files?.length) return;
+                                    appendImageToList("detailImagesText", files);
+                                    e.currentTarget.value = "";
+                                }}
+                            />
+                        </label>
+
+                        {detailImageList.length ? (
+                            <div className="mt-3 grid grid-cols-2 gap-3">
+                                {detailImageList.map((path, idx) => (
+                                    <div key={`${path}_${idx}`} className="rounded-2xl border border-[var(--dad-border)] bg-white p-2">
+                                        <div className="overflow-hidden rounded-xl border border-[var(--dad-border)]">
+                                            <div className="aspect-[4/3] bg-[color:var(--dad-surface)]">
+                                                <img
+                                                    src={toPreviewUrl(path)}
+                                                    alt=""
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white px-3 py-2 text-xs font-extrabold text-red-600"
+                                            onClick={() => removeListImage("detailImagesText", path)}
+                                        >
+                                            삭제
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--dad-border)] bg-white/70 px-4 py-3 text-sm font-extrabold">
+                        <input
+                            type="checkbox"
+                            checked={form.detailImageOnly}
+                            onChange={(e) => onChange("detailImageOnly", e.target.checked)}
+                        />
+                        상세설명을 이미지로만 사용
+                    </label>
+
+                    <div>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">상세이미지 출력방식</label>
+                        <select
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            value={form.detailImageType}
+                            onChange={(e) => onChange("detailImageType", e.target.value as "1" | "2")}
+                        >
+                            <option value="1">이미지간 공백 있음</option>
+                            <option value="2">이미지간 공백 없음</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section className="dad-card p-5">
+                <ProductHtmlEditor
+                    label="상세설명(explains / HTML)"
+                    value={form.explains}
+                    onChange={(html: string) => onChange("explains", html)}
+                    height={360}
+                />
             </section>
 
             <div className="flex justify-end">

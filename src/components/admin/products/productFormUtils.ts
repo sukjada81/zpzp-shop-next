@@ -13,11 +13,23 @@ export type OptionGroupRow = {
 };
 
 export const PRODUCT_ADMIN_CATEGORY_OPTIONS = [
-    { key: "daily-deal", label: "오늘의공구" },
-    { key: "pickup-ready", label: "바로픽업가능" },
+    { key: "daily-deal", code: "100000", label: "오늘의 공구" },
+    { key: "pickup-ready", code: "100001", label: "바로 픽업 가능" },
 ] as const;
 
-const MAX_UPLOAD_FILE_SIZE_MB = 30;
+export function categoryKeysFromCateCode(code: string): string[] {
+    const normalized = String(code ?? "").trim();
+    const found = PRODUCT_ADMIN_CATEGORY_OPTIONS.find((item) => item.code === normalized);
+    return found ? [found.key] : [];
+}
+
+export function cateCodeFromCategoryKeys(keys: string[] | null | undefined): string {
+    const list = Array.isArray(keys) ? keys : [];
+    const found = PRODUCT_ADMIN_CATEGORY_OPTIONS.find((item) => list.includes(item.key));
+    return found?.code ?? "0";
+}
+
+const MAX_UPLOAD_FILE_SIZE_MB = 100;
 const MAX_UPLOAD_FILE_SIZE = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024;
 
 function toProxyUploadPath(pathname: string) {
@@ -34,7 +46,6 @@ export function toPreviewUrl(input: string) {
 
     const normalized = v.startsWith("/") ? v : `/${v}`;
 
-    // 업로드 파일은 항상 API 프록시를 통해 표시
     if (normalized.startsWith("/uploads/")) {
         return toProxyUploadPath(normalized);
     }
@@ -46,7 +57,6 @@ export function toStoredPath(input: string) {
     const v = (input || "").trim();
     if (!v) return "";
 
-    // 이미 상대경로면 그대로 저장
     if (!/^https?:\/\//i.test(v)) {
         return v.replace(/^\/+/, "");
     }
@@ -54,12 +64,10 @@ export function toStoredPath(input: string) {
     try {
         const u = new URL(v);
 
-        // uploads 경로인 경우에만 상대경로로 저장
         if (u.pathname.startsWith("/uploads/")) {
             return `${u.pathname}${u.search || ""}`.replace(/^\/+/, "");
         }
 
-        // 외부 호스팅 이미지는 절대 URL 그대로 저장
         return v;
     } catch {
         return v;

@@ -15,6 +15,8 @@ type CardItem = {
     price: number;
     tags?: string[];
     thumbnailUrl?: string;
+    categoryLabel?: string;
+    cate?: string | null;
 };
 
 type GridSection = {
@@ -32,6 +34,8 @@ type ProductDetailResponse = {
         title: string;
         price: number;
         description?: string | null;
+        categoryLabel?: string;
+        cate?: string | null;
         meta?: { timeLeft?: string; pickup?: string };
         images: { key: string; label?: string }[];
         options: Array<{
@@ -49,9 +53,16 @@ function getInternalOrigin() {
     return process.env.NEXT_INTERNAL_ORIGIN || process.env.NEXT_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
 }
 
-async function fetchProducts(tenant: string) {
+async function fetchProducts(
+    tenant: string,
+    q?: {
+        take?: number;
+        q?: string;
+        type?: "today" | "pickup" | "ongoing";
+    }
+) {
     const origin = getInternalOrigin();
-    const path = endpoints.publicProducts(tenant, { take: 100 });
+    const path = endpoints.publicProducts(tenant, q);
     const url = new URL(path, origin);
 
     const res = await fetch(url.toString(), { cache: "no-store" });
@@ -83,6 +94,8 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
         title: String(p.title ?? ""),
         price: Number(p.price ?? 0),
         thumbnailUrl: p.thumbnailUrl,
+        cate: p.cate ?? null,
+        categoryLabel: p.categoryLabel,
         tags: [...(p.metaLeft ? [p.metaLeft] : []), ...(p.metaRight ? [p.metaRight] : [])].slice(0, 2),
     }));
 }
@@ -97,9 +110,15 @@ function getMockRecentOrders() {
     ];
 }
 
+function categoryBadgeColor(label?: string) {
+    if (label === "오늘의 공구") return "bg-amber-500 text-white";
+    if (label === "바로 픽업 가능") return "bg-sky-500 text-white";
+    return "bg-slate-800 text-white";
+}
+
 export default async function HomePage({
-    params,
-}: {
+                                           params,
+                                       }: {
     params: { tenant: string } | Promise<{ tenant: string }>;
 }) {
     const resolved = await Promise.resolve(params);
@@ -107,34 +126,35 @@ export default async function HomePage({
 
     if (!tenant) notFound();
 
-    const products = await fetchProducts(tenant);
-    const pickup = products.filter((p) => (p.metaRight || "").includes("픽업"));
+    const [todayProducts, pickupProducts, ongoingProducts] = await Promise.all([
+        fetchProducts(tenant, { take: 8, type: "today" }),
+        fetchProducts(tenant, { take: 8, type: "pickup" }),
+        fetchProducts(tenant, { take: 12, type: "ongoing" }),
+    ]);
 
     const todaySection: GridSection = {
         title: "🛒 오늘의 공구",
         href: `/${tenant}/goods?tab=today`,
-        items: toCardItems(products.slice(0, 8)),
+        items: toCardItems(todayProducts),
     };
 
     const pickupSection: GridSection = {
         title: "⚡️ 바로 픽업 가능",
         href: `/${tenant}/goods?tab=pickup`,
-        items: toCardItems(pickup.slice(0, 8)),
+        items: toCardItems(pickupProducts),
         description: "빠르게 픽업 가능한 상품입니다.",
     };
 
     const mockOrders = getMockRecentOrders();
 
-    // 판매기간 내 상품 전체 사용
-    const ongoingBase = products;
-
     const ongoingDetails = await Promise.all(
-        ongoingBase.map(async (p, index) => {
+        ongoingProducts.map(async (p, index) => {
             const detail = await fetchProductDetail(tenant, String(p.id));
 
             const item: OngoingGroupBuyItem = {
                 id: String(p.id),
                 tenant,
+                href: `/${tenant}/goods/${p.id}`,
                 title: String(detail?.title ?? p.title ?? ""),
                 price: Number(detail?.price ?? p.price ?? 0),
                 images: detail?.images?.length
@@ -153,7 +173,7 @@ export default async function HomePage({
             return item;
         })
     );
-    // console.log("[ongoingDetails]", JSON.stringify(ongoingDetails, null, 2));
+
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 pb-24 pt-3">
             <HomeBannerCarousel tenant={tenant} />
@@ -173,7 +193,6 @@ export default async function HomePage({
             />
             <Grid2 tenant={tenant} items={pickupSection.items} emptyText="픽업 가능한 상품이 없습니다." />
 
-            {/* 진행 중인 공구 */}
             <div className="min-h-screen">
                 <OngoingGroupBuySection
                     title="🔥 진행 중인 공구"
@@ -188,10 +207,10 @@ export default async function HomePage({
 }
 
 function SectionTitle({
-    title,
-    href,
-    description,
-}: {
+                          title,
+                          href,
+                          description,
+                      }: {
     title: string;
     href: string;
     description?: string;
@@ -220,10 +239,10 @@ function SectionTitle({
 }
 
 function Grid2({
-    tenant,
-    items,
-    emptyText,
-}: {
+                   tenant,
+                   items,
+                   emptyText,
+               }: {
     tenant: string;
     items: CardItem[];
     emptyText: string;
@@ -262,6 +281,18 @@ function Grid2({
                                         <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
                                     )}
                                 </Link>
+
+                                {it.categoryLabel ? (
+                                    <div className="absolute left-3 top-3">
+                                        <span
+                                            className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${categoryBadgeColor(
+                                                it.categoryLabel
+                                            )}`}
+                                        >
+                                            {it.categoryLabel}
+                                        </span>
+                                    </div>
+                                ) : null}
                             </div>
 
                             <Link

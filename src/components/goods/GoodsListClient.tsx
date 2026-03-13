@@ -14,20 +14,30 @@ export type GoodsListItem = {
     metaLeft?: string;
     metaRight?: string;
     thumbnailUrl?: string;
+    cate?: string | null;
+    categoryLabel?: string;
 };
 
 const TABS = [
     { key: "today", label: "오늘의 공구" },
     { key: "pickup", label: "바로 픽업 가능" },
     { key: "ongoing", label: "진행 중인 공구" },
-    { key: "limited", label: "오늘의 한정특가" },
-    { key: "event", label: "이벤트" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
 function isTabKey(x: string | null): x is TabKey {
     return !!x && (TABS as readonly { key: string }[]).some((t) => t.key === x);
+}
+
+function categoryBadgeColor(label?: string) {
+    if (label === "오늘의 공구") {
+        return "bg-amber-500 text-white";
+    }
+    if (label === "바로 픽업 가능") {
+        return "bg-sky-500 text-white";
+    }
+    return "bg-slate-700 text-white";
 }
 
 export default function GoodsListClient(props: { tenant: string; initialItems: GoodsListItem[] }) {
@@ -48,27 +58,21 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
         const qq = q.trim().toLowerCase();
 
         const tabFilter = (it: GoodsListItem) => {
-            const left = it.metaLeft ?? "";
-            const right = it.metaRight ?? "";
-            const title = it.title ?? "";
-            const badgeL = it.badgeLeft ?? "";
-            const badgeR = it.badgeRight ?? "";
+            const cate = String(it.cate ?? "").trim();
+            const categoryLabel = String(it.categoryLabel ?? "").trim();
 
-            if (tab === "today") return true;
-            if (tab === "pickup") return right.includes("픽업") || title.includes("픽업");
-
-            if (tab === "ongoing") {
-                return (
-                    badgeL.includes("진행") ||
-                    badgeR.includes("진행") ||
-                    left.includes("D-") ||
-                    right.includes("D-") ||
-                    title.includes("진행")
-                );
+            if (tab === "today") {
+                return cate === "100000" || categoryLabel === "오늘의 공구";
             }
 
-            if (tab === "limited") return badgeR.includes("한정") || title.includes("한정");
-            if (tab === "event") return badgeL.includes("이벤트") || title.includes("이벤트");
+            if (tab === "pickup") {
+                return cate === "100001" || categoryLabel === "바로 픽업 가능";
+            }
+
+            if (tab === "ongoing") {
+                return true;
+            }
+
             return true;
         };
 
@@ -82,13 +86,14 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
             ? "오늘의 공구"
             : tab === "pickup"
                 ? "바로 픽업 가능"
-                : tab === "ongoing"
-                    ? "진행 중인 공구"
-                    : tab === "limited"
-                        ? "오늘의 한정특가"
-                        : "이벤트";
+                : "진행 중인 공구";
 
-    const headerDesc = "현재 예약 가능한 공동구매 상품입니다.";
+    const headerDesc =
+        tab === "today"
+            ? "오늘의 공구 상품만 모아서 볼 수 있어요."
+            : tab === "pickup"
+                ? "바로 픽업 가능한 상품만 볼 수 있어요."
+                : "현재 예약 가능한 공동구매 상품입니다.";
 
     function onChangeTab(next: TabKey) {
         setTab(next);
@@ -109,8 +114,12 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
                     </button>
 
                     <div className="min-w-0">
-                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">{headerTitle}</div>
-                        <div className="mt-1 text-[13px] font-semibold text-[color:var(--muted)] leading-snug">{headerDesc}</div>
+                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">
+                            {headerTitle}
+                        </div>
+                        <div className="mt-1 text-[13px] font-semibold text-[color:var(--muted)] leading-snug">
+                            {headerDesc}
+                        </div>
                     </div>
                 </div>
             </section>
@@ -181,8 +190,6 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
 
 function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
     const { tenant, item } = props;
-
-    // ✅ thumbnailUrl이 절대URL로 오니 그대로 사용
     const thumb = item.thumbnailUrl?.trim();
 
     return (
@@ -195,7 +202,6 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
                     <div className="aspect-[4/3]" />
 
                     {thumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={thumb}
                             alt={item.title}
@@ -205,26 +211,30 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
                     ) : null}
 
                     <div className="absolute left-2 top-2 flex gap-2">
-                        {item.badgeLeft ? (
-                            <span className="rounded-full bg-[color:var(--brand)] px-2 py-1 text-[11px] font-extrabold text-white">
-                {item.badgeLeft}
-              </span>
-                        ) : null}
-                        {item.badgeRight ? (
-                            <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-[11px] font-extrabold text-white">
-                {item.badgeRight}
-              </span>
+                        {item.categoryLabel ? (
+                            <span
+                                className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${categoryBadgeColor(
+                                    item.categoryLabel
+                                )}`}
+                            >
+                                {item.categoryLabel}
+                            </span>
                         ) : null}
                     </div>
                 </div>
 
-                <div className="mt-3 line-clamp-2 text-sm font-bold text-[color:var(--fg)]">{item.title}</div>
-                <div className="mt-2 text-lg font-extrabold text-[color:var(--fg)]">{Number(item.price ?? 0).toLocaleString()}원</div>
+                <div className="mt-3 line-clamp-2 text-sm font-bold text-[color:var(--fg)]">
+                    {item.title}
+                </div>
+
+                <div className="mt-2 text-lg font-extrabold text-[color:var(--fg)]">
+                    {Number(item.price ?? 0).toLocaleString()}원
+                </div>
 
                 {(item.metaLeft || item.metaRight) && (
-                    <div className="mt-2 flex items-center justify-between text-[11px] font-semibold text-[color:var(--muted)]">
-                        <span>{item.metaLeft ?? ""}</span>
-                        <span>{item.metaRight ?? ""}</span>
+                    <div className="mt-2 flex flex-col gap-1 text-[11px] font-semibold text-[color:var(--muted)]">
+                        {item.metaLeft ? <span>{item.metaLeft}</span> : null}
+                        {item.metaRight ? <span>{item.metaRight}</span> : null}
                     </div>
                 )}
 

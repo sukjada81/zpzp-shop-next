@@ -13,6 +13,29 @@ function statusColor(status: string) {
     return "bg-white text-gray-600 border-gray-200";
 }
 
+function categoryLabelFromRow(p: any) {
+    const cate = String(p?.cate ?? "").trim();
+
+    if (cate === "100000") return "오늘의 공구";
+    if (cate === "100001") return "바로 픽업 가능";
+
+    const categoryKeys = Array.isArray(p?.categoryKeys) ? p.categoryKeys : [];
+    if (categoryKeys.includes("daily-deal")) return "오늘의 공구";
+    if (categoryKeys.includes("pickup-ready")) return "바로 픽업 가능";
+
+    return "-";
+}
+
+function categoryColor(label: string) {
+    if (label === "오늘의 공구") {
+        return "bg-amber-100 text-amber-700 border-amber-200";
+    }
+    if (label === "바로 픽업 가능") {
+        return "bg-sky-100 text-sky-700 border-sky-200";
+    }
+    return "bg-gray-100 text-gray-500 border-gray-200";
+}
+
 export default function ProductTable({ rows }: { rows: any[] }) {
     const [selected, setSelected] = useState<string[]>([]);
 
@@ -36,7 +59,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
     return (
         <div className="overflow-x-auto">
             {selected.length > 0 && (
-                <div className="sticky top-0 z-20 flex min-w-[1080px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
+                <div className="sticky top-0 z-20 flex min-w-[1160px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
                     <div className="text-sm font-bold">선택 {selected.length}개</div>
 
                     <button onClick={() => bulkStatus("active")} className="dad-btn dad-btn-primary h-8 px-3 text-xs">
@@ -53,12 +76,13 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                 </div>
             )}
 
-            <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
+            <table className="w-full min-w-[1160px] table-fixed text-left text-sm">
                 <colgroup>
                     <col className="w-[36px]" />
                     <col className="w-[62px]" />
                     <col className="w-[92px]" />
                     <col className="w-auto" />
+                    <col className="w-[130px]" />
                     <col className="w-[85px]" />
                     <col className="w-[100px]" />
                     <col className="w-[108px]" />
@@ -76,6 +100,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                     <th className="px-2 py-3 text-center">이미지</th>
                     <th className="px-2 py-3 text-center">지점</th>
                     <th className="px-2 py-3 text-center">상품명</th>
+                    <th className="px-2 py-3 text-center">카테고리</th>
                     <th className="px-2 py-3 text-center">상태</th>
                     <th className="px-2 py-3 text-center">가격</th>
                     <th className="sticky right-0 z-10 bg-white px-2 py-3 text-center">관리</th>
@@ -96,6 +121,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                     const preview = toPreviewUrl(image);
                     const status = String(p?.status ?? "");
                     const price = Number(p?.price ?? p?.basePrice ?? 0);
+                    const categoryLabel = categoryLabelFromRow(p);
 
                     return (
                         <tr key={id} className="border-b border-[var(--dad-border)] hover:bg-gray-50">
@@ -143,6 +169,16 @@ export default function ProductTable({ rows }: { rows: any[] }) {
 
                             <td className="px-2 py-3 text-center align-middle">
                                     <span
+                                        className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold ${categoryColor(
+                                            categoryLabel
+                                        )}`}
+                                    >
+                                        {categoryLabel}
+                                    </span>
+                            </td>
+
+                            <td className="px-2 py-3 text-center align-middle">
+                                    <span
                                         className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold ${statusColor(
                                             status
                                         )}`}
@@ -169,7 +205,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
 
                 {(rows || []).length === 0 && (
                     <tr>
-                        <td colSpan={7} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
+                        <td colSpan={8} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
                             상품 데이터가 없습니다.
                         </td>
                     </tr>

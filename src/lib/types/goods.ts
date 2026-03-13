@@ -1,40 +1,58 @@
 // src/lib/types/goods.ts
 
-export type PublicProductItem = {
-    id: string | number;
+export type PublicProductListItem = {
+    id: string;
     title: string;
     price: number;
-    badgeLeft?: string;
-    badgeRight?: string;
     metaLeft?: string;
     metaRight?: string;
-    thumbnailUrl?: string; // ✅ 썸네일 URL(절대/상대 모두 가능)
+    thumbnailUrl?: string;
+    sourceTenantId?: string | null;
+    cate?: string | null;
+    icon?: string;
+    optionUse?: number;
+    saleStartAt?: string | null;
+    saleEndAt?: string | null;
+    pickupStartAt?: string | null;
+    pickupEndAt?: string | null;
+    pickupNote?: string | null;
 };
 
 export type PublicProductsResponse = {
     ok: true;
     tenant?: string;
-    items: PublicProductItem[];
+    type?: string | null;
+    category?: string | null;
+    cate?: number | null;
+    items: PublicProductListItem[];
 };
 
-export type ProductDetailResponse = {
+export type PublicProductDetailResponse = {
     ok: true;
     tenant?: string;
     product: {
-        id: string | number;
+        id: string;
         title: string;
         price: number;
         description?: string | null;
-        badges?: { left?: string; right?: string };
-        meta?: { timeLeft?: string; pickup?: string };
-        images?: { key: string; label?: string }[];
-        options?: Array<{
-            id: string | number;
+        meta?: {
+            timeLeft?: string;
+            pickup?: string;
+            pickupStartAt?: string | null;
+            pickupEndAt?: string | null;
+            pickupNote?: string | null;
+        };
+        images: { key: string; label?: string }[];
+        options: Array<{
+            id: string;
             name: string;
             price: number | null;
             soldout?: boolean;
             stockNote?: string;
+            rawOptionId?: number | string;
         }>;
-        notices?: { icon?: string; text: string }[];
+        sourceTenantId?: string | null;
+        saleStartAt?: string | null;
+        saleEndAt?: string | null;
     };
 };

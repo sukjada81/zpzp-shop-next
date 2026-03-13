@@ -1146,6 +1146,9 @@ model mallRN_goods {
   max_qty                  Int?                 @db.UnsignedInt
   sale_start_at            DateTime?
   sale_end_at              DateTime?
+  pickup_start_at          DateTime?
+  pickup_end_at            DateTime?
+  pickup_note              String?              @db.VarChar(255)
   sort_order               Int                  @default(0)
   deleted_at               DateTime?
   re_uid                   Int                  @default(99999999) @db.UnsignedInt
@@ -1236,6 +1239,7 @@ model mallRN_goods {
   @@index([tenant_id, sort_order], map: "idx_goods_tenant_sort")
   @@index([tenant_id, sale_end_at], map: "idx_goods_tenant_sale_end")
   @@index([deleted_at], map: "idx_goods_deleted")
+  @@index([tenant_id, pickup_start_at, pickup_end_at], map: "idx_goods_tenant_pickup_period")
   @@map("mallRN_goods")
 }
 

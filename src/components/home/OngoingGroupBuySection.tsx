@@ -3,12 +3,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ShoppingBag, TrendingUp, Clock3, Truck } from "lucide-react";
+import { ShoppingBag, Clock3, Truck } from "lucide-react";
 import { endpoints } from "@/lib/api/endpoints";
 
-/**
- * 상단 실시간 주문 알림용 데이터
- */
 type NoticeItem = {
     id: string;
     maskedName: string;
@@ -16,12 +13,6 @@ type NoticeItem = {
     qty: number;
 };
 
-/**
- * 옵션 데이터
- * - soldout: 품절 여부
- * - stockNote: "5개 남았습니다!", "한정수량 마감!" 같은 문구
- * - rawOptionId: 실제 주문 API에 전달할 원본 옵션 번호
- */
 type OptionItem = {
     id: string;
     name: string;
@@ -31,9 +22,6 @@ type OptionItem = {
     rawOptionId?: number | string;
 };
 
-/**
- * 진행 중인 공구 카드 데이터
- */
 export type OngoingGroupBuyItem = {
     id: string;
     tenant: string;
@@ -63,9 +51,6 @@ type CreateOrderResponse = {
     message?: string;
 };
 
-/**
- * "몇 분 전 / 몇 시간 전 / 며칠 전" 포맷
- */
 function formatAgo(minutesAgo: number) {
     if (minutesAgo <= 0) return "방금";
     if (minutesAgo < 60) return `${minutesAgo}분 전`;
@@ -75,31 +60,12 @@ function formatAgo(minutesAgo: number) {
     return `${days}일 전`;
 }
 
-/**
- * 마감 시간 문구 기본값
- */
 function formatTimeLeft(timeLeft?: string) {
     return timeLeft || "진행 중";
 }
 
-/**
- * 픽업 문구 기본값
- */
 function formatPickupText(pickup?: string) {
     return pickup?.trim() || "픽업일 정보 없음";
-}
-
-/**
- * 상단 주문 알림 목업 데이터
- */
-function makeMockNotices(seed: string): NoticeItem[] {
-    return [
-        { id: `${seed}_1`, maskedName: "손*이****", minutesAgo: 9, qty: 2 },
-        { id: `${seed}_2`, maskedName: "영*8***", minutesAgo: 44, qty: 1 },
-        { id: `${seed}_3`, maskedName: "명**9***", minutesAgo: 17, qty: 3 },
-        { id: `${seed}_4`, maskedName: "김*진***", minutesAgo: 5, qty: 1 },
-        { id: `${seed}_5`, maskedName: "박*민***", minutesAgo: 3, qty: 2 },
-    ];
 }
 
 function onlyDigits(v: string) {
@@ -128,16 +94,15 @@ function toNumberOrZero(v: unknown) {
     return Number.isFinite(n) ? n : 0;
 }
 
-
 function buildOptionKey(productId: string | number, optionId: string | number) {
     return `${String(productId)}__${String(optionId)}`;
 }
 
 function SuccessToast({
-    open,
-    message,
-    onClose,
-}: {
+                          open,
+                          message,
+                          onClose,
+                      }: {
     open: boolean;
     message: string;
     onClose: () => void;
@@ -175,21 +140,16 @@ function SuccessToast({
     );
 }
 
-/**
- * 상단 실시간 주문 알림 바
- */
 function CompactNoticeBar({
-    notice,
-    animateClass = "",
-}: {
+                              notice,
+                          }: {
     notice?: NoticeItem;
-    animateClass?: string;
 }) {
     if (!notice) return null;
 
     return (
         <div
-            className={`w-full rounded-[12px] border px-3 py-2 transition-all duration-300 ${animateClass}`}
+            className="w-full rounded-[12px] border px-3 py-2 transition-all duration-300"
             style={{
                 borderColor: "rgba(240,127,34,0.30)",
                 background: "rgba(240,127,34,0.06)",
@@ -213,27 +173,17 @@ function CompactNoticeBar({
                     </span>
                     <span>를 주문했어요</span>
                 </span>
-
-                <TrendingUp
-                    size={14}
-                    strokeWidth={2}
-                    className="ml-auto flex-shrink-0"
-                    style={{ color: "#f07f22" }}
-                />
             </div>
         </div>
     );
 }
 
-/**
- * 옵션 수량 컨트롤
- */
 function QtyControl({
-    value,
-    onMinus,
-    onPlus,
-    disabled,
-}: {
+                        value,
+                        onMinus,
+                        onPlus,
+                        disabled,
+                    }: {
     value: number;
     onMinus: () => void;
     onPlus: () => void;
@@ -277,12 +227,9 @@ function QtyControl({
     );
 }
 
-/**
- * 상단 썸네일 가로 리스트
- */
 function ProductThumbStrip({
-    images,
-}: {
+                               images,
+                           }: {
     images: { key: string; label?: string }[];
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
@@ -312,15 +259,12 @@ function ProductThumbStrip({
     );
 }
 
-/**
- * 공구 1개 블록
- */
 function GroupBuyItemBlock({
-    item,
-    qtyMap,
-    onMinus,
-    onPlus,
-}: {
+                               item,
+                               qtyMap,
+                               onMinus,
+                               onPlus,
+                           }: {
     item: OngoingGroupBuyItem;
     qtyMap: Record<string, number>;
     onMinus: (optionKey: string) => void;
@@ -340,39 +284,16 @@ function GroupBuyItemBlock({
         ];
     }, [item]);
 
-    const mockNotices = useMemo(() => makeMockNotices(item.id), [item.id]);
-    const [noticeIndex, setNoticeIndex] = useState(0);
-    const [noticeVisible, setNoticeVisible] = useState(true);
-
-    useEffect(() => {
-        if (mockNotices.length <= 1) return;
-
-        const timer = window.setInterval(() => {
-            setNoticeVisible(false);
-            window.setTimeout(() => {
-                setNoticeIndex((prev) => (prev + 1) % mockNotices.length);
-                setNoticeVisible(true);
-            }, 180);
-        }, 5000);
-
-        return () => window.clearInterval(timer);
-    }, [mockNotices.length]);
-
-    const currentNotice = mockNotices[noticeIndex] ?? item.notice;
-
     return (
         <article
-            className="mt-6 mb-6 rounded-[28px] border px-3 py-3 shadow-sm"
+            className="mt-6 rounded-[28px] border px-3 py-3 shadow-sm"
             style={{
                 background: "var(--surface)",
                 borderColor: "rgba(23,59,69,0.09)",
                 boxShadow: "0 8px 22px rgba(15, 42, 49, 0.06)",
             }}
         >
-            <CompactNoticeBar
-                notice={currentNotice}
-                animateClass={noticeVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"}
-            />
+            <CompactNoticeBar notice={item.notice} />
 
             <div className="mt-3">
                 <ProductThumbStrip images={item.images} />
@@ -387,19 +308,17 @@ function GroupBuyItemBlock({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    {!item.isMockPreview ? (
-                        <span
-                            className="inline-flex h-[25px] items-center gap-1 rounded-full border px-3 text-[12px] font-medium"
-                            style={{
-                                borderColor: "#ffd6d6",
-                                background: "#fff5f5",
-                                color: "#ff6b6b",
-                            }}
-                        >
-                            <Clock3 size={14} strokeWidth={2} />
-                            <span>{formatTimeLeft(item.meta?.timeLeft)}</span>
-                        </span>
-                    ) : null}
+                    <span
+                        className="inline-flex h-[25px] items-center gap-1 rounded-full border px-3 text-[12px] font-medium"
+                        style={{
+                            borderColor: "#ffd6d6",
+                            background: "#fff5f5",
+                            color: "#ff6b6b",
+                        }}
+                    >
+                        <Clock3 size={14} strokeWidth={2} />
+                        <span>{formatTimeLeft(item.meta?.timeLeft)}</span>
+                    </span>
 
                     <span
                         className="inline-flex min-h-[25px] items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium"
@@ -414,33 +333,32 @@ function GroupBuyItemBlock({
                     </span>
                 </div>
             </Link>
-
+            
             <div className="mt-5 space-y-2">
                 {options.map((option) => {
                     const optionKey = buildOptionKey(item.id, option.id);
                     const qty = qtyMap[optionKey] ?? 0;
                     const price = Number(option.price ?? item.price ?? 0);
                     const soldout = !!option.soldout;
-                    const stockText = option.stockNote?.trim();
+                    const stockText = option.stockNote?.trim() || "🔥 5개 남았습니다!";
 
                     return (
                         <div
                             key={optionKey}
-                            className={`flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow`}
+                            className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow"
                             style={{
                                 borderColor: "#e5e7eb",
                                 boxShadow: "none",
-                                opacity: soldout ? 0.60 : 1,
+                                opacity: soldout ? 0.92 : 1,
                             }}
                         >
                             <div className="min-w-0 flex-1">
-                                <span
-                                    className="inline-flex items-center gap-1 text-xs"
-                                    style={{ color: "#ff6b6b" }}
-                                >
-                                    <span>{stockText ? "🔥" : "🚨"}</span>
-                                    <span>{stockText || "전점 한정! 조기 마감될 수 있습니다."}</span>
-                                </span>
+                    <span
+                        className="inline-flex items-center gap-1 text-xs"
+                        style={{ color: "#ff6b6b" }}
+                    >
+                        <span>{stockText}</span>
+                    </span>
 
                                 <div className="mt-1 font-medium text-neutral-900">
                                     {option.name}
@@ -471,14 +389,11 @@ function GroupBuyItemBlock({
     );
 }
 
-/**
- * 진행 중인 공구 전체 섹션
- */
 export default function OngoingGroupBuySection({
-    title = "🔥 진행 중인 공구",
-    items,
-    showOrderBar = true,
-}: {
+                                                   title = "🔥 진행 중인 공구",
+                                                   items,
+                                                   showOrderBar = true,
+                                               }: {
     title?: string;
     items: OngoingGroupBuyItem[];
     showOrderBar?: boolean;
@@ -497,10 +412,8 @@ export default function OngoingGroupBuySection({
         return () => window.clearTimeout(timer);
     }, [toastOpen]);
 
-
-
     const displayItems = useMemo(() => {
-        return [...items];
+        return items ?? [];
     }, [items]);
 
     const optionMetaMap = useMemo(() => {
@@ -545,9 +458,6 @@ export default function OngoingGroupBuySection({
         return map;
     }, [items]);
 
-    /**
-     * 금액 계산은 화면에 보이는 아이템 기준
-     */
     const optionPriceMap = useMemo(() => {
         const map: Record<string, number> = {};
 
@@ -573,10 +483,6 @@ export default function OngoingGroupBuySection({
         return map;
     }, [displayItems]);
 
-    /**
-     * 실제 주문 가능한 선택만 집계
-     * - preview 선택은 주문 활성화에 포함하지 않음
-     */
     const realSelectedEntries = useMemo(() => {
         return Object.entries(qtyMap).filter(
             ([optionKey, qty]) => Number(qty) > 0 && optionMetaMap.has(optionKey)
@@ -685,24 +591,30 @@ export default function OngoingGroupBuySection({
                     {title}
                 </div>
 
-                <div className="pb-0">
-                    {displayItems.map((item, index) => (
-                        <div key={item.id}>
-                            <GroupBuyItemBlock
-                                item={item}
-                                qtyMap={qtyMap}
-                                onMinus={minus}
-                                onPlus={plus}
-                            />
+                {!displayItems.length ? (
+                    <div className="mt-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm font-semibold text-[color:var(--muted)]">
+                        진행 중인 공구가 없습니다.
+                    </div>
+                ) : (
+                    <div className="pb-0">
+                        {displayItems.map((item, index) => (
+                            <div key={item.id}>
+                                <GroupBuyItemBlock
+                                    item={item}
+                                    qtyMap={qtyMap}
+                                    onMinus={minus}
+                                    onPlus={plus}
+                                />
 
-                            {index !== displayItems.length - 1 && (
-                                <div className="w-full border-t" style={{ borderColor: "#d9d9d9" }} />
-                            )}
-                        </div>
-                    ))}
-                </div>
+                                {index !== displayItems.length - 1 && (
+                                    <div className="w-full border-t" style={{ borderColor: "#d9d9d9" }} />
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
-                {showOrderBar ? (
+                {showOrderBar && displayItems.length ? (
                     <div className="fixed bottom-0 inset-x-0 z-30 px-3">
                         <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
                             <button

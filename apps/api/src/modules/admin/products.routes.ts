@@ -92,6 +92,20 @@ function toNonNegInt(v: any, fallback = 0) {
     return Math.max(0, Math.trunc(n));
 }
 
+function toNonNegBigInt(v: any, fallback: bigint = BigInt(0)) {
+    if (v === "" || v === null || v === undefined) return fallback;
+
+    const s = String(v).trim();
+    if (!/^\d+$/.test(s)) return fallback;
+
+    try {
+        const n = BigInt(s);
+        return n >= BigInt(0) ? n : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 function unixToIso(u: any): string | null {
     const n = Number(u);
     if (!Number.isFinite(n) || n <= 0) return null;
@@ -240,6 +254,7 @@ function buildAdminProduct(row: any) {
         detailImageOnly: Number(row.detail_image_only ?? 0) === 1,
         detailImageType: Number(row.detail_image_type ?? 1),
 
+        cate: row.cate == null ? "0" : String(row.cate),
         categoryKeys: parseCategoryKeysFromIcon(row.icon),
 
         createdAt: unixToIso(row.signdate),
@@ -316,6 +331,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 select: {
                     uid: true,
                     tenant_id: true,
+                    cate: true,
                     name: true,
                     price: true,
                     image1: true,
@@ -386,6 +402,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 pickupOnly: Number(r.pickup_only ?? 0) === 1,
                 displayUse: Number(r.display_use ?? 0) === 1,
                 saleUse: Number(r.sale_use ?? 0) === 1,
+                cate: r.cate == null ? "0" : String(r.cate),
                 categoryKeys: parseCategoryKeysFromIcon(r.icon),
 
                 image1: r.image1 || "",
@@ -423,6 +440,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             select: {
                 uid: true,
                 tenant_id: true,
+                cate: true,
                 name: true,
                 price: true,
                 orig_price: true,
@@ -504,6 +522,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         const created = await app.prisma.mallRN_goods.create({
             data: {
                 tenant_id: resolvedTenant.tenantId,
+                cate: toNonNegBigInt(body.cate, BigInt(0)),
                 name: title,
 
                 explains: normalizeText(body.explains ?? body.description ?? ""),
@@ -562,10 +581,16 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 moddate: nowSec,
                 signdate: nowSec,
             },
-            select: { uid: true },
+            select: { uid: true, cate: true },
         });
 
-        return reply.send({ ok: true, product: jsonSafe({ id: String(created.uid) }) });
+        return reply.send({
+            ok: true,
+            product: jsonSafe({
+                id: String(created.uid),
+                cate: String(created.cate ?? 0),
+            }),
+        });
     });
 
     app.put("/admin/products/:id", async (req: any, reply) => {
@@ -595,6 +620,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             where: { uid: parsed.value },
             data: {
                 tenant_id: resolvedTenant.tenantId,
+                cate: toNonNegBigInt(body.cate, BigInt(0)),
                 name: title,
 
                 explains: normalizeText(body.explains ?? body.description ?? ""),
@@ -641,7 +667,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
                 moddate: Math.floor(Date.now() / 1000),
             },
-            select: { uid: true, tenant_id: true },
+            select: { uid: true, tenant_id: true, cate: true },
         });
 
         return reply.send({
@@ -650,6 +676,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 id: String(updated.uid),
                 tenantId: String(updated.tenant_id ?? ""),
                 tenantSlug: resolvedTenant.tenantSlug,
+                cate: String(updated.cate ?? 0),
             }),
         });
     });

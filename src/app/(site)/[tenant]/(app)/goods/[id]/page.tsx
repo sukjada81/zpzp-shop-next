@@ -1,8 +1,9 @@
+// src/app/(site)/[tenant]/(app)/goods/[id]/page.tsx
 import { notFound } from "next/navigation";
 import GoodsDetailClient, { type GoodsDetailData } from "@/components/goods/GoodsDetailClient";
 import { endpoints } from "@/lib/api/endpoints";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
-import type { ProductDetailResponse, PublicProductsResponse } from "@/lib/types/goods";
+import type { PublicProductDetailResponse, PublicProductsResponse } from "@/lib/types/goods";
 
 function getInternalOrigin() {
     return process.env.NEXT_INTERNAL_ORIGIN || process.env.NEXT_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
@@ -17,7 +18,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
         const res = await fetch(url.toString(), { cache: "no-store" });
 
         if (res.ok) {
-            const data = (await res.json().catch(() => null)) as ProductDetailResponse | null;
+            const data = (await res.json().catch(() => null)) as PublicProductDetailResponse | null;
             if (data?.ok && data.product) {
                 const p = data.product;
 
@@ -26,9 +27,17 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                     title: String(p.title ?? ""),
                     price: Number(p.price ?? 0),
                     description: p.description ?? null,
-                    badges: p.badges,
-                    meta: p.meta,
-                    images: Array.isArray(p.images) && p.images.length ? p.images : [{ key: "", label: "이미지 없음" }],
+                    badges: (p as any).badges,
+                    meta: {
+                        timeLeft: p.meta?.timeLeft,
+                        pickup: p.meta?.pickup,
+                        pickupStartAt: p.meta?.pickupStartAt ?? null,
+                        pickupEndAt: p.meta?.pickupEndAt ?? null,
+                        pickupNote: p.meta?.pickupNote ?? null,
+                    },
+                    images: Array.isArray(p.images) && p.images.length
+                        ? p.images
+                        : [{ key: "", label: "이미지 없음" }],
                     options:
                         Array.isArray(p.options) && p.options.length
                             ? p.options.map((o) => ({
@@ -46,7 +55,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                                     soldout: false,
                                 },
                             ],
-                    notices: Array.isArray(p.notices) ? p.notices : [],
+                    notices: Array.isArray((p as any).notices) ? (p as any).notices : [],
                 };
 
                 return detail;
@@ -76,8 +85,13 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
             meta: {
                 timeLeft: found.metaLeft,
                 pickup: found.metaRight,
+                pickupStartAt: found.pickupStartAt ?? null,
+                pickupEndAt: found.pickupEndAt ?? null,
+                pickupNote: found.pickupNote ?? null,
             },
-            images: found.thumbnailUrl ? [{ key: found.thumbnailUrl, label: "대표 이미지" }] : [{ key: "", label: "이미지 없음" }],
+            images: found.thumbnailUrl
+                ? [{ key: found.thumbnailUrl, label: "대표 이미지" }]
+                : [{ key: "", label: "이미지 없음" }],
             options: [
                 {
                     id: "default",

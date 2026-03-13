@@ -1,3 +1,4 @@
+// src/components/goods/GoodsDetailClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,7 +12,13 @@ export type GoodsDetailData = {
     price: number;
     description?: string | null;
     badges?: { left?: string; right?: string };
-    meta?: { timeLeft?: string; pickup?: string };
+    meta?: {
+        timeLeft?: string;
+        pickup?: string;
+        pickupStartAt?: string | null;
+        pickupEndAt?: string | null;
+        pickupNote?: string | null;
+    };
     images: { key: string; label?: string }[];
     options: {
         id: string;
@@ -106,6 +113,31 @@ function readQuickOrderProfile(tenant: string): QuickOrderProfile | null {
     }
 }
 
+function formatDateTime(value?: string | null) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+
+    return new Intl.DateTimeFormat("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).format(d);
+}
+
+function buildPickupPeriodText(start?: string | null, end?: string | null) {
+    const s = formatDateTime(start);
+    const e = formatDateTime(end);
+
+    if (s && e) return `${s} ~ ${e}`;
+    if (s) return `${s}부터`;
+    if (e) return `${e}까지`;
+    return "";
+}
+
 function SuccessToast({
                           open,
                           message,
@@ -161,7 +193,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const [imgIdx, setImgIdx] = useState(0);
     const canCarousel = safeImages.length > 1;
 
-    const [qty, setQty] = useState<Record<string, number>>(() => Object.fromEntries(data.options.map((o) => [o.id, 0])));
+    const [qty, setQty] = useState<Record<string, number>>(() =>
+        Object.fromEntries(data.options.map((o) => [o.id, 0]))
+    );
     const optionById = useMemo(() => new Map(data.options.map((o) => [o.id, o])), [data.options]);
 
     const selectedLines = useMemo(() => {
@@ -221,6 +255,10 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         const safe = sanitizeHtml(descRaw);
         return absolutizeHtmlImageSrc(safe);
     }, [descIsHtml, descRaw]);
+
+    const pickupPeriodText = useMemo(() => {
+        return buildPickupPeriodText(data.meta?.pickupStartAt, data.meta?.pickupEndAt);
+    }, [data.meta?.pickupStartAt, data.meta?.pickupEndAt]);
 
     function addLinesToCart() {
         const payloadItems = selectedLines.map((l) => ({
@@ -443,6 +481,24 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             ) : null}
                         </div>
 
+                        {pickupPeriodText || data.meta?.pickupNote ? (
+                            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                <div className="text-[13px] font-extrabold text-slate-900">픽업 안내</div>
+
+                                {pickupPeriodText ? (
+                                    <div className="mt-2 text-[13px] font-semibold text-slate-700">
+                                        픽업 가능 기간: {pickupPeriodText}
+                                    </div>
+                                ) : null}
+
+                                {data.meta?.pickupNote ? (
+                                    <div className="mt-2 whitespace-pre-wrap break-words text-[13px] font-medium leading-relaxed text-slate-600">
+                                        {data.meta.pickupNote}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
+
                         <div className="mt-5 text-center text-[12px] font-semibold text-slate-400">이미지 클릭시 상세보기 가능합니다.</div>
 
                         {descRaw ? (
@@ -488,25 +544,25 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                 const q = qty[o.id] ?? 0;
                                 const disabled = !!o.soldout;
                                 const unit = (o.price ?? data.price).toLocaleString();
+                                const stockText = o.stockNote?.trim() || "🔥 5개 남았습니다!";
 
                                 return (
                                     <div key={o.id} className="rounded-2xl border border-slate-200 p-3">
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    {o.soldout ? (
-                                                        <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-extrabold text-rose-700">
-                                                            🔥 {o.stockNote ?? "품절"}
-                                                        </span>
-                                                    ) : o.stockNote ? (
-                                                        <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-extrabold text-amber-700">
-                                                            🧡 {o.stockNote}
-                                                        </span>
-                                                    ) : null}
+                            <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-extrabold text-rose-700">
+                                {stockText}
+                            </span>
                                                 </div>
 
-                                                <div className="mt-2 line-clamp-2 text-[14px] font-extrabold text-slate-900">{o.name}</div>
-                                                <div className="mt-1 text-[12px] font-semibold text-slate-600">{unit}원</div>
+                                                <div className="mt-2 line-clamp-2 text-[14px] font-extrabold text-slate-900">
+                                                    {o.name}
+                                                </div>
+
+                                                <div className="mt-1 text-[12px] font-semibold text-slate-600">
+                                                    {unit}원
+                                                </div>
                                             </div>
 
                                             <div className="flex items-center gap-2">
@@ -525,7 +581,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                                     –
                                                 </button>
 
-                                                <div className="w-7 text-center text-[14px] font-extrabold tabular-nums text-slate-900">{q}</div>
+                                                <div className="w-7 text-center text-[14px] font-extrabold tabular-nums text-slate-900">
+                                                    {q}
+                                                </div>
 
                                                 <button
                                                     type="button"

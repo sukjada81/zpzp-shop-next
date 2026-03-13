@@ -7,6 +7,8 @@ import { requireTenant } from "../../common/guard.js";
 type ImageItem = { key: string; label?: string };
 
 const HQ_TENANT_ID = BigInt(0);
+const CATE_DAILY_DEAL = BigInt(100000);
+const CATE_PICKUP_READY = BigInt(100001);
 
 function toId(v: bigint | number | string): string {
     if (typeof v === "bigint") return v.toString();
@@ -29,9 +31,8 @@ function calcTimeLeftFromEnd(end?: Date | null): string | undefined {
     const days = Math.floor(hrs / 24);
 
     if (days >= 1) return `D-${days}`;
-    if (hrs >= 1) return `${hrs}시간 남음`;
-
-    return `${mins}분 남음`;
+    if (hrs >= 1) return `${hrs}시간 뒤 마감`;
+    return `${mins}분 뒤 마감`;
 }
 
 function goodsImageUrl(raw: string | null | undefined): string {
@@ -43,7 +44,6 @@ function goodsImageUrl(raw: string | null | undefined): string {
 
     const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
     const path = s.startsWith("/") ? s : `/${s}`;
-
     return `${base}${path}`;
 }
 
@@ -57,10 +57,8 @@ function normalizeImages(row: {
 
     const pushUrl = (u: unknown) => {
         if (typeof u !== "string") return;
-
         const s = u.trim();
         if (!s) return;
-
         out.push({ key: goodsImageUrl(s) });
     };
 
@@ -79,18 +77,12 @@ function normalizeImages(row: {
     pushUrl(row.image3);
 
     const uniq = Array.from(new Map(out.map((x) => [x.key, x])).values());
-
     return uniq.length ? uniq : [{ key: "", label: "이미지 없음" }];
 }
 
-function parseOptionStock(seg: string[] | undefined, index: number): number | null {
-    const raw = String(seg?.[index] ?? "").trim();
-    if (raw === "") return null;
-
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return null;
-
-    return Math.max(0, Math.trunc(n));
+function formatStockNote(soldout: boolean) {
+    if (soldout) return "🔥 한정수량 마감! 🔥";
+    return "🔥 5개 남았습니다!";
 }
 
 function parseOptions(row: {
@@ -124,9 +116,9 @@ function parseOptions(row: {
         rawOptionId?: number;
     }> = [];
 
-    const basePrice = toNumber(row?.price, 0);
+    const basePrice = Number(row?.price ?? 0) || 0;
     const goodsQtyType = Number(row?.qty_type ?? 1);
-    const goodsQty = toNumber(row?.qty, 0);
+    const goodsQty = Number(row?.qty ?? 0) || 0;
 
     let seq = 0;
 
@@ -136,7 +128,6 @@ function parseOptions(row: {
 
         const groupName = String(parts[0] ?? "").trim();
         const itemsRaw = String(parts.slice(1).join("|") ?? "").trim();
-
         const items = itemsRaw.split(",").map((x) => x.trim()).filter(Boolean);
 
         for (const item of items) {
@@ -144,25 +135,17 @@ function parseOptions(row: {
             const valueName = String(seg[0] ?? "").trim();
             if (!valueName) continue;
 
-            const addPrice = seg.length >= 2 ? toNumber(seg[1], 0) : 0;
-            const stockQty = parseOptionStock(seg, 2);
+            const addPrice = seg.length >= 2 ? Number(seg[1] ?? 0) || 0 : 0;
+            const stockQty = seg.length >= 3 ? Number(seg[2] ?? 0) : null;
 
-            // 우선순위
-            // 1) option_soldout = 2 이면 전체 품절
-            // 2) 옵션 재고값이 명시되어 있으면 그 값으로 품절 판단
-            // 3) 옵션 재고값이 비어 있으면 상품 전체 재고(qty_type/qty)로 판단
             let soldout = false;
-            let stockNote = "주문 가능";
 
             if (allSoldout) {
                 soldout = true;
-                stockNote = "품절";
-            } else if (stockQty !== null) {
+            } else if (stockQty !== null && Number.isFinite(stockQty)) {
                 soldout = stockQty <= 0;
-                stockNote = soldout ? "품절" : `재고 ${stockQty}`;
             } else if (goodsQtyType === 0) {
                 soldout = goodsQty <= 0;
-                stockNote = soldout ? "품절" : `재고 ${goodsQty}`;
             }
 
             out.push({
@@ -170,7 +153,7 @@ function parseOptions(row: {
                 name: groupName ? valueName : valueName,
                 price: basePrice + addPrice,
                 soldout,
-                stockNote,
+                stockNote: formatStockNote(soldout),
                 rawOptionId: seq + 1,
             });
 
@@ -181,33 +164,126 @@ function parseOptions(row: {
     return out;
 }
 
+function formatKoreanShortDate(value?: Date | null) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const dayKor = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()] ?? "";
+
+    return `${mm}/${dd}(${dayKor})`;
+}
+
+function buildPickupBadgeText(input: {
+    pickupOnly?: boolean | null;
+    pickupStartAt?: Date | null;
+    pickupEndAt?: Date | null;
+}) {
+    const startText = formatKoreanShortDate(input.pickupStartAt);
+    const endText = formatKoreanShortDate(input.pickupEndAt);
+
+    if (startText && endText) return `픽업일: ${startText} ~ ${endText}`;
+    if (startText) return `픽업일: ${startText}부터`;
+    if (endText) return `픽업일: ${endText}까지`;
+
+    if (input.pickupOnly) return "바로 픽업 가능";
+
+    return undefined;
+}
+
 function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput {
     const now = new Date();
 
     return {
-        tenant_id: {
-            in: [tenantId, HQ_TENANT_ID],
-        },
+        tenant_id: { in: [tenantId, HQ_TENANT_ID] },
         sale_use: 1,
         display_use: 1,
         auth_ck: "Y",
         deleted_at: null,
         status: "active",
+        cate_hide: 0,
+        vendor_hide: 0,
         AND: [
-            {
-                OR: [
-                    { sale_start_at: null },
-                    { sale_start_at: { lte: now } },
-                ],
-            },
-            {
-                OR: [
-                    { sale_end_at: null },
-                    { sale_end_at: { gte: now } },
-                ],
-            },
+            { OR: [{ sale_start_at: null }, { sale_start_at: { lte: now } }] },
+            { OR: [{ sale_end_at: null }, { sale_end_at: { gte: now } }] },
         ],
     };
+}
+
+function buildProductOrderBy(
+    segment?: "today" | "pickup" | "ongoing"
+): Prisma.mallRN_goodsOrderByWithRelationInput[] {
+    if (segment === "today") {
+        return [{ sort_order: "desc" }, { moddate: "desc" }, { uid: "desc" }];
+    }
+
+    if (segment === "pickup") {
+        return [{ sort_order: "desc" }, { sale_end_at: "asc" }, { moddate: "desc" }, { uid: "desc" }];
+    }
+
+    if (segment === "ongoing") {
+        return [{ sale_end_at: "asc" }, { sort_order: "desc" }, { moddate: "desc" }, { uid: "desc" }];
+    }
+
+    return [{ sort_order: "desc" }, { moddate: "desc" }, { uid: "desc" }];
+}
+
+function applySegmentFilter(
+    where: Prisma.mallRN_goodsWhereInput,
+    segment?: "today" | "pickup" | "ongoing"
+) {
+    if (!segment) return;
+
+    if (segment === "today") {
+        where.cate = CATE_DAILY_DEAL;
+        return;
+    }
+
+    if (segment === "pickup") {
+        where.cate = CATE_PICKUP_READY;
+        return;
+    }
+
+    if (segment === "ongoing") {
+        where.sale_end_at = { not: null, gte: new Date() };
+    }
+}
+
+function applyCategoryFilter(
+    where: Prisma.mallRN_goodsWhereInput,
+    category?: string,
+    cate?: bigint | null
+) {
+    if (cate !== null && cate !== undefined) {
+        where.cate = cate;
+        return;
+    }
+
+    const normalized = String(category ?? "").trim().toLowerCase();
+    if (!normalized || normalized === "all") return;
+
+    if (normalized === "daily-deal" || normalized === "today") {
+        where.cate = CATE_DAILY_DEAL;
+        return;
+    }
+
+    if (normalized === "pickup-ready" || normalized === "pickup") {
+        where.cate = CATE_PICKUP_READY;
+        return;
+    }
+
+    if (/^\d+$/.test(normalized)) {
+        where.cate = BigInt(normalized);
+    }
+}
+
+function categoryLabelFromCate(cate?: bigint | null) {
+    const value = cate == null ? "" : String(cate);
+    if (value === "100000") return "오늘의 공구";
+    if (value === "100001") return "바로 픽업 가능";
+    return undefined;
 }
 
 export async function publicProductRoutes(app: FastifyInstance) {
@@ -220,10 +296,15 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const q = z
             .object({
                 q: z.string().optional(),
-                take: z.coerce.number().min(1).max(100).default(20),
+                take: z.coerce.number().min(1).max(200).default(20),
+                type: z.enum(["today", "pickup", "ongoing"]).optional(),
+                tab: z.enum(["today", "pickup", "ongoing"]).optional(),
+                category: z.string().optional(),
+                cate: z.coerce.number().int().nonnegative().optional(),
             })
             .parse(req.query);
 
+        const segment = q.type ?? q.tab;
         const where: Prisma.mallRN_goodsWhereInput = buildPublicGoodsWhere(tenantId);
 
         if (q.q?.trim()) {
@@ -235,48 +316,68 @@ export async function publicProductRoutes(app: FastifyInstance) {
             ];
         }
 
+        applySegmentFilter(where, segment);
+        applyCategoryFilter(where, q.category, q.cate != null ? BigInt(q.cate) : null);
+
         const rows = await app.prisma.mallRN_goods.findMany({
             where,
-            orderBy: [
-                { tenant_id: "desc" },
-                { sale_start_at: "desc" },
-                { sort_order: "desc" },
-                { moddate: "desc" },
-                { uid: "desc" },
-            ],
+            orderBy: buildProductOrderBy(segment),
             take: q.take,
             select: {
                 uid: true,
                 tenant_id: true,
+                cate: true,
                 name: true,
                 price: true,
                 image1: true,
                 image2: true,
                 image3: true,
                 pickup_only: true,
+                option_use: true,
+                icon: true,
                 sale_start_at: true,
                 sale_end_at: true,
+                pickup_start_at: true,
+                pickup_end_at: true,
+                pickup_note: true,
             },
         });
 
         const items = rows.map((r) => {
             const thumb = goodsImageUrl(r.image1 || r.image2 || r.image3);
             const timeLeft = calcTimeLeftFromEnd(r.sale_end_at ?? null);
+            const pickupBadgeText = buildPickupBadgeText({
+                pickupOnly: !!r.pickup_only,
+                pickupStartAt: r.pickup_start_at ?? null,
+                pickupEndAt: r.pickup_end_at ?? null,
+            });
 
             return {
                 id: toId(r.uid),
                 title: String(r.name ?? ""),
                 price: toNumber(r.price, 0),
+                categoryLabel: categoryLabelFromCate(r.cate),
                 metaLeft: timeLeft,
-                metaRight: r.pickup_only ? "픽업" : undefined,
+                metaRight: pickupBadgeText,
                 thumbnailUrl: thumb || undefined,
                 sourceTenantId: r.tenant_id != null ? toId(r.tenant_id) : null,
+                cate: r.cate != null ? toId(r.cate) : null,
+                icon: String(r.icon ?? ""),
+                optionUse: Number(r.option_use ?? 0),
+                saleStartAt: r.sale_start_at ? r.sale_start_at.toISOString() : null,
+                saleEndAt: r.sale_end_at ? r.sale_end_at.toISOString() : null,
+                pickupStartAt: r.pickup_start_at ? r.pickup_start_at.toISOString() : null,
+                pickupEndAt: r.pickup_end_at ? r.pickup_end_at.toISOString() : null,
+                pickupNote: r.pickup_note ? String(r.pickup_note) : null,
             };
         });
 
         return {
             ok: true,
             tenant: tenantSlug,
+            type: segment ?? null,
+            category: q.category ?? null,
+            cate: q.cate ?? null,
             items,
         };
     });
@@ -285,12 +386,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const tenantSlug: string | undefined = (req as any).tenantSlug;
         const tenantId = (req as any).tenantId as bigint;
 
-        const params = z
-            .object({
-                id: z.string(),
-            })
-            .parse(req.params);
-
+        const params = z.object({ id: z.string() }).parse(req.params);
         const uid = Number(params.id);
 
         const row = await app.prisma.mallRN_goods.findFirst({
@@ -301,6 +397,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
             select: {
                 uid: true,
                 tenant_id: true,
+                cate: true,
                 name: true,
                 price: true,
                 explains: true,
@@ -315,6 +412,9 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 pickup_only: true,
                 sale_start_at: true,
                 sale_end_at: true,
+                pickup_start_at: true,
+                pickup_end_at: true,
+                pickup_note: true,
                 qty_type: true,
                 qty: true,
             },
@@ -333,18 +433,31 @@ export async function publicProductRoutes(app: FastifyInstance) {
             String(row.detail ?? "").trim() ||
             null;
 
+        const hasPickupPeriod = !!row.pickup_start_at || !!row.pickup_end_at;
+
         const product = {
             id: toId(row.uid),
             title: String(row.name ?? ""),
             price: toNumber(row.price, 0),
             description: desc,
+            categoryLabel: categoryLabelFromCate(row.cate),
             meta: {
                 timeLeft: calcTimeLeftFromEnd(row.sale_end_at ?? null),
-                pickup: row.pickup_only ? "바로 픽업 가능 · 주문 후 매장에서 바로 수령" : undefined,
+                pickup: hasPickupPeriod
+                    ? undefined
+                    : row.pickup_only
+                        ? "바로 픽업 가능 · 주문 후 매장에서 바로 수령"
+                        : undefined,
+                pickupStartAt: row.pickup_start_at ? row.pickup_start_at.toISOString() : null,
+                pickupEndAt: row.pickup_end_at ? row.pickup_end_at.toISOString() : null,
+                pickupNote: row.pickup_note ? String(row.pickup_note) : null,
             },
             images,
             options,
             sourceTenantId: row.tenant_id != null ? toId(row.tenant_id) : null,
+            saleStartAt: row.sale_start_at ? row.sale_start_at.toISOString() : null,
+            saleEndAt: row.sale_end_at ? row.sale_end_at.toISOString() : null,
+            cate: row.cate != null ? toId(row.cate) : null,
         };
 
         return {

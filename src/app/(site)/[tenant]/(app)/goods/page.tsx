@@ -1,74 +1,75 @@
 // src/app/(site)/[tenant]/(app)/goods/page.tsx
 import { notFound } from "next/navigation";
 import GoodsListClient, { type GoodsListItem } from "@/components/goods/GoodsListClient";
+import { endpoints } from "@/lib/api/endpoints";
+import { normalizeTenant } from "@/lib/tenant/getTenant";
+import type { PublicProductsResponse } from "@/lib/types/goods";
 
-type PublicProductsResponse = {
-    ok: true;
-    tenant: string;
-    items: Array<{
-        id: string | number;
-        title: string;
-        price: number;
-        badgeLeft?: string;
-        badgeRight?: string;
-        metaLeft?: string;
-        metaRight?: string;
-        thumbnailUrl?: string; // ✅ 백엔드 응답에 있음
-    }>;
+function getInternalOrigin() {
+    return process.env.NEXT_INTERNAL_ORIGIN || process.env.NEXT_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
+}
+
+type GoodsPageSearchParams = {
+    tab?: string;
+    q?: string;
 };
 
-function normalizeTenant(raw: string) {
-    const t = (raw || "").toLowerCase().trim();
-    if (!t || t === "undefined" || t === "null") return "";
-    return t;
+function normalizeTab(tab?: string): "today" | "pickup" | "ongoing" {
+    if (tab === "pickup") return "pickup";
+    if (tab === "ongoing") return "ongoing";
+    return "today";
 }
 
-function getBaseUrl() {
-    return (
-        process.env.NEXT_PUBLIC_BASE_URL ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-    );
-}
+async function fetchProducts(
+    tenant: string,
+    searchParams?: GoodsPageSearchParams
+): Promise<GoodsListItem[]> {
+    const origin = getInternalOrigin();
+    const tab = normalizeTab(searchParams?.tab);
+    const q = String(searchParams?.q ?? "").trim();
 
-async function fetchProducts(tenant: string) {
-    const baseUrl = getBaseUrl();
-    const url = new URL(`/api/proxy/${tenant}/v1/public/products`, baseUrl);
-    url.searchParams.set("take", "200");
+    const path = endpoints.publicProducts(tenant, {
+        take: 200,
+        type: tab,
+        ...(q ? { q } : {}),
+    });
 
+    const url = new URL(path, origin);
     const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) return [] as PublicProductsResponse["items"];
+
+    if (!res.ok) return [];
 
     const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
-    if (!data || data.ok !== true) return [];
+    if (!data?.ok) return [];
 
-    return data.items ?? [];
-}
-
-function toGoodsListItems(items: PublicProductsResponse["items"]): GoodsListItem[] {
-    return (items ?? []).map((p) => ({
+    return (data.items ?? []).map((p) => ({
         id: String(p.id),
         title: String(p.title ?? ""),
         price: Number(p.price ?? 0),
-        badgeLeft: p.badgeLeft,
-        badgeRight: p.badgeRight,
+        badgeLeft: undefined,
+        badgeRight: undefined,
         metaLeft: p.metaLeft,
         metaRight: p.metaRight,
-        thumbnailUrl: p.thumbnailUrl, // ✅ 전달
+        thumbnailUrl: p.thumbnailUrl,
+        cate: p.cate ?? null,
+        categoryLabel: (p as any).categoryLabel ?? undefined,
     }));
 }
 
 export default async function GoodsPage({
                                             params,
+                                            searchParams,
                                         }: {
     params: { tenant: string } | Promise<{ tenant: string }>;
+    searchParams?: GoodsPageSearchParams | Promise<GoodsPageSearchParams>;
 }) {
-    const resolved = await Promise.resolve(params);
-    const tenant = normalizeTenant(resolved?.tenant);
+    const resolvedParams = await Promise.resolve(params);
+    const resolvedSearchParams = await Promise.resolve(searchParams);
 
+    const tenant = normalizeTenant(resolvedParams?.tenant);
     if (!tenant) notFound();
 
-    const products = await fetchProducts(tenant);
-    const initialItems = toGoodsListItems(products);
+    const items = await fetchProducts(tenant, resolvedSearchParams);
 
-    return <GoodsListClient tenant={tenant} initialItems={initialItems} />;
+    return <GoodsListClient tenant={tenant} initialItems={items} />;
 }
