@@ -9,6 +9,7 @@ export type PublicProductListItem = {
     thumbnailUrl?: string;
     sourceTenantId?: string | null;
     cate?: string | null;
+    categoryLabel?: string;
     icon?: string;
     optionUse?: number;
     saleStartAt?: string | null;
@@ -35,6 +36,8 @@ export type PublicProductDetailResponse = {
         title: string;
         price: number;
         description?: string | null;
+        cate?: string | null;
+        categoryLabel?: string;
         meta?: {
             timeLeft?: string;
             pickup?: string;
