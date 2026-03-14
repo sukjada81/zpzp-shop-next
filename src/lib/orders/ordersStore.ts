@@ -1,3 +1,6 @@
+// src/lib/orders/ordersStore.ts
+
+
 export type OrderStatus = "주문완료" | "결제완료" | "픽업대기" | "픽업완료" | "취소";
 
 export type OrderLine = {
@@ -53,11 +56,7 @@ export function updateOrderStatus(
     status: OrderStatus,
 ) {
     const orders = loadOrders(tenant);
-
-    const updated = orders.map((o) =>
-        o.orderNo === orderNo ? { ...o, status } : o
-    );
-
+    const updated = orders.map((o) => (o.orderNo === orderNo ? { ...o, status } : o));
     saveOrders(tenant, updated);
 }
 
@@ -114,4 +113,9 @@ export function addOrder(tenant: string, lines: OrderLine[]): OrderRecord {
 export function findOrder(tenant: string, orderNo: string): OrderRecord | null {
     const orders = loadOrders(tenant);
     return orders.find((o) => o.orderNo === orderNo) ?? null;
+}
+
+export function clearOrders(tenant: string) {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(storageKey(tenant));
 }

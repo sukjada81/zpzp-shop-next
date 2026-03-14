@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { endpoints } from "@/lib/api/endpoints";
 
 type OrderDetailItem = {
@@ -42,10 +42,22 @@ type OrderDetailResponse = {
         pickupAt?: string | null;
         status: number;
         statusLabel: string;
+        displayStatus?: string;
+        badgeText?: string | null;
+        footerText?: string | null;
+        canCancel?: boolean;
         createdAt?: string | null;
         statusDate?: string | null;
         items: OrderDetailItem[];
     };
+    message?: string;
+};
+
+type CancelOrderResponse = {
+    ok: boolean;
+    orderNum?: string;
+    status?: number;
+    statusLabel?: string;
     message?: string;
 };
 
@@ -56,30 +68,40 @@ function formatDateTime(value?: string | null) {
     return d.toLocaleString();
 }
 
-function statusTone(statusLabel: string) {
-    if (statusLabel.includes("취소")) {
+function formatMoney(value: number) {
+    return `${Number(value ?? 0).toLocaleString()}원`;
+}
+
+function toneByStatus(statusLabel: string) {
+    if (statusLabel.includes("취소") || statusLabel.includes("미수령")) {
         return "bg-rose-50 border-rose-200 text-rose-700";
     }
     if (statusLabel.includes("픽업완료")) {
         return "bg-emerald-50 border-emerald-200 text-emerald-700";
     }
-    if (statusLabel.includes("픽업준비")) {
+    if (statusLabel.includes("픽업준비") || statusLabel.includes("픽업기간")) {
         return "bg-amber-50 border-amber-200 text-amber-700";
     }
-    if (statusLabel.includes("결제")) {
-        return "bg-blue-50 border-blue-200 text-blue-700";
+    if (statusLabel.includes("공구") || statusLabel.includes("예정")) {
+        return "bg-violet-50 border-violet-200 text-violet-700";
     }
     return "bg-slate-50 border-slate-200 text-slate-700";
 }
 
 export default function OrderDetailPage() {
     const params = useParams<{ tenant: string; id: string }>();
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
     const tenant = String(params?.tenant ?? "").trim();
     const id = String(params?.id ?? "").trim();
+    const phone = String(searchParams.get("phone") ?? "").replace(/[^\d]/g, "");
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [order, setOrder] = useState<OrderDetailResponse["order"] | null>(null);
+    const [canceling, setCanceling] = useState(false);
+    const [isGuestMode, setIsGuestMode] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -95,14 +117,30 @@ export default function OrderDetailPage() {
                 setLoading(true);
                 setError("");
 
-                const res = await fetch(endpoints.myOrderDetail(tenant, id), {
+                let res = await fetch(endpoints.myOrderDetail(tenant, id), {
                     method: "GET",
                     credentials: "include",
                     cache: "no-store",
+                    headers: {
+                        Accept: "application/json",
+                    },
                 });
 
-                const json = (await res.json().catch(() => null)) as OrderDetailResponse | null;
+                if (res.status === 401 && phone) {
+                    setIsGuestMode(true);
+                    res = await fetch(endpoints.guestOrderDetail(tenant, id, phone), {
+                        method: "GET",
+                        credentials: "include",
+                        cache: "no-store",
+                        headers: {
+                            Accept: "application/json",
+                        },
+                    });
+                } else {
+                    setIsGuestMode(false);
+                }
 
+                const json = (await res.json().catch(() => null)) as OrderDetailResponse | null;
                 if (cancelled) return;
 
                 if (!res.ok || !json?.ok || !json?.order) {
@@ -129,12 +167,62 @@ export default function OrderDetailPage() {
         return () => {
             cancelled = true;
         };
-    }, [tenant, id]);
+    }, [tenant, id, phone]);
+
+    async function handleCancel() {
+        if (!order?.orderNum || canceling) return;
+
+        const ok = window.confirm("주문을 취소할까요?");
+        if (!ok) return;
+
+        try {
+            setCanceling(true);
+
+            let res: Response;
+
+            if (isGuestMode) {
+                res = await fetch(endpoints.guestCancelOrder(tenant, order.orderNum), {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    body: JSON.stringify({ phone }),
+                });
+            } else {
+                res = await fetch(endpoints.cancelOrder(tenant, order.orderNum), {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        Accept: "application/json",
+                    },
+                });
+            }
+
+            const json = (await res.json().catch(() => null)) as CancelOrderResponse | null;
+
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || `주문취소 실패 (HTTP ${res.status})`);
+            }
+
+            router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(order.orderNum)}`);
+            router.refresh();
+        } catch (e: any) {
+            alert(e?.message || "주문취소 처리 중 오류가 발생했습니다.");
+        } finally {
+            setCanceling(false);
+        }
+    }
 
     const tone = useMemo(
-        () => statusTone(order?.statusLabel ?? ""),
-        [order?.statusLabel]
+        () => toneByStatus(order?.displayStatus || order?.statusLabel || ""),
+        [order?.displayStatus, order?.statusLabel]
     );
+
+    const headerStatusText = order?.displayStatus || order?.statusLabel || "주문상세";
 
     if (loading) {
         return (
@@ -191,22 +279,28 @@ export default function OrderDetailPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                         <div className="text-[12px] font-semibold text-slate-500">주문번호</div>
-                        <div className="mt-1 text-[15px] font-extrabold text-slate-900">
+                        <div className="mt-1 break-all text-[15px] font-extrabold text-slate-900">
                             {order.orderNum}
                         </div>
                     </div>
 
                     <span
                         className={[
-                            "inline-flex rounded-full border px-3 py-1 text-[11px] font-extrabold",
+                            "inline-flex shrink-0 rounded-full border px-3 py-1 text-[11px] font-extrabold",
                             tone,
                         ].join(" ")}
                     >
-                        {order.statusLabel}
+                        {headerStatusText}
                     </span>
                 </div>
+
+                {order.badgeText ? (
+                    <div className="mt-3 inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700">
+                        {order.badgeText}
+                    </div>
+                ) : null}
 
                 <div className="mt-4 grid gap-2 rounded-2xl bg-slate-50 p-3 text-sm">
                     <div className="flex justify-between gap-4">
@@ -232,11 +326,26 @@ export default function OrderDetailPage() {
 
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">결제 방식</span>
-                        <span className="text-right font-bold text-slate-900">
-                            오프라인 결제
-                        </span>
+                        <span className="text-right font-bold text-slate-900">오프라인 결제</span>
                     </div>
                 </div>
+
+                {order.footerText ? (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-[14px] font-bold text-slate-700">
+                        {order.footerText}
+                    </div>
+                ) : null}
+
+                {order.canCancel ? (
+                    <button
+                        type="button"
+                        onClick={handleCancel}
+                        disabled={canceling}
+                        className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-[14px] font-extrabold text-rose-600 disabled:opacity-50"
+                    >
+                        {canceling ? "주문취소 처리 중..." : "주문 취소"}
+                    </button>
+                ) : null}
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -245,11 +354,15 @@ export default function OrderDetailPage() {
                 <div className="mt-3 space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">주문자</span>
-                        <span className="text-right font-bold text-slate-900">{order.buyerName}</span>
+                        <span className="text-right font-bold text-slate-900">
+                            {order.buyerName || "-"}
+                        </span>
                     </div>
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">연락처</span>
-                        <span className="text-right font-bold text-slate-900">{order.buyerPhone}</span>
+                        <span className="text-right font-bold text-slate-900">
+                            {order.buyerPhone || "-"}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -260,25 +373,31 @@ export default function OrderDetailPage() {
                 <div className="mt-3 space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">수령인</span>
-                        <span className="text-right font-bold text-slate-900">{order.receiverName}</span>
+                        <span className="text-right font-bold text-slate-900">
+                            {order.receiverName || "-"}
+                        </span>
                     </div>
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">연락처</span>
-                        <span className="text-right font-bold text-slate-900">{order.receiverPhone}</span>
+                        <span className="text-right font-bold text-slate-900">
+                            {order.receiverPhone || "-"}
+                        </span>
                     </div>
                 </div>
 
                 {order.message ? (
                     <div className="mt-4 rounded-2xl bg-slate-50 p-3">
                         <div className="text-[12px] font-semibold text-slate-500">요청사항</div>
-                        <div className="mt-1 text-sm font-semibold text-slate-900">{order.message}</div>
+                        <div className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900">
+                            {order.message}
+                        </div>
                     </div>
                 ) : null}
 
                 {order.memo ? (
                     <div className="mt-3 rounded-2xl bg-slate-50 p-3">
                         <div className="text-[12px] font-semibold text-slate-500">메모</div>
-                        <div className="mt-1 text-sm font-semibold text-slate-900 whitespace-pre-wrap">
+                        <div className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900">
                             {order.memo}
                         </div>
                     </div>
@@ -290,9 +409,12 @@ export default function OrderDetailPage() {
 
                 <div className="mt-4 space-y-3">
                     {order.items.map((item, idx) => (
-                        <div key={`${item.id}_${idx}`} className="rounded-xl border border-slate-200 p-3">
+                        <div
+                            key={`${item.id}_${idx}`}
+                            className="rounded-xl border border-slate-200 p-3"
+                        >
                             <div className="min-w-0">
-                                <div className="font-extrabold text-slate-900 line-clamp-2">
+                                <div className="line-clamp-2 font-extrabold text-slate-900">
                                     {item.title}
                                 </div>
 
@@ -309,11 +431,9 @@ export default function OrderDetailPage() {
                                 ) : null}
 
                                 <div className="mt-3 flex items-center justify-between text-sm">
-                                    <span className="font-semibold text-slate-500">
-                                        {item.qty}개
-                                    </span>
+                                    <span className="font-semibold text-slate-500">{item.qty}개</span>
                                     <span className="font-extrabold text-slate-900">
-                                        {(item.price * item.qty).toLocaleString()}원
+                                        {formatMoney(item.price * item.qty)}
                                     </span>
                                 </div>
                             </div>
@@ -324,7 +444,7 @@ export default function OrderDetailPage() {
                 <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-sm">
                     <span className="font-semibold text-slate-500">상품 금액</span>
                     <span className="font-bold text-slate-900">
-                        {order.totalAmount.toLocaleString()}원
+                        {formatMoney(order.totalAmount)}
                     </span>
                 </div>
 
@@ -332,16 +452,23 @@ export default function OrderDetailPage() {
                     <div className="mt-2 flex justify-between text-sm">
                         <span className="font-semibold text-slate-500">배송비</span>
                         <span className="font-bold text-slate-900">
-                            {Number(order.deliveryTotal).toLocaleString()}원
+                            {formatMoney(Number(order.deliveryTotal))}
+                        </span>
+                    </div>
+                ) : null}
+
+                {Number(order.cancelTotal ?? 0) > 0 ? (
+                    <div className="mt-2 flex justify-between text-sm">
+                        <span className="font-semibold text-slate-500">취소 금액</span>
+                        <span className="font-bold text-rose-600">
+                            {formatMoney(Number(order.cancelTotal))}
                         </span>
                     </div>
                 ) : null}
 
                 <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-base font-extrabold">
                     <span className="text-slate-900">총 결제 예정 금액</span>
-                    <span className="text-slate-900">
-                        {order.totalAmount.toLocaleString()}원
-                    </span>
+                    <span className="text-slate-900">{formatMoney(order.totalAmount)}</span>
                 </div>
             </div>
 

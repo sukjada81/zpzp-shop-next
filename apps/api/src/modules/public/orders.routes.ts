@@ -5,6 +5,7 @@ import { requireTenant } from "../../common/guard.js";
 
 type SessionLike = {
     user?: {
+        uid?: string | number;
         id?: string | number;
         loginId?: string;
         name?: string;
@@ -32,10 +33,9 @@ type SessionLike = {
     };
 };
 
-function toId(v: bigint | number | string): string {
-    if (typeof v === "bigint") return v.toString();
-    return String(v);
-}
+const PLATFORM_TYPE = "DAD";
+const CATE_DAILY_DEAL = BigInt(100000);
+const CATE_PICKUP_READY = BigInt(100001);
 
 function toInt(v: unknown, fallback = 0) {
     const n = Number(v);
@@ -60,11 +60,6 @@ function normalizeText(v: unknown) {
     return String(v ?? "").trim();
 }
 
-function normalizePlatformType(v: unknown) {
-    const s = String(v ?? "").trim().toUpperCase();
-    return s || "DAD";
-}
-
 function parseDateTimeOrNull(v: unknown) {
     const s = String(v ?? "").trim();
     if (!s) return null;
@@ -80,8 +75,12 @@ function statusLabel(status: number) {
             return "현장결제완료";
         case 2:
             return "픽업준비완료";
+        case 3:
+            return "픽업예정";
         case 4:
             return "픽업완료";
+        case 8:
+            return "미수령";
         case 9:
             return "주문취소";
         default:
@@ -89,9 +88,25 @@ function statusLabel(status: number) {
     }
 }
 
+function formatShortKoreanDate(value?: Date | string | null) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const dayKor = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()] ?? "";
+    return `${mm}/${dd}(${dayKor})`;
+}
+
+function formatPickupRange(start?: Date | string | null, end?: Date | string | null) {
+    const s = formatShortKoreanDate(start);
+    const e = formatShortKoreanDate(end);
+    if (s && e) return `${s} ~ ${e}`;
+    return s || e || "";
+}
+
 function getCurrentMember(req: any) {
     const session = (req.session ?? {}) as SessionLike;
-
     const user = session.user ?? session.member ?? session.authUser ?? {};
 
     const memberUidRaw =
@@ -112,14 +127,9 @@ function getCurrentMember(req: any) {
             ""
         ) || "";
 
-    const name =
-        normalizeText((user as any).name ?? "") || "";
-
-    const phone =
-        normalizePhone((user as any).phone ?? (user as any).cell ?? "") || "";
-
-    const email =
-        normalizeText((user as any).email ?? "") || "";
+    const name = normalizeText((user as any).name ?? "") || "";
+    const phone = normalizePhone((user as any).phone ?? (user as any).cell ?? "") || "";
+    const email = normalizeText((user as any).email ?? "") || "";
 
     return {
         memberUid,
@@ -130,20 +140,12 @@ function getCurrentMember(req: any) {
     };
 }
 
-/**
- * 외부/내부 정책:
- * - 신규 앱 주문은 mallRN_order_info / mallRN_order_goods / mallRN_order_log 사용
- * - platform_type = 'DAD'
- * - PG 없음 / 현장결제
- * - 주문 생성 즉시 실주문(reals=1)
- */
 async function generateOrderNum(app: FastifyInstance) {
     const now = new Date();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, "0");
     const d = String(now.getDate()).padStart(2, "0");
     const datePart = `${y}${m}${d}`;
-
     const prefix = `DAD${datePart}-`;
 
     const latest = await app.prisma.mallRN_order_info.findFirst({
@@ -174,12 +176,14 @@ async function generateOrderNum(app: FastifyInstance) {
 
 function parseOptionInfo(optionInfo: string | null | undefined) {
     const text = String(optionInfo ?? "").trim();
-    if (!text) return [] as Array<{
-        id: string;
-        name: string;
-        addPrice: number;
-        stockQty: number | null;
-    }>;
+    if (!text) {
+        return [] as Array<{
+            id: string;
+            name: string;
+            addPrice: number;
+            stockQty: number | null;
+        }>;
+    }
 
     const groups = text
         .split("|*|")
@@ -227,7 +231,6 @@ function findOptionSnapshot(
 ) {
     const optionIndex = toInt(optionIndexRaw, 0);
     const optionName = normalizeText(optionNameRaw);
-
     const parsed = parseOptionInfo(optionInfo);
 
     if (optionName) {
@@ -271,36 +274,242 @@ function ensureOrderableStatus(row: any) {
     );
 }
 
+function buildOrderDisplay(input: {
+    status: number;
+    pickupAt?: Date | string | null;
+    goods: Array<{ g_cate?: bigint | number | string | null }>;
+}) {
+    const now = new Date();
+    const pickupAt = input.pickupAt ? new Date(input.pickupAt) : null;
+    const hasPickupAt = pickupAt && !Number.isNaN(pickupAt.getTime());
+
+    const isPickupReadyGoods = input.goods.some(
+        (g) => String(g.g_cate ?? "") === String(CATE_PICKUP_READY)
+    );
+    const isTodayDealGoods = input.goods.some(
+        (g) => String(g.g_cate ?? "") === String(CATE_DAILY_DEAL)
+    );
+
+    if (input.status === 9) {
+        return {
+            displayStatus: "주문취소",
+            badgeText: null,
+            footerText: "주문이 취소되었습니다.",
+            canCancel: false,
+        };
+    }
+
+    if (input.status === 4) {
+        return {
+            displayStatus: "픽업완료",
+            badgeText: null,
+            footerText: "수령 완료",
+            canCancel: false,
+        };
+    }
+
+    if (isPickupReadyGoods) {
+        return {
+            displayStatus: "바로픽업가능",
+            badgeText: null,
+            footerText: "매장 방문 시 수령 가능",
+            canCancel: true,
+        };
+    }
+
+    if (hasPickupAt) {
+        const pickupDate = pickupAt as Date;
+        const pickupWindowEnd = new Date(pickupDate.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+        if (now.getTime() < pickupDate.getTime()) {
+            return {
+                displayStatus: isTodayDealGoods ? "오늘의공구" : statusLabel(input.status),
+                badgeText: `픽업 예정 · ${formatShortKoreanDate(pickupDate)}`,
+                footerText: `입고 예정일: ${formatShortKoreanDate(pickupDate)}`,
+                canCancel: true,
+            };
+        }
+
+        if (now.getTime() <= pickupWindowEnd.getTime()) {
+            return {
+                displayStatus: "픽업기간",
+                badgeText: `픽업 기간 · ${formatPickupRange(pickupDate, pickupWindowEnd)}`,
+                footerText: "매장 방문 후 수령해 주세요",
+                canCancel: true,
+            };
+        }
+
+        return {
+            displayStatus: "미수령",
+            badgeText: null,
+            footerText: "미수령",
+            canCancel: false,
+        };
+    }
+
+    return {
+        displayStatus: statusLabel(input.status),
+        badgeText: null,
+        footerText: "주문이 접수되었습니다.",
+        canCancel: true,
+    };
+}
+
+function buildOrderItemPayload(row: any) {
+    return {
+        id: String(row.uid),
+        productId: String(row.g_uid ?? 0),
+        title: row.g_name ?? "",
+        price: Number(row.price ?? 0),
+        qty: Number(row.qty ?? 0),
+        optionName: row.option_name ?? "",
+        status: Number(row.status ?? 0),
+    };
+}
+
+function buildOrderGoodsDetailPayload(row: any) {
+    return {
+        id: String(row.uid),
+        productId: String(row.g_uid ?? 0),
+        title: row.g_name ?? "",
+        goodsCode: row.g_code ?? "",
+        price: Number(row.price ?? 0),
+        origPrice: Number(row.orig_price ?? 0),
+        qty: Number(row.qty ?? 0),
+        optionId: Number(row.option ?? 0),
+        optionName: row.option_name ?? "",
+        status: Number(row.status ?? 0),
+        status2: Number(row.status2 ?? 0),
+        createdAt: unixToIso(row.signdate),
+    };
+}
+
+function orderMatchesPhone(info: { cell?: string | null; cell2?: string | null }, phone: string) {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return false;
+    return normalizePhone(info.cell) === normalized || normalizePhone(info.cell2) === normalized;
+}
+
+async function fetchGuestOrdersByPhoneAndOrderNums(app: FastifyInstance, tenantId: bigint, phone: string, orderNums: string[]) {
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone || !orderNums.length) return [];
+
+    const rows = await app.prisma.mallRN_order_info.findMany({
+        where: {
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+            order_num: { in: orderNums },
+            OR: [
+                { cell: normalizedPhone },
+                { cell2: normalizedPhone },
+            ],
+        },
+        orderBy: [{ signdate: "desc" }, { uid: "desc" }],
+        select: {
+            uid: true,
+            order_num: true,
+            name: true,
+            cell: true,
+            cell2: true,
+            pay_total: true,
+            pickup_at: true,
+            signdate: true,
+            status_date: true,
+        },
+    });
+
+    const matchedOrderNums = rows.map((r: any) => String(r.order_num ?? "")).filter(Boolean);
+
+    const goodsRows =
+        matchedOrderNums.length > 0
+            ? await app.prisma.mallRN_order_goods.findMany({
+                where: {
+                    order_num: { in: matchedOrderNums },
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                },
+                orderBy: [{ uid: "asc" }],
+                select: {
+                    uid: true,
+                    order_num: true,
+                    g_uid: true,
+                    g_cate: true,
+                    g_name: true,
+                    price: true,
+                    qty: true,
+                    option_name: true,
+                    status: true,
+                },
+            })
+            : [];
+
+    const goodsMap = new Map<string, any[]>();
+    for (const row of goodsRows) {
+        const key = String(row.order_num ?? "");
+        const list = goodsMap.get(key) ?? [];
+        list.push(row);
+        goodsMap.set(key, list);
+    }
+
+    return rows.map((row: any) => {
+        const orderNum = String(row.order_num ?? "");
+        const goods = goodsMap.get(orderNum) ?? [];
+        const currentStatus = goods[0] ? Number(goods[0].status ?? 0) : 0;
+        const display = buildOrderDisplay({
+            status: currentStatus,
+            pickupAt: row.pickup_at,
+            goods,
+        });
+
+        return {
+            id: String(row.uid),
+            orderNum,
+            buyerName: row.name ?? "",
+            buyerPhone: row.cell ?? "",
+            totalAmount: Number(row.pay_total ?? 0),
+            pickupAt: row.pickup_at ?? null,
+            status: currentStatus,
+            statusLabel: statusLabel(currentStatus),
+            displayStatus: display.displayStatus,
+            badgeText: display.badgeText,
+            footerText: display.footerText,
+            canCancel: display.canCancel,
+            createdAt: unixToIso(row.signdate),
+            items: goods.map(buildOrderItemPayload),
+        };
+    });
+}
+
 export async function publicOrderRoutes(app: FastifyInstance) {
     app.addHook("preHandler", requireTenant());
 
-    /**
-     * POST /:tenant/v1/orders
-     */
     app.post("/v1/orders", async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
-
         const currentMember = getCurrentMember(req);
 
-        const body = z.object({
-            buyerName: z.string().min(1).max(50).optional(),
-            buyerPhone: z.string().min(8).max(30).optional(),
-            receiverName: z.string().min(1).max(50).optional(),
-            receiverPhone: z.string().min(8).max(30).optional(),
-            pickupAt: z.string().optional().nullable(),
-            message: z.string().max(2000).optional().nullable(),
-            memo: z.string().max(2000).optional().nullable(),
-            direct: z.number().int().min(0).max(1).optional(),
-            items: z.array(
-                z.object({
-                    productId: z.union([z.number(), z.string()]),
-                    optionId: z.union([z.number(), z.string()]).optional(),
-                    optionName: z.string().optional().nullable(),
-                    qty: z.number().int().min(1).max(999),
-                })
-            ).min(1),
-        }).parse(req.body ?? {});
+        const body = z
+            .object({
+                buyerName: z.string().min(1).max(50).optional(),
+                buyerPhone: z.string().min(8).max(30).optional(),
+                receiverName: z.string().min(1).max(50).optional(),
+                receiverPhone: z.string().min(8).max(30).optional(),
+                pickupAt: z.string().optional().nullable(),
+                message: z.string().max(2000).optional().nullable(),
+                memo: z.string().max(2000).optional().nullable(),
+                direct: z.number().int().min(0).max(1).optional(),
+                items: z
+                    .array(
+                        z.object({
+                            productId: z.union([z.number(), z.string()]),
+                            optionId: z.union([z.number(), z.string()]).optional(),
+                            optionName: z.string().optional().nullable(),
+                            qty: z.number().int().min(1).max(999),
+                        })
+                    )
+                    .min(1),
+            })
+            .parse(req.body ?? {});
 
         const buyerName = normalizeText(body.buyerName) || currentMember.name;
         const buyerPhone = normalizePhone(body.buyerPhone) || currentMember.phone;
@@ -317,7 +526,6 @@ export async function publicOrderRoutes(app: FastifyInstance) {
 
         const pickupAt = parseDateTimeOrNull(body.pickupAt);
         const now = toUnixNow();
-        const platformType = "DAD";
 
         const productIds = Array.from(
             new Set(body.items.map((item) => toInt(item.productId, 0)).filter((x) => x > 0))
@@ -382,12 +590,6 @@ export async function publicOrderRoutes(app: FastifyInstance) {
                 });
             }
 
-            /**
-             * 재고 정책
-             * - qty_type = 1 : 무제한
-             * - qty_type = 0 : 재고 차감 필요
-             * - 옵션은 1차에서는 상품 재고 기준으로만 체크
-             */
             if (Number(product.qty_type ?? 0) === 0) {
                 const stock = toInt(product.qty, 0);
                 if (stock < qty) {
@@ -439,7 +641,7 @@ export async function publicOrderRoutes(app: FastifyInstance) {
                     id: currentMember.loginId || "",
                     tenant_id: tenantId,
                     member_uid: currentMember.memberUid ? BigInt(currentMember.memberUid) : null,
-                    platform_type: platformType,
+                    platform_type: PLATFORM_TYPE,
 
                     order_num: orderNum,
                     name: buyerName,
@@ -505,7 +707,7 @@ export async function publicOrderRoutes(app: FastifyInstance) {
                         vendor: item.vendor,
                         vendor_delivery: "",
                         tenant_id: tenantId,
-                        platform_type: platformType,
+                        platform_type: PLATFORM_TYPE,
 
                         commission: 0,
                         order_num: orderNum,
@@ -594,29 +796,23 @@ export async function publicOrderRoutes(app: FastifyInstance) {
         });
     });
 
-    /**
-     * GET /:tenant/v1/orders/me
-     * - 로그인 회원 기준 내 주문목록
-     */
     app.get("/v1/orders/me", async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
         const currentMember = getCurrentMember(req);
 
-        const q = z.object({
-            page: z.coerce.number().min(1).default(1),
-            limit: z.coerce.number().min(1).max(50).default(20),
-        }).parse(req.query ?? {});
+        const q = z
+            .object({
+                page: z.coerce.number().min(1).default(1),
+                limit: z.coerce.number().min(1).max(50).default(20),
+            })
+            .parse(req.query ?? {});
 
         const where: any = {
             tenant_id: tenantId,
-            platform_type: "DAD",
+            platform_type: PLATFORM_TYPE,
         };
 
-        /**
-         * member_uid 우선
-         * 없으면 로그인 아이디(id) fallback
-         */
         if (currentMember.memberUid) {
             where.member_uid = BigInt(currentMember.memberUid);
         } else if (currentMember.loginId) {
@@ -654,7 +850,7 @@ export async function publicOrderRoutes(app: FastifyInstance) {
                 ? await app.prisma.mallRN_order_goods.findMany({
                     where: {
                         order_num: { in: orderNums },
-                        platform_type: "DAD",
+                        platform_type: PLATFORM_TYPE,
                         tenant_id: tenantId,
                     },
                     orderBy: [{ uid: "asc" }],
@@ -662,6 +858,7 @@ export async function publicOrderRoutes(app: FastifyInstance) {
                         uid: true,
                         order_num: true,
                         g_uid: true,
+                        g_cate: true,
                         g_name: true,
                         price: true,
                         qty: true,
@@ -683,6 +880,11 @@ export async function publicOrderRoutes(app: FastifyInstance) {
             const orderNum = String(row.order_num ?? "");
             const goods = goodsMap.get(orderNum) ?? [];
             const currentStatus = goods[0] ? Number(goods[0].status ?? 0) : 0;
+            const display = buildOrderDisplay({
+                status: currentStatus,
+                pickupAt: row.pickup_at,
+                goods,
+            });
 
             return {
                 id: String(row.uid),
@@ -693,16 +895,12 @@ export async function publicOrderRoutes(app: FastifyInstance) {
                 pickupAt: row.pickup_at ?? null,
                 status: currentStatus,
                 statusLabel: statusLabel(currentStatus),
+                displayStatus: display.displayStatus,
+                badgeText: display.badgeText,
+                footerText: display.footerText,
+                canCancel: display.canCancel,
                 createdAt: unixToIso(row.signdate),
-                items: goods.map((g: any) => ({
-                    id: String(g.uid),
-                    productId: String(g.g_uid ?? 0),
-                    title: g.g_name ?? "",
-                    price: Number(g.price ?? 0),
-                    qty: Number(g.qty ?? 0),
-                    optionName: g.option_name ?? "",
-                    status: Number(g.status ?? 0),
-                })),
+                items: goods.map(buildOrderItemPayload),
             };
         });
 
@@ -716,22 +914,159 @@ export async function publicOrderRoutes(app: FastifyInstance) {
         });
     });
 
-    /**
-     * GET /:tenant/v1/orders/:orderNum
-     * - 본인 주문상세
-     */
+    app.post("/v1/orders/guest/list", async (req: any, reply) => {
+        const tenantSlug: string | undefined = req.tenantSlug;
+        const tenantId = req.tenantId as bigint;
+
+        const body = z
+            .object({
+                phone: z.string().min(8).max(30),
+                orderNums: z.array(z.string().min(1)).min(1).max(50),
+            })
+            .parse(req.body ?? {});
+
+        const items = await fetchGuestOrdersByPhoneAndOrderNums(
+            app,
+            tenantId,
+            body.phone,
+            body.orderNums
+        );
+
+        return reply.send({
+            ok: true,
+            tenant: tenantSlug,
+            items,
+        });
+    });
+
+    app.get("/v1/orders/guest/:orderNum", async (req: any, reply) => {
+        const tenantSlug: string | undefined = req.tenantSlug;
+        const tenantId = req.tenantId as bigint;
+
+        const params = z
+            .object({
+                orderNum: z.string().min(1),
+            })
+            .parse(req.params ?? {});
+
+        const query = z
+            .object({
+                phone: z.string().min(8).max(30),
+            })
+            .parse(req.query ?? {});
+
+        const info = await app.prisma.mallRN_order_info.findFirst({
+            where: {
+                tenant_id: tenantId,
+                platform_type: PLATFORM_TYPE,
+                order_num: params.orderNum,
+            },
+            select: {
+                uid: true,
+                order_num: true,
+                name: true,
+                cell: true,
+                name2: true,
+                cell2: true,
+                message: true,
+                memo: true,
+                pay_total: true,
+                cancel_total: true,
+                refund_total: true,
+                delivery_total: true,
+                pay_type: true,
+                pay_status: true,
+                pickup_at: true,
+                signdate: true,
+                status_date: true,
+            },
+        });
+
+        if (!info) {
+            return reply.code(404).send({ ok: false, message: "order not found" });
+        }
+
+        if (!orderMatchesPhone(info, query.phone)) {
+            return reply.code(403).send({ ok: false, message: "phone mismatch" });
+        }
+
+        const goods = await app.prisma.mallRN_order_goods.findMany({
+            where: {
+                order_num: params.orderNum,
+                tenant_id: tenantId,
+                platform_type: PLATFORM_TYPE,
+            },
+            orderBy: [{ uid: "asc" }],
+            select: {
+                uid: true,
+                g_uid: true,
+                g_cate: true,
+                g_name: true,
+                g_code: true,
+                price: true,
+                orig_price: true,
+                qty: true,
+                option: true,
+                option_name: true,
+                status: true,
+                status2: true,
+                signdate: true,
+            },
+        });
+
+        const currentStatus = goods[0] ? Number(goods[0].status ?? 0) : 0;
+        const display = buildOrderDisplay({
+            status: currentStatus,
+            pickupAt: info.pickup_at,
+            goods,
+        });
+
+        return reply.send({
+            ok: true,
+            tenant: tenantSlug,
+            order: {
+                id: String(info.uid),
+                orderNum: info.order_num,
+                buyerName: info.name ?? "",
+                buyerPhone: info.cell ?? "",
+                receiverName: info.name2 ?? "",
+                receiverPhone: info.cell2 ?? "",
+                message: info.message ?? "",
+                memo: info.memo ?? "",
+                totalAmount: Number(info.pay_total ?? 0),
+                cancelTotal: Number(info.cancel_total ?? 0),
+                refundTotal: Number(info.refund_total ?? 0),
+                deliveryTotal: Number(info.delivery_total ?? 0),
+                payType: info.pay_type ?? "B",
+                payStatus: info.pay_status ?? "A",
+                pickupAt: info.pickup_at ?? null,
+                status: currentStatus,
+                statusLabel: statusLabel(currentStatus),
+                displayStatus: display.displayStatus,
+                badgeText: display.badgeText,
+                footerText: display.footerText,
+                canCancel: display.canCancel,
+                createdAt: unixToIso(info.signdate),
+                statusDate: unixToIso(info.status_date),
+                items: goods.map(buildOrderGoodsDetailPayload),
+            },
+        });
+    });
+
     app.get("/v1/orders/:orderNum", async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
         const currentMember = getCurrentMember(req);
 
-        const params = z.object({
-            orderNum: z.string().min(1),
-        }).parse(req.params ?? {});
+        const params = z
+            .object({
+                orderNum: z.string().min(1),
+            })
+            .parse(req.params ?? {});
 
         const where: any = {
             tenant_id: tenantId,
-            platform_type: "DAD",
+            platform_type: PLATFORM_TYPE,
             order_num: params.orderNum,
         };
 
@@ -774,12 +1109,13 @@ export async function publicOrderRoutes(app: FastifyInstance) {
             where: {
                 order_num: params.orderNum,
                 tenant_id: tenantId,
-                platform_type: "DAD",
+                platform_type: PLATFORM_TYPE,
             },
             orderBy: [{ uid: "asc" }],
             select: {
                 uid: true,
                 g_uid: true,
+                g_cate: true,
                 g_name: true,
                 g_code: true,
                 price: true,
@@ -794,6 +1130,11 @@ export async function publicOrderRoutes(app: FastifyInstance) {
         });
 
         const currentStatus = goods[0] ? Number(goods[0].status ?? 0) : 0;
+        const display = buildOrderDisplay({
+            status: currentStatus,
+            pickupAt: info.pickup_at,
+            goods,
+        });
 
         return reply.send({
             ok: true,
@@ -816,23 +1157,305 @@ export async function publicOrderRoutes(app: FastifyInstance) {
                 pickupAt: info.pickup_at ?? null,
                 status: currentStatus,
                 statusLabel: statusLabel(currentStatus),
+                displayStatus: display.displayStatus,
+                badgeText: display.badgeText,
+                footerText: display.footerText,
+                canCancel: display.canCancel,
                 createdAt: unixToIso(info.signdate),
                 statusDate: unixToIso(info.status_date),
-                items: goods.map((g: any) => ({
-                    id: String(g.uid),
-                    productId: String(g.g_uid ?? 0),
-                    title: g.g_name ?? "",
-                    goodsCode: g.g_code ?? "",
-                    price: Number(g.price ?? 0),
-                    origPrice: Number(g.orig_price ?? 0),
-                    qty: Number(g.qty ?? 0),
-                    optionId: Number(g.option ?? 0),
-                    optionName: g.option_name ?? "",
-                    status: Number(g.status ?? 0),
-                    status2: Number(g.status2 ?? 0),
-                    createdAt: unixToIso(g.signdate),
-                })),
+                items: goods.map(buildOrderGoodsDetailPayload),
             },
+        });
+    });
+
+    app.post("/v1/orders/guest/:orderNum/cancel", async (req: any, reply) => {
+        const tenantSlug: string | undefined = req.tenantSlug;
+        const tenantId = req.tenantId as bigint;
+
+        const params = z
+            .object({
+                orderNum: z.string().min(1),
+            })
+            .parse(req.params ?? {});
+
+        const body = z
+            .object({
+                phone: z.string().min(8).max(30),
+            })
+            .parse(req.body ?? {});
+
+        const info = await app.prisma.mallRN_order_info.findFirst({
+            where: {
+                tenant_id: tenantId,
+                platform_type: PLATFORM_TYPE,
+                order_num: params.orderNum,
+            },
+            select: {
+                uid: true,
+                order_num: true,
+                pay_total: true,
+                cell: true,
+                cell2: true,
+            },
+        });
+
+        if (!info) {
+            return reply.code(404).send({ ok: false, message: "order not found" });
+        }
+
+        if (!orderMatchesPhone(info, body.phone)) {
+            return reply.code(403).send({ ok: false, message: "phone mismatch" });
+        }
+
+        const goods = await app.prisma.mallRN_order_goods.findMany({
+            where: {
+                order_num: params.orderNum,
+                tenant_id: tenantId,
+                platform_type: PLATFORM_TYPE,
+            },
+            select: {
+                uid: true,
+                g_uid: true,
+                qty: true,
+                status: true,
+            },
+        });
+
+        if (!goods.length) {
+            return reply.code(404).send({ ok: false, message: "order goods not found" });
+        }
+
+        if (goods.some((g: any) => Number(g.status ?? 0) === 4)) {
+            return reply.code(400).send({
+                ok: false,
+                message: "already picked up",
+            });
+        }
+
+        if (goods.every((g: any) => Number(g.status ?? 0) === 9)) {
+            return reply.code(400).send({
+                ok: false,
+                message: "already cancelled",
+            });
+        }
+
+        const now = toUnixNow();
+        const productIds = goods.map((g: any) => Number(g.g_uid)).filter((v: number) => v > 0);
+
+        const productRows =
+            productIds.length > 0
+                ? await app.prisma.mallRN_goods.findMany({
+                    where: { uid: { in: productIds } },
+                    select: {
+                        uid: true,
+                        qty: true,
+                        qty_type: true,
+                    },
+                })
+                : [];
+
+        const productMap = new Map(productRows.map((p: any) => [Number(p.uid), p]));
+
+        await app.prisma.$transaction(async (tx: any) => {
+            await tx.mallRN_order_info.update({
+                where: { uid: info.uid },
+                data: {
+                    cancel_total: Number(info.pay_total ?? 0),
+                    status_date: now,
+                },
+            });
+
+            await tx.mallRN_order_goods.updateMany({
+                where: {
+                    order_num: params.orderNum,
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                },
+                data: {
+                    status: 9,
+                    status2: 1,
+                    status_date: now,
+                },
+            });
+
+            for (const row of goods) {
+                await tx.mallRN_order_log.create({
+                    data: {
+                        order_num: params.orderNum,
+                        og_uid: Number(row.uid),
+                        id: "guest",
+                        prev_status: Number(row.status ?? 0),
+                        prev_status2: 0,
+                        status: 9,
+                        status2: 1,
+                        signdate: now,
+                    },
+                });
+
+                const product = productMap.get(Number(row.g_uid));
+                if (product && Number(product.qty_type ?? 0) === 0) {
+                    await tx.mallRN_goods.update({
+                        where: { uid: Number(row.g_uid) },
+                        data: {
+                            qty: Number(product.qty ?? 0) + Number(row.qty ?? 0),
+                            moddate: now,
+                        },
+                    });
+                }
+            }
+        });
+
+        return reply.send({
+            ok: true,
+            tenant: tenantSlug,
+            orderNum: params.orderNum,
+            status: 9,
+            statusLabel: statusLabel(9),
+        });
+    });
+
+    app.post("/v1/orders/:orderNum/cancel", async (req: any, reply) => {
+        const tenantSlug: string | undefined = req.tenantSlug;
+        const tenantId = req.tenantId as bigint;
+        const currentMember = getCurrentMember(req);
+
+        const params = z
+            .object({
+                orderNum: z.string().min(1),
+            })
+            .parse(req.params ?? {});
+
+        const where: any = {
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+            order_num: params.orderNum,
+        };
+
+        if (currentMember.memberUid) {
+            where.member_uid = BigInt(currentMember.memberUid);
+        } else if (currentMember.loginId) {
+            where.id = currentMember.loginId;
+        } else {
+            return reply.code(401).send({ ok: false, message: "login required" });
+        }
+
+        const info = await app.prisma.mallRN_order_info.findFirst({
+            where,
+            select: {
+                uid: true,
+                order_num: true,
+                pay_total: true,
+            },
+        });
+
+        if (!info) {
+            return reply.code(404).send({ ok: false, message: "order not found" });
+        }
+
+        const goods = await app.prisma.mallRN_order_goods.findMany({
+            where: {
+                order_num: params.orderNum,
+                tenant_id: tenantId,
+                platform_type: PLATFORM_TYPE,
+            },
+            select: {
+                uid: true,
+                g_uid: true,
+                qty: true,
+                status: true,
+            },
+        });
+
+        if (!goods.length) {
+            return reply.code(404).send({ ok: false, message: "order goods not found" });
+        }
+
+        if (goods.some((g: any) => Number(g.status ?? 0) === 4)) {
+            return reply.code(400).send({
+                ok: false,
+                message: "already picked up",
+            });
+        }
+
+        if (goods.every((g: any) => Number(g.status ?? 0) === 9)) {
+            return reply.code(400).send({
+                ok: false,
+                message: "already cancelled",
+            });
+        }
+
+        const now = toUnixNow();
+        const productIds = goods.map((g: any) => Number(g.g_uid)).filter((v: number) => v > 0);
+
+        const productRows =
+            productIds.length > 0
+                ? await app.prisma.mallRN_goods.findMany({
+                    where: { uid: { in: productIds } },
+                    select: {
+                        uid: true,
+                        qty: true,
+                        qty_type: true,
+                    },
+                })
+                : [];
+
+        const productMap = new Map(productRows.map((p: any) => [Number(p.uid), p]));
+
+        await app.prisma.$transaction(async (tx: any) => {
+            await tx.mallRN_order_info.update({
+                where: { uid: info.uid },
+                data: {
+                    cancel_total: Number(info.pay_total ?? 0),
+                    status_date: now,
+                },
+            });
+
+            await tx.mallRN_order_goods.updateMany({
+                where: {
+                    order_num: params.orderNum,
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                },
+                data: {
+                    status: 9,
+                    status2: 1,
+                    status_date: now,
+                },
+            });
+
+            for (const row of goods) {
+                await tx.mallRN_order_log.create({
+                    data: {
+                        order_num: params.orderNum,
+                        og_uid: Number(row.uid),
+                        id: currentMember.loginId || "",
+                        prev_status: Number(row.status ?? 0),
+                        prev_status2: 0,
+                        status: 9,
+                        status2: 1,
+                        signdate: now,
+                    },
+                });
+
+                const product = productMap.get(Number(row.g_uid));
+                if (product && Number(product.qty_type ?? 0) === 0) {
+                    await tx.mallRN_goods.update({
+                        where: { uid: Number(row.g_uid) },
+                        data: {
+                            qty: Number(product.qty ?? 0) + Number(row.qty ?? 0),
+                            moddate: now,
+                        },
+                    });
+                }
+            }
+        });
+
+        return reply.send({
+            ok: true,
+            tenant: tenantSlug,
+            orderNum: params.orderNum,
+            status: 9,
+            statusLabel: statusLabel(9),
         });
     });
 }

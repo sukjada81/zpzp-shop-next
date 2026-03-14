@@ -1,6 +1,62 @@
 // src/components/orders/OrdersClient.tsx
 "use client";
 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, CalendarDays, X, Zap } from "lucide-react";
+import { endpoints } from "@/lib/api/endpoints";
+import { loadGuestOrderRefs } from "@/lib/orders/guestOrderRefs";
+
+type ApiOrderItem = {
+    id: string;
+    orderNum: string;
+    buyerName?: string;
+    buyerPhone?: string;
+    totalAmount: number;
+    pickupAt?: string | null;
+    status: number;
+    statusLabel: string;
+    displayStatus?: string;
+    badgeText?: string | null;
+    footerText?: string | null;
+    canCancel?: boolean;
+    createdAt: string;
+    items?: Array<{
+        id: string;
+        productId: string;
+        title: string;
+        price: number;
+        qty: number;
+        optionName?: string;
+        status: number;
+    }>;
+};
+
+type MyOrdersResponse = {
+    ok: boolean;
+    items?: ApiOrderItem[];
+    message?: string;
+};
+
+type GuestOrdersResponse = {
+    ok: boolean;
+    items?: ApiOrderItem[];
+    message?: string;
+};
+
+type CancelOrderResponse = {
+    ok: boolean;
+    orderNum?: string;
+    status?: number;
+    statusLabel?: string;
+    message?: string;
+};
+
+type GuestProfile = {
+    nickname?: string;
+    phone?: string;
+};
+
 export type OrderSummary = {
     orderNo: string;
     status: string;
@@ -8,148 +64,418 @@ export type OrderSummary = {
     totalPrice: number;
     createdAt: string;
     pickupAt?: string | null;
-    thumbnailUrl?: string;
-    isNew?: boolean;
+    badgeText?: string | null;
+    footerText?: string | null;
+    lineText?: string;
+    canCancel?: boolean;
+    guestPhone?: string;
 };
 
-function statusTone(status: string) {
-    if (status.includes("취소")) {
-        return {
-            bg: "bg-rose-50",
-            bd: "border-rose-200",
-            tx: "text-rose-700",
-        };
-    }
+function readQuickOrderProfilePhone(tenant: string): string {
+    if (typeof window === "undefined") return "";
 
-    if (status.includes("픽업완료")) {
-        return {
-            bg: "bg-[color:var(--brand-soft)]",
-            bd: "border-[color:var(--border)]",
-            tx: "text-[color:var(--brand)]",
-        };
-    }
+    try {
+        const raw = localStorage.getItem(`profile:${tenant || "default"}`);
+        if (!raw) return "";
 
-    if (status.includes("픽업준비")) {
-        return {
-            bg: "bg-[color:var(--accent-soft)]",
-            bd: "border-[color:var(--border)]",
-            tx: "text-[color:var(--brand)]",
-        };
+        const parsed = JSON.parse(raw) as GuestProfile;
+        return String(parsed?.phone ?? "").replace(/[^\d]/g, "");
+    } catch {
+        return "";
     }
-
-    return {
-        bg: "bg-slate-50",
-        bd: "border-slate-200",
-        tx: "text-slate-700",
-    };
 }
 
-function formatDateText(value: string) {
+function pad2(n: number) {
+    return String(n).padStart(2, "0");
+}
+
+function formatOrderDateLabel(value?: string) {
     if (!value) return "";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
-    return d.toLocaleString();
+
+    const dayKor = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()] ?? "";
+    return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}(${dayKor}) 주문`;
+}
+
+function formatMoney(v: number) {
+    return `${Number(v ?? 0).toLocaleString()}원`;
+}
+
+function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSummary {
+    const goods = Array.isArray(order.items) ? order.items : [];
+    const first = goods[0];
+
+    const qtyText = first ? `${first.title} ${first.qty}개` : "주문 상품";
+
+    return {
+        orderNo: order.orderNum,
+        status: order.displayStatus || order.statusLabel || "주문접수",
+        title:
+            goods.length <= 1
+                ? first?.title ?? order.orderNum
+                : `[${goods.length}건] ${first?.title ?? "주문 상품"}`,
+        totalPrice: Number(order.totalAmount ?? 0),
+        createdAt: order.createdAt,
+        pickupAt: order.pickupAt ?? null,
+        badgeText: order.badgeText ?? null,
+        footerText: order.footerText ?? null,
+        lineText: qtyText,
+        canCancel: Boolean(order.canCancel),
+        guestPhone,
+    };
+}
+
+function getFooterVariant(text: string) {
+    if (text.includes("미수령")) return "warning";
+    if (text.includes("취소")) return "danger";
+    if (text.includes("매장 방문 시 수령 가능")) return "pickup";
+    if (text.includes("입고 예정일")) return "schedule";
+    if (text.includes("픽업 기간")) return "schedule";
+    return "default";
+}
+
+function getFooterClass(variant: string) {
+    switch (variant) {
+        case "warning":
+            return "border-rose-200 bg-white text-rose-400";
+        case "danger":
+            return "border-rose-200 bg-rose-50 text-rose-500";
+        case "pickup":
+            return "border-slate-200 bg-white text-slate-400";
+        case "schedule":
+            return "border-slate-200 bg-white text-[#8fc59d]";
+        default:
+            return "border-slate-200 bg-white text-slate-400";
+    }
+}
+
+function getFooterIcon(variant: string) {
+    if (variant === "warning") {
+        return <AlertTriangle size={15} className="shrink-0" />;
+    }
+    if (variant === "pickup") {
+        return <Zap size={15} className="shrink-0" />;
+    }
+    if (variant === "schedule") {
+        return <CalendarDays size={15} className="shrink-0" />;
+    }
+    return null;
+}
+
+function getBadgeClass(text: string) {
+    if (text.includes("픽업 기간")) {
+        return "border-[#d6d6db] bg-[#efeff3] text-[#5f6470]";
+    }
+    if (text.includes("픽업 예정")) {
+        return "border-[#d6d6db] bg-[#efeff3] text-[#5f6470]";
+    }
+    return "border-[#d6d6db] bg-[#efeff3] text-[#5f6470]";
 }
 
 export default function OrdersClient(props: {
     tenant: string;
     initialOrders?: OrderSummary[];
-    loading?: boolean;
 }) {
-    const { initialOrders, loading } = props;
-    const orders = initialOrders ?? [];
+    const { tenant } = props;
+
+    const [orders, setOrders] = useState<OrderSummary[]>(props.initialOrders ?? []);
+    const [loading, setLoading] = useState(!props.initialOrders);
+    const [error, setError] = useState("");
+    const [cancelingOrderNo, setCancelingOrderNo] = useState<string>("");
+
+    const didFetchRef = useRef(false);
+
+    const highlightOrderNo = useMemo(() => {
+        if (typeof window === "undefined") return "";
+        return new URLSearchParams(window.location.search).get("highlight") ?? "";
+    }, []);
+
+    const fetchGuestOrders = useCallback(async () => {
+        const refs = loadGuestOrderRefs();
+        const merged: OrderSummary[] = [];
+
+        if (refs.length > 0) {
+            const groupedPhoneMap = new Map<string, string[]>();
+
+            for (const ref of refs) {
+                const list = groupedPhoneMap.get(ref.phone) ?? [];
+                list.push(ref.orderNum);
+                groupedPhoneMap.set(ref.phone, Array.from(new Set(list)));
+            }
+
+            for (const [phone, orderNums] of groupedPhoneMap.entries()) {
+                const res = await fetch(endpoints.guestOrders(tenant), {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    body: JSON.stringify({
+                        phone,
+                        orderNums,
+                    }),
+                });
+
+                const json = (await res.json().catch(() => ({}))) as GuestOrdersResponse;
+                if (!res.ok || json.ok === false) continue;
+
+                for (const item of json.items ?? []) {
+                    merged.push(mapApiOrderToSummary(item, phone));
+                }
+            }
+        } else {
+            const phone = readQuickOrderProfilePhone(tenant);
+
+            if (!phone) {
+                setOrders([]);
+                setError("");
+                return;
+            }
+
+            const res = await fetch(endpoints.guestOrders(tenant), {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
+                body: JSON.stringify({
+                    phone,
+                    orderNums: [],
+                }),
+            });
+
+            const json = (await res.json().catch(() => ({}))) as GuestOrdersResponse;
+            if (res.ok && json.ok !== false) {
+                for (const item of json.items ?? []) {
+                    merged.push(mapApiOrderToSummary(item, phone));
+                }
+            }
+        }
+
+        merged.sort((a, b) => {
+            const at = new Date(a.createdAt || 0).getTime();
+            const bt = new Date(b.createdAt || 0).getTime();
+            return bt - at;
+        });
+
+        setOrders(merged);
+        setError("");
+    }, [tenant]);
+
+    const fetchOrders = useCallback(async () => {
+        setLoading(true);
+        setError("");
+
+        try {
+            const res = await fetch(endpoints.myOrders(tenant, { page: 1, limit: 50 }), {
+                method: "GET",
+                credentials: "include",
+                cache: "no-store",
+                headers: {
+                    Accept: "application/json",
+                },
+            });
+
+            if (res.ok) {
+                const json = (await res.json().catch(() => ({}))) as MyOrdersResponse;
+
+                if (!json.ok) {
+                    throw new Error(json.message || "주문내역 조회 실패");
+                }
+
+                setOrders((json.items ?? []).map((item) => mapApiOrderToSummary(item)));
+                return;
+            }
+
+            await fetchGuestOrders();
+        } catch (e: any) {
+            setError(e?.message || "주문내역을 불러오지 못했습니다.");
+        } finally {
+            setLoading(false);
+        }
+    }, [tenant, fetchGuestOrders]);
+
+    useEffect(() => {
+        if (props.initialOrders && props.initialOrders.length > 0) return;
+        if (didFetchRef.current) return;
+
+        didFetchRef.current = true;
+        fetchOrders();
+    }, [props.initialOrders, fetchOrders]);
+
+    async function handleCancel(orderNo: string, guestPhone?: string) {
+        const ok = window.confirm("주문을 취소할까요?");
+        if (!ok) return;
+
+        setCancelingOrderNo(orderNo);
+
+        try {
+            let res: Response;
+
+            if (guestPhone) {
+                res = await fetch(endpoints.guestCancelOrder(tenant, orderNo), {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    body: JSON.stringify({ phone: guestPhone }),
+                });
+            } else {
+                res = await fetch(endpoints.cancelOrder(tenant, orderNo), {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        Accept: "application/json",
+                    },
+                });
+            }
+
+            const json = (await res.json().catch(() => ({}))) as CancelOrderResponse;
+
+            if (!res.ok || json.ok === false) {
+                throw new Error(json.message || `주문취소 실패 (HTTP ${res.status})`);
+            }
+
+            await fetchOrders();
+        } catch (e: any) {
+            alert(e?.message || "주문취소 처리 중 오류가 발생했습니다.");
+        } finally {
+            setCancelingOrderNo("");
+        }
+    }
 
     return (
-        <section className="space-y-3">
-            <div className="rounded-2xl border border-[color:var(--border)] bg-white p-4 shadow-sm">
-                <div className="text-[18px] font-extrabold text-[color:var(--fg)]">주문내역</div>
-                <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
-                    주문 상태/픽업 정보는 주문 상세에서 확인할 수 있어요.
-                </div>
-            </div>
-
+        <section className="space-y-4">
             {loading ? (
-                <div className="rounded-2xl border border-[color:var(--border)] bg-white p-6 text-center shadow-sm">
-                    <div className="text-[14px] font-semibold text-[color:var(--muted)]">
+                <div className="rounded-[24px] border border-[#e5e5e5] bg-white p-6 text-center shadow-sm">
+                    <div className="text-[14px] font-semibold text-[#7a7a7a]">
                         주문내역을 불러오는 중입니다.
                     </div>
                 </div>
+            ) : error ? (
+                <div className="rounded-[24px] border border-rose-200 bg-rose-50 p-6 text-center shadow-sm">
+                    <div className="text-[14px] font-semibold text-rose-700">{error}</div>
+                    <button
+                        type="button"
+                        onClick={fetchOrders}
+                        className="mt-3 inline-flex h-10 items-center rounded-xl bg-white px-4 text-sm font-bold text-slate-800 shadow-sm"
+                    >
+                        다시 불러오기
+                    </button>
+                </div>
             ) : orders.length === 0 ? (
-                <div className="rounded-2xl border border-[color:var(--border)] bg-white p-6 text-center shadow-sm">
-                    <div className="text-[15px] font-extrabold text-[color:var(--fg)]">주문내역이 없습니다</div>
-                    <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">
+                <div className="rounded-[24px] border border-[#e5e5e5] bg-white p-6 text-center shadow-sm">
+                    <div className="text-[15px] font-extrabold text-[#222]">주문내역이 없습니다</div>
+                    <div className="mt-2 text-xs font-semibold text-[#888]">
                         주문을 완료하면 이곳에서 확인할 수 있어요.
                     </div>
                 </div>
             ) : (
-                orders.map((o) => {
-                    const tone = statusTone(o.status);
+                orders.map((order) => {
+                    const isHighlighted = highlightOrderNo === order.orderNo;
+                    const href = order.guestPhone
+                        ? `/${tenant}/orders/${encodeURIComponent(order.orderNo)}?phone=${encodeURIComponent(order.guestPhone)}`
+                        : `/${tenant}/orders/${encodeURIComponent(order.orderNo)}`;
+
+                    const footerText = order.footerText || order.status;
+                    const footerVariant = getFooterVariant(footerText);
+                    const footerClass = getFooterClass(footerVariant);
+                    const badgeClass = order.badgeText ? getBadgeClass(order.badgeText) : "";
 
                     return (
-                        <a
-                            key={o.orderNo}
-                            href={`/${props.tenant}/orders/${encodeURIComponent(o.orderNo)}`}
-                            className="block rounded-2xl border border-[color:var(--border)] bg-white p-4 shadow-sm transition hover:bg-[color:var(--accent-soft)]"
+                        <article
+                            key={order.orderNo}
+                            className={[
+                                "rounded-[24px] border bg-white px-5 pb-4 pt-4 shadow-sm",
+                                isHighlighted
+                                    ? "border-[color:var(--brand)] ring-2 ring-[color:var(--brand)]/10"
+                                    : "border-[#e6e6e6]",
+                            ].join(" ")}
                         >
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <span
-                                            className={[
-                                                "inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-extrabold",
-                                                tone.bg,
-                                                tone.bd,
-                                                tone.tx,
-                                            ].join(" ")}
-                                        >
-                                            {o.status}
-                                        </span>
+                                        <div className="text-[13px] font-medium text-[#8f8f98]">
+                                            {formatOrderDateLabel(order.createdAt)}
+                                        </div>
 
-                                        {o.isNew ? (
-                                            <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-1 text-[11px] font-extrabold text-red-600">
-                                                방금 주문
+                                        {order.badgeText ? (
+                                            <span
+                                                className={[
+                                                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold",
+                                                    badgeClass,
+                                                ].join(" ")}
+                                            >
+                                                <CalendarDays size={13} />
+                                                <span>{order.badgeText}</span>
                                             </span>
                                         ) : null}
                                     </div>
-
-                                    <div className="mt-3 line-clamp-2 text-[14px] font-extrabold text-[color:var(--fg)]">
-                                        {o.title}
-                                    </div>
-
-                                    <div className="mt-2 text-[14px] font-extrabold text-[color:var(--fg)]">
-                                        {o.totalPrice.toLocaleString()}원
-                                    </div>
-
-                                    {o.createdAt ? (
-                                        <div className="mt-2 text-[12px] font-semibold text-[color:var(--muted)]">
-                                            주문일시: {formatDateText(o.createdAt)}
-                                        </div>
-                                    ) : null}
-
-                                    {o.pickupAt ? (
-                                        <div className="mt-1 text-[12px] font-semibold text-[color:var(--muted)]">
-                                            픽업 예정: {formatDateText(o.pickupAt)}
-                                        </div>
-                                    ) : null}
-
-                                    <div className="mt-2 text-[11px] font-semibold text-[color:var(--muted)]">
-                                        주문번호: {o.orderNo}
-                                    </div>
                                 </div>
 
-                                <div className="shrink-0 text-sm font-extrabold text-[color:var(--muted)]/60">
-                                    →
-                                </div>
+                                {order.canCancel ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleCancel(order.orderNo, order.guestPhone)}
+                                        disabled={cancelingOrderNo === order.orderNo}
+                                        className="shrink-0 text-[#555] disabled:opacity-50"
+                                        aria-label="주문 취소"
+                                    >
+                                        <X size={22} strokeWidth={2.2} />
+                                    </button>
+                                ) : null}
                             </div>
-                        </a>
+
+                            <Link href={href} className="mt-2 block">
+                                <div className="text-[16px] font-extrabold leading-[1.45] tracking-[-0.02em] text-[#182032]">
+                                    {order.title}
+                                </div>
+
+                                {order.lineText ? (
+                                    <div className="mt-3 flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1 text-[14px] font-medium text-[#566072]">
+                                            {order.lineText}
+                                        </div>
+                                        <div className="shrink-0 text-[14px] font-semibold text-[#1f2940]">
+                                            {formatMoney(order.totalPrice)}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                <div className="my-4 h-px bg-[#e8e8eb]" />
+
+                                <div className="flex items-end justify-between gap-3">
+                                    <div className="text-[15px] font-bold text-[#25324a]">
+                                        주문금액
+                                    </div>
+                                    <div className="text-[20px] font-extrabold tracking-[-0.02em] text-[#182032]">
+                                        {formatMoney(order.totalPrice)}
+                                    </div>
+                                </div>
+
+                                <div
+                                    className={[
+                                        "mt-4 flex h-[46px] items-center justify-center gap-1 rounded-[14px] border text-[14px] font-bold",
+                                        footerClass,
+                                    ].join(" ")}
+                                >
+                                    {getFooterIcon(footerVariant)}
+                                    <span>{footerText}</span>
+                                </div>
+                            </Link>
+                        </article>
                     );
                 })
             )}
-
-            <div className="mt-6 rounded-2xl border border-[color:var(--border)] bg-white p-4 text-sm font-semibold text-[color:var(--fg)] shadow-sm">
-                주문 후 <span className="font-extrabold text-[color:var(--brand)]">픽업 일정</span>과
-                진행 상태를 확인할 수 있어요.
-            </div>
         </section>
     );
 }

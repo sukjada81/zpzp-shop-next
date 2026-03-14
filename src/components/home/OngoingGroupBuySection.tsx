@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ShoppingBag, Clock3, Truck } from "lucide-react";
 import { endpoints } from "@/lib/api/endpoints";
+import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
 
 type NoticeItem = {
     id: string;
@@ -333,7 +334,7 @@ function GroupBuyItemBlock({
                     </span>
                 </div>
             </Link>
-            
+
             <div className="mt-5 space-y-2">
                 {options.map((option) => {
                     const optionKey = buildOptionKey(item.id, option.id);
@@ -574,6 +575,16 @@ export default function OngoingGroupBuySection({
             if (!res.ok || json?.ok === false || !json?.orderNum) {
                 throw new Error(json?.message || `주문 생성 실패 (HTTP ${res.status})`);
             }
+
+            console.log("quick-order success", json.orderNum, profile.phone);
+            saveGuestOrderRef({
+                tenant: firstTenant,
+                orderNum: json.orderNum,
+                phone: profile.phone,
+                buyerName: profile.nickname,
+                createdAt: new Date().toISOString(),
+            });
+            console.log("guest refs after save", localStorage.getItem("dad_guest_orders_v1"));
 
             setQtyMap({});
             setToastOpen(true);

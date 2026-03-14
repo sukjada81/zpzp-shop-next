@@ -1,10 +1,11 @@
 // src/components/order/OrderClient.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints } from "@/lib/api/endpoints";
+import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
 
 export type OrderItem = {
     id: string;
@@ -53,7 +54,7 @@ export default function OrderClient(props: {
 }) {
     const { tenant } = props;
     const router = useRouter();
-    const cart = useCart() as any;
+    const cart = useCart();
 
     const [items, setItems] = useState<OrderItem[]>(props.initialItems);
     const [submitting, setSubmitting] = useState(false);
@@ -80,23 +81,38 @@ export default function OrderClient(props: {
 
     const canSubmit = items.length > 0 && !submitting;
 
+    useEffect(() => {
+        if (!receiverSame) return;
+        setReceiverName(buyerName);
+        setReceiverPhoneA(buyerPhoneA);
+        setReceiverPhoneB(buyerPhoneB);
+        setReceiverPhoneC(buyerPhoneC);
+    }, [receiverSame, buyerName, buyerPhoneA, buyerPhoneB, buyerPhoneC]);
+
+    useEffect(() => {
+        if (props.initialItems.length > 0) {
+            setItems(props.initialItems);
+            return;
+        }
+
+        if (cart.items.length > 0) {
+            setItems(
+                cart.items.map((item) => ({
+                    id: String(item.productId),
+                    title: item.name,
+                    price: Number(item.price ?? 0),
+                    qty: Number(item.quantity ?? 0),
+                }))
+            );
+        }
+    }, [props.initialItems, cart.items]);
+
     function updateQty(id: string, next: number) {
         setItems((prev) =>
             prev
                 .map((it) => (it.id === id ? { ...it, qty: Math.max(0, next) } : it))
                 .filter((it) => it.qty > 0)
         );
-    }
-
-    function syncReceiverFromBuyer(nextSame: boolean) {
-        setReceiverSame(nextSame);
-
-        if (nextSame) {
-            setReceiverName(buyerName);
-            setReceiverPhoneA(buyerPhoneA);
-            setReceiverPhoneB(buyerPhoneB);
-            setReceiverPhoneC(buyerPhoneC);
-        }
     }
 
     async function submitOrder() {
@@ -170,13 +186,16 @@ export default function OrderClient(props: {
                 throw new Error(json?.message || `주문 생성 실패 (HTTP ${res.status})`);
             }
 
-            if (typeof cart?.clear === "function") {
-                cart.clear();
-            }
+            saveGuestOrderRef({
+                tenant,
+                orderNum: json.orderNum,
+                phone: normalizedBuyerPhone,
+                buyerName: normalizedBuyerName,
+                createdAt: new Date().toISOString(),
+            });
 
-            router.replace(
-                `/${tenant}/order/complete?orderNo=${encodeURIComponent(json.orderNum)}`
-            );
+            cart.clear();
+            router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(json.orderNum)}`);
         } catch (e: any) {
             alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
         } finally {
@@ -184,299 +203,233 @@ export default function OrderClient(props: {
         }
     }
 
+    const buyerPhonePreview = joinPhone(buyerPhoneA, buyerPhoneB, buyerPhoneC);
+    const receiverPhonePreview = receiverSame
+        ? buyerPhonePreview
+        : joinPhone(receiverPhoneA, receiverPhoneB, receiverPhoneC);
+
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-28 pt-3">
-            <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                    <div className="text-[15px] font-extrabold text-slate-900">주문 상품</div>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">
-                        {items.length}개
+                    <div className="text-[17px] font-extrabold text-slate-900">주문 상품</div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {items.length}건
                     </span>
                 </div>
 
                 {items.length === 0 ? (
-                    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-[12px] font-semibold text-slate-600">
-                        주문할 상품이 없습니다. 상품을 담아 주세요.
+                    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-[13px] font-semibold text-slate-600">
+                        주문할 상품이 없습니다.
                     </div>
                 ) : (
                     <div className="mt-3 space-y-3">
                         {items.map((it) => (
                             <div key={it.id} className="rounded-2xl border border-slate-200 p-3">
-                                <div className="line-clamp-2 text-[13px] font-extrabold text-slate-900">
+                                <div className="line-clamp-2 text-[14px] font-extrabold text-slate-900">
                                     {it.title}
                                 </div>
 
                                 {it.optionName ? (
-                                    <div className="mt-1 text-[11px] font-semibold text-slate-500">
+                                    <div className="mt-1 text-[12px] font-semibold text-slate-500">
                                         옵션: {it.optionName}
                                     </div>
                                 ) : null}
 
-                                <div className="mt-2 flex items-center justify-between gap-3">
-                                    <div className="text-[13px] font-extrabold text-slate-900">
+                                <div className="mt-3 flex items-center justify-between gap-3">
+                                    <div className="text-[14px] font-extrabold text-slate-900">
                                         {(it.price * it.qty).toLocaleString()}원
-                                        <span className="ml-2 text-[11px] font-semibold text-slate-500">
-                                            x {it.qty}
-                                        </span>
                                     </div>
 
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
                                             onClick={() => updateQty(it.id, it.qty - 1)}
-                                            disabled={it.qty <= 1}
-                                            className={[
-                                                "grid h-9 w-9 place-items-center rounded-full border text-lg font-black",
-                                                it.qty <= 1
-                                                    ? "border-slate-200 bg-slate-50 text-slate-300"
-                                                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-                                            ].join(" ")}
-                                            aria-label="수량 감소"
+                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700"
                                         >
-                                            –
+                                            -
                                         </button>
-
-                                        <div className="w-7 text-center text-[14px] font-extrabold tabular-nums text-slate-900">
+                                        <div className="min-w-[28px] text-center text-sm font-extrabold text-slate-900">
                                             {it.qty}
                                         </div>
-
                                         <button
                                             type="button"
                                             onClick={() => updateQty(it.id, it.qty + 1)}
-                                            className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--brand)] bg-[color:var(--brand)] text-lg font-black text-white hover:opacity-90"
-                                            aria-label="수량 증가"
+                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700"
                                         >
                                             +
                                         </button>
                                     </div>
                                 </div>
-
-                                {it.metaRight ? (
-                                    <div className="mt-2 text-[11px] font-semibold text-slate-500">
-                                        {it.metaRight}
-                                    </div>
-                                ) : null}
                             </div>
                         ))}
                     </div>
                 )}
             </section>
 
-            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[15px] font-extrabold text-slate-900">주문자</div>
+            <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-[16px] font-extrabold text-slate-900">주문자 정보</div>
 
-                <div className="mt-3 grid gap-3">
-                    <label className="grid gap-1">
-                        <span className="text-[12px] font-semibold text-slate-600">이름 *</span>
+                <div className="mt-3 space-y-3">
+                    <label className="block">
+                        <div className="mb-1 text-[13px] font-bold text-slate-800">이름</div>
                         <input
                             value={buyerName}
-                            onChange={(e) => {
-                                setBuyerName(e.target.value);
-                                if (receiverSame) setReceiverName(e.target.value);
-                            }}
-                            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
+                            onChange={(e) => setBuyerName(e.target.value)}
+                            className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none ring-0 placeholder:text-slate-400"
                             placeholder="주문자 이름"
                         />
                     </label>
 
-                    <div className="grid gap-1">
-                        <span className="text-[12px] font-semibold text-slate-600">연락처 *</span>
-
+                    <div>
+                        <div className="mb-1 text-[13px] font-bold text-slate-800">연락처</div>
                         <div className="grid grid-cols-3 gap-2">
                             <input
                                 value={buyerPhoneA}
-                                onChange={(e) => {
-                                    setBuyerPhoneA(onlyDigits(e.target.value));
-                                    if (receiverSame) setReceiverPhoneA(onlyDigits(e.target.value));
-                                }}
-                                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                                onChange={(e) => setBuyerPhoneA(onlyDigits(e.target.value).slice(0, 3))}
+                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none"
+                                inputMode="numeric"
                             />
                             <input
                                 value={buyerPhoneB}
-                                onChange={(e) => {
-                                    setBuyerPhoneB(onlyDigits(e.target.value));
-                                    if (receiverSame) setReceiverPhoneB(onlyDigits(e.target.value));
-                                }}
-                                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                                onChange={(e) => setBuyerPhoneB(onlyDigits(e.target.value).slice(0, 4))}
+                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none"
+                                inputMode="numeric"
                             />
                             <input
                                 value={buyerPhoneC}
-                                onChange={(e) => {
-                                    setBuyerPhoneC(onlyDigits(e.target.value));
-                                    if (receiverSame) setReceiverPhoneC(onlyDigits(e.target.value));
-                                }}
-                                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                                onChange={(e) => setBuyerPhoneC(onlyDigits(e.target.value).slice(0, 4))}
+                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none"
+                                inputMode="numeric"
                             />
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                    <div className="text-[15px] font-extrabold text-slate-900">수령 정보</div>
-                    <label className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">
+                    <div className="text-[16px] font-extrabold text-slate-900">수령인 정보</div>
+                    <label className="flex items-center gap-2 text-[12px] font-bold text-slate-700">
                         <input
                             type="checkbox"
                             checked={receiverSame}
-                            onChange={(e) => syncReceiverFromBuyer(e.target.checked)}
+                            onChange={(e) => setReceiverSame(e.target.checked)}
                         />
                         주문자와 동일
                     </label>
                 </div>
 
-                <div className="mt-3 grid gap-3">
-                    <label className="grid gap-1">
-                        <span className="text-[12px] font-semibold text-slate-600">수령인 이름 *</span>
+                <div className="mt-3 space-y-3">
+                    <label className="block">
+                        <div className="mb-1 text-[13px] font-bold text-slate-800">이름</div>
                         <input
-                            value={receiverName}
+                            value={receiverSame ? buyerName : receiverName}
                             onChange={(e) => setReceiverName(e.target.value)}
                             disabled={receiverSame}
-                            className={[
-                                "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                                receiverSame
-                                    ? "border-slate-200 bg-slate-50 text-slate-400"
-                                    : "border-slate-200 bg-white text-slate-900",
-                            ].join(" ")}
+                            className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none disabled:bg-slate-50"
                             placeholder="수령인 이름"
                         />
                     </label>
 
-                    <div className="grid gap-1">
-                        <span className="text-[12px] font-semibold text-slate-600">수령인 연락처 *</span>
+                    <div>
+                        <div className="mb-1 text-[13px] font-bold text-slate-800">연락처</div>
                         <div className="grid grid-cols-3 gap-2">
                             <input
-                                value={receiverPhoneA}
-                                onChange={(e) => setReceiverPhoneA(onlyDigits(e.target.value))}
+                                value={receiverSame ? buyerPhoneA : receiverPhoneA}
+                                onChange={(e) =>
+                                    setReceiverPhoneA(onlyDigits(e.target.value).slice(0, 3))
+                                }
                                 disabled={receiverSame}
-                                className={[
-                                    "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                                    receiverSame
-                                        ? "border-slate-200 bg-slate-50 text-slate-400"
-                                        : "border-slate-200 bg-white text-slate-900",
-                                ].join(" ")}
+                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none disabled:bg-slate-50"
+                                inputMode="numeric"
                             />
                             <input
-                                value={receiverPhoneB}
-                                onChange={(e) => setReceiverPhoneB(onlyDigits(e.target.value))}
+                                value={receiverSame ? buyerPhoneB : receiverPhoneB}
+                                onChange={(e) =>
+                                    setReceiverPhoneB(onlyDigits(e.target.value).slice(0, 4))
+                                }
                                 disabled={receiverSame}
-                                className={[
-                                    "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                                    receiverSame
-                                        ? "border-slate-200 bg-slate-50 text-slate-400"
-                                        : "border-slate-200 bg-white text-slate-900",
-                                ].join(" ")}
+                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none disabled:bg-slate-50"
+                                inputMode="numeric"
                             />
                             <input
-                                value={receiverPhoneC}
-                                onChange={(e) => setReceiverPhoneC(onlyDigits(e.target.value))}
+                                value={receiverSame ? buyerPhoneC : receiverPhoneC}
+                                onChange={(e) =>
+                                    setReceiverPhoneC(onlyDigits(e.target.value).slice(0, 4))
+                                }
                                 disabled={receiverSame}
-                                className={[
-                                    "rounded-2xl border px-3 py-3 text-sm font-semibold outline-none",
-                                    receiverSame
-                                        ? "border-slate-200 bg-slate-50 text-slate-400"
-                                        : "border-slate-200 bg-white text-slate-900",
-                                ].join(" ")}
+                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none disabled:bg-slate-50"
+                                inputMode="numeric"
                             />
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[15px] font-extrabold text-slate-900">픽업 정보</div>
+            <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-[16px] font-extrabold text-slate-900">픽업/요청사항</div>
 
-                <div className="mt-3 grid gap-3">
-                    <label className="grid gap-1">
-                        <span className="text-[12px] font-semibold text-slate-600">픽업 예정일시</span>
+                <div className="mt-3 space-y-3">
+                    <label className="block">
+                        <div className="mb-1 text-[13px] font-bold text-slate-800">픽업 예정일시</div>
                         <input
                             type="datetime-local"
                             value={pickupAt}
                             onChange={(e) => setPickupAt(e.target.value)}
-                            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
+                            className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
                         />
                     </label>
 
-                    <label className="grid gap-1">
-                        <span className="text-[12px] font-semibold text-slate-600">요청사항</span>
-                        <input
+                    <label className="block">
+                        <div className="mb-1 text-[13px] font-bold text-slate-800">요청사항</div>
+                        <textarea
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
-                            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                            placeholder="예: 오후 6시 이후 방문 예정"
+                            className="min-h-[92px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
+                            placeholder="매장 전달 요청사항"
                         />
                     </label>
 
-                    <label className="grid gap-1">
-                        <span className="text-[12px] font-semibold text-slate-600">메모</span>
+                    <label className="block">
+                        <div className="mb-1 text-[13px] font-bold text-slate-800">내부 메모</div>
                         <textarea
                             value={memo}
                             onChange={(e) => setMemo(e.target.value)}
-                            rows={3}
-                            className="resize-none rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none"
-                            placeholder="관리자 확인용 메모"
+                            className="min-h-[92px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
+                            placeholder="추가 메모"
                         />
                     </label>
                 </div>
             </section>
 
-            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[15px] font-extrabold text-slate-900">주문 금액</div>
-
-                <div className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
-                    <Row label="상품 금액" value={`${subtotal.toLocaleString()}원`} />
-                    <div className="h-px bg-slate-200" />
-                    <Row label="현장 결제 예정 금액" value={`${subtotal.toLocaleString()}원`} strong />
+            <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                    <span className="text-[14px] font-bold text-slate-700">총 주문금액</span>
+                    <strong className="text-[24px] font-extrabold text-slate-900">
+                        {subtotal.toLocaleString()}원
+                    </strong>
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] font-semibold text-amber-700">
-                    이 주문은 온라인 선결제가 아니라 매장 방문 후 오프라인 결제로 처리됩니다.
+                <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-[12px] font-semibold text-slate-600">
+                    주문자 연락처: {buyerPhonePreview || "-"}
+                    <br />
+                    수령인 연락처: {receiverPhonePreview || "-"}
                 </div>
             </section>
 
-            <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur">
-                <div className="mx-auto max-w-[520px] px-4 py-3">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <div className="text-[11px] font-semibold text-slate-500">현장 결제 예정 금액</div>
-                            <div className="mt-0.5 text-[16px] font-extrabold text-slate-900">
-                                {subtotal.toLocaleString()}원
-                            </div>
-                        </div>
-
-                        <button
-                            type="button"
-                            disabled={!canSubmit}
-                            onClick={submitOrder}
-                            className={[
-                                "rounded-2xl px-5 py-3 text-center text-sm font-extrabold",
-                                canSubmit
-                                    ? "bg-red-500 text-white hover:opacity-90"
-                                    : "bg-slate-200 text-slate-500",
-                            ].join(" ")}
-                        >
-                            {submitting ? "주문 처리 중..." : "주문하기"}
-                        </button>
-                    </div>
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+                <div className="mx-auto max-w-[520px]">
+                    <button
+                        type="button"
+                        onClick={submitOrder}
+                        disabled={!canSubmit}
+                        className="flex h-14 w-full items-center justify-center rounded-2xl bg-[color:var(--brand,#0f172a)] text-[15px] font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {submitting ? "주문 처리 중..." : `${subtotal.toLocaleString()}원 주문하기`}
+                    </button>
                 </div>
             </div>
         </main>
-    );
-}
-
-function Row({
-                 label,
-                 value,
-                 strong,
-             }: {
-    label: string;
-    value: string;
-    strong?: boolean;
-}) {
-    return (
-        <div className="flex items-center justify-between">
-            <span className={strong ? "font-extrabold text-slate-900" : ""}>{label}</span>
-            <span className={strong ? "font-extrabold text-slate-900" : ""}>{value}</span>
-        </div>
     );
 }

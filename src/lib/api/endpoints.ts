@@ -6,9 +6,6 @@ function apiProxy(path: string) {
 }
 
 export const endpoints = {
-    // --------
-    // Public (고객)
-    // --------
     publicProducts: (
         tenant: string,
         q?: {
@@ -29,8 +26,7 @@ export const endpoints = {
     publicProductDetail: (tenant: string, id: string | number) =>
         apiProxy(`${tenant}/v1/public/products/${id}`),
 
-    createOrder: (tenant: string) =>
-        apiProxy(`${tenant}/v1/orders`),
+    createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
 
     myOrders: (tenant: string, q?: { page?: number; limit?: number }) => {
         const url = new URL(apiProxy(`${tenant}/v1/orders/me`), "http://local");
@@ -41,4 +37,21 @@ export const endpoints = {
 
     myOrderDetail: (tenant: string, orderNum: string) =>
         apiProxy(`${tenant}/v1/orders/${encodeURIComponent(orderNum)}`),
+
+    cancelOrder: (tenant: string, orderNum: string) =>
+        apiProxy(`${tenant}/v1/orders/${encodeURIComponent(orderNum)}/cancel`),
+
+    guestOrders: (tenant: string) => apiProxy(`${tenant}/v1/orders/guest/list`),
+
+    guestOrderDetail: (tenant: string, orderNum: string, phone: string) => {
+        const url = new URL(
+            apiProxy(`${tenant}/v1/orders/guest/${encodeURIComponent(orderNum)}`),
+            "http://local"
+        );
+        url.searchParams.set("phone", phone);
+        return url.pathname + (url.search ? url.search : "");
+    },
+
+    guestCancelOrder: (tenant: string, orderNum: string) =>
+        apiProxy(`${tenant}/v1/orders/guest/${encodeURIComponent(orderNum)}/cancel`),
 };

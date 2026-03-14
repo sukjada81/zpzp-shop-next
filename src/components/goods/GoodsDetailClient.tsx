@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints } from "@/lib/api/endpoints";
+import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
 
 export type GoodsDetailData = {
     id: string;
@@ -193,8 +194,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const [imgIdx, setImgIdx] = useState(0);
     const canCarousel = safeImages.length > 1;
 
-    const [qty, setQty] = useState<Record<string, number>>(() =>
-        Object.fromEntries(data.options.map((o) => [o.id, 0]))
+    const [qty, setQty] = useState<Record<string, number>>(
+        () => Object.fromEntries(data.options.map((o) => [o.id, 0]))
     );
     const optionById = useMemo(() => new Map(data.options.map((o) => [o.id, o])), [data.options]);
 
@@ -216,8 +217,14 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             .filter(Boolean) as SelectedLine[];
     }, [qty, data.options, data.price]);
 
-    const subtotal = useMemo(() => selectedLines.reduce((sum, l) => sum + l.lineTotal, 0), [selectedLines]);
-    const totalCount = useMemo(() => selectedLines.reduce((a, b) => a + b.quantity, 0), [selectedLines]);
+    const subtotal = useMemo(
+        () => selectedLines.reduce((sum, l) => sum + l.lineTotal, 0),
+        [selectedLines]
+    );
+    const totalCount = useMemo(
+        () => selectedLines.reduce((a, b) => a + b.quantity, 0),
+        [selectedLines]
+    );
     const canOrder = totalCount > 0;
 
     const SHIPPING_FEE = 4000;
@@ -338,6 +345,14 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 throw new Error(json?.message || `주문 생성 실패 (HTTP ${res.status})`);
             }
 
+            saveGuestOrderRef({
+                tenant,
+                orderNum: json.orderNum,
+                phone: profile.phone,
+                buyerName: profile.nickname,
+                createdAt: new Date().toISOString(),
+            });
+
             setSheetOpen(false);
             setToastOpen(true);
             setQty((prev) => {
@@ -349,7 +364,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             });
 
             window.setTimeout(() => {
-                router.replace(`/${tenant}/home`);
+                router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(json.orderNum!)}`);
             }, 900);
         } catch (e: any) {
             alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
@@ -551,9 +566,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
-                            <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-extrabold text-rose-700">
-                                {stockText}
-                            </span>
+                                                    <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-extrabold text-rose-700">
+                                                        {stockText}
+                                                    </span>
                                                 </div>
 
                                                 <div className="mt-2 line-clamp-2 text-[14px] font-extrabold text-slate-900">
