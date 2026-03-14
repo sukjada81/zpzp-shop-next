@@ -426,10 +426,10 @@ function GroupBuyItemBlock({
                     return (
                         <div
                             key={optionKey}
-                            className={`flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow`}
+                            className={`flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow shadow-sm`}
                             style={{
                                 borderColor: "#e5e7eb",
-                                boxShadow: "none",
+
                                 opacity: soldout ? 0.60 : 1,
                             }}
                         >
