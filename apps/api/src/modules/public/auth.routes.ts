@@ -88,7 +88,16 @@ export async function publicAuthRoutes(app: FastifyInstance) {
     app.post("/v1/auth/kakao/complete", async (req: any, reply) => {
         console.log("KAKAO_COMPLETE_ROUTE_HIT");
         console.log("KAKAO_COMPLETE_BODY", req.body);
-
+        app.log.info(
+            {
+                sessionMemberBefore: req.session?.member ?? null,
+                cookieHeader: req.headers.cookie ?? "",
+                protocol: req.protocol,
+                forwardedProto: req.headers["x-forwarded-proto"] ?? "",
+                host: req.headers.host ?? "",
+            },
+            "KAKAO_COMPLETE_SESSION_DEBUG_BEFORE"
+        );
         const body = z
             .object({
                 tenantSlug: z.string().min(1),
@@ -351,7 +360,12 @@ export async function publicAuthRoutes(app: FastifyInstance) {
             tenantId: String(tenant.id),
             tenantSlug: tenant.slug,
         };
-
+        app.log.info(
+            {
+                sessionMemberAfterAssign: req.session?.member ?? null,
+            },
+            "KAKAO_COMPLETE_SESSION_DEBUG_AFTER_ASSIGN"
+        );
         await req.session.save();
 
         console.log("KAKAO_SESSION_SAVED", req.session.member);
