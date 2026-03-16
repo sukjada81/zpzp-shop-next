@@ -8,16 +8,18 @@ function baseApi() {
 function buildUpstreamUrl(path: string[], req: NextRequest) {
     const base = new URL(baseApi());
     const basePath = base.pathname.replace(/\/+$/, "");
-    const nextPath = path.join("/").replace(/^\/+/, "");
+    const joinedPath = path.join("/").replace(/^\/+/, "");
 
-    base.pathname = `${basePath}/${nextPath}`.replace(/\/{2,}/g, "/");
+    base.pathname = `${basePath}/${joinedPath}`.replace(/\/{2,}/g, "/");
     base.search = "";
 
-    req.nextUrl.searchParams.forEach((v, k) => base.searchParams.set(k, v));
+    req.nextUrl.searchParams.forEach((v, k) => {
+        base.searchParams.set(k, v);
+    });
+
     return base;
 }
 
-/** hop-by-hop 헤더 제거 + 필요한 헤더만 전달 */
 function toUpstreamHeaders(req: NextRequest) {
     const h = new Headers(req.headers);
 
@@ -54,7 +56,6 @@ function normalizeSetCookie(sc: string, req: NextRequest) {
     if (!/;\s*SameSite=/i.test(out)) out += "; SameSite=Lax";
 
     const hasNone = /;\s*SameSite=None/i.test(out);
-
     const proto =
         (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() ||
         (req.nextUrl.protocol ? req.nextUrl.protocol.replace(":", "") : "http");
@@ -77,6 +78,9 @@ async function getPathParams(ctx: any): Promise<string[]> {
 async function handle(req: NextRequest, ctx: any) {
     const path = await getPathParams(ctx);
     const upstreamUrl = buildUpstreamUrl(path, req);
+
+    console.log("PROXY_BASE_API", baseApi());
+    console.log("PROXY_UPSTREAM_URL", upstreamUrl.toString());
 
     const method = req.method.toUpperCase();
     const hasBody = method !== "GET" && method !== "HEAD";
