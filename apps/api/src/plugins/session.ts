@@ -25,7 +25,7 @@ export async function sessionPlugin(app: FastifyInstance) {
             httpOnly: true,
             domain: cookieDomain,
             sameSite: isProd ? "none" : "lax",
-            secure: isProd,
+            secure: "auto",
             maxAge: 60 * 60 * 24 * 7,
         },
         saveUninitialized: false,
@@ -36,7 +36,7 @@ export async function sessionPlugin(app: FastifyInstance) {
             cookieName: "dad_admin_sid",
             cookieDomain,
             sameSite: isProd ? "none" : "lax",
-            secure: isProd,
+            secure: "auto",
         },
         "session cookie config"
     );

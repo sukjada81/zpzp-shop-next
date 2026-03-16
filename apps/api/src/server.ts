@@ -21,7 +21,10 @@ import { sellerMembersRoutes } from "./modules/seller/members.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+    logger: true,
+    trustProxy: true,
+});
 
 await app.register(multipart, {
     limits: {
