@@ -9,6 +9,9 @@ export async function sessionPlugin(app: FastifyInstance) {
         throw new Error("SESSION_SECRET is missing or too short (min 16 chars).");
     }
 
+    const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
+    const isProd = process.env.NODE_ENV === "production";
+
     await app.register(cookie, {
         secret,
         hook: "onRequest",
@@ -20,11 +23,21 @@ export async function sessionPlugin(app: FastifyInstance) {
         cookie: {
             path: "/",
             httpOnly: true,
-            sameSite: "lax",
-            secure: false, // 로컬 dev에서는 false
-            // ✅ domain 지정하지 말 것(특히 localhost)
+            domain: cookieDomain,
+            sameSite: isProd ? "none" : "lax",
+            secure: isProd,
             maxAge: 60 * 60 * 24 * 7,
         },
         saveUninitialized: false,
     });
+
+    app.log.info(
+        {
+            cookieName: "dad_admin_sid",
+            cookieDomain,
+            sameSite: isProd ? "none" : "lax",
+            secure: isProd,
+        },
+        "session cookie config"
+    );
 }

@@ -1,4 +1,4 @@
-// src/app/api/seller/[tenant]/dashboard/page.tsx
+// src/app/api/seller/[tenant]/dashboard/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 type AnyObj = Record<string, any>;
@@ -13,20 +13,27 @@ function toArray<T = AnyObj>(payload: any): T[] {
     return [];
 }
 
+function getTenantSlugValue(item: AnyObj): string {
+    return String(item?.tenantSlug ?? item?.tenant_slug ?? item?.tenant?.slug ?? "").trim();
+}
+
 function getTenantIdValue(item: AnyObj): string {
-    return String(
-        item?.tenant_id ??
-        item?.tenantId ??
-        item?.tenant?.id ??
-        item?.tenant ??
-        ""
-    );
+    return String(item?.tenant_id ?? item?.tenantId ?? item?.tenant?.id ?? item?.tenant ?? "").trim();
+}
+
+function matchesTenant(item: AnyObj, tenant: string): boolean {
+    const slug = getTenantSlugValue(item);
+    if (slug) return slug === tenant;
+    return getTenantIdValue(item) === tenant;
 }
 
 function getStatusValue(item: AnyObj): string {
-    return String(item?.status ?? item?.order_status ?? item?.orderStatus ?? "")
-        .trim()
-        .toLowerCase();
+    return String(item?.status ?? item?.order_status ?? item?.orderStatus ?? "").trim().toLowerCase();
+}
+
+function getStatusNumber(item: AnyObj): number | null {
+    const n = Number(item?.status ?? item?.order_status ?? item?.orderStatus);
+    return Number.isFinite(n) ? n : null;
 }
 
 function getBoolean(item: AnyObj, keys: string[]): boolean {
@@ -42,6 +49,16 @@ function parseDateLike(v: any): Date | null {
     if (!v) return null;
     const d = new Date(v);
     return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function getCreatedAt(item: AnyObj): Date | null {
+    return (
+        parseDateLike(item?.createdAt) ??
+        parseDateLike(item?.created_at) ??
+        parseDateLike(item?.regdate) ??
+        parseDateLike(item?.signdate) ??
+        null
+    );
 }
 
 function isToday(date: Date | null) {
@@ -63,16 +80,6 @@ function isWithinLastDays(date: Date | null, days: number) {
     return date >= from && date <= now;
 }
 
-function getCreatedAt(item: AnyObj): Date | null {
-    return (
-        parseDateLike(item?.created_at) ??
-        parseDateLike(item?.createdAt) ??
-        parseDateLike(item?.regdate) ??
-        parseDateLike(item?.signdate) ??
-        null
-    );
-}
-
 function getCountText(value: number, unit: string) {
     return `${value.toLocaleString("ko-KR")}${unit}`;
 }
@@ -82,10 +89,28 @@ function ratio(value: number, total: number) {
     return Math.min(100, Math.round((value / total) * 100));
 }
 
-async function fetchInternalJson(
-    request: NextRequest,
-    path: string
-): Promise<any | null> {
+function isPendingOrder(item: AnyObj): boolean {
+    const statusNum = getStatusNumber(item);
+    if (statusNum !== null) return statusNum === 0 || statusNum === 1 || statusNum === 2;
+    const status = getStatusValue(item);
+    return ["pending", "paid", "ready", "preparing", "confirmed"].includes(status);
+}
+
+function isCompletedOrder(item: AnyObj): boolean {
+    const statusNum = getStatusNumber(item);
+    if (statusNum !== null) return statusNum === 4;
+    const status = getStatusValue(item);
+    return ["completed", "done", "delivered", "picked_up"].includes(status);
+}
+
+function isCanceledOrder(item: AnyObj): boolean {
+    const statusNum = getStatusNumber(item);
+    if (statusNum !== null) return statusNum === 9;
+    const status = getStatusValue(item);
+    return ["canceled", "cancelled", "cancel", "refund", "refunded"].includes(status);
+}
+
+async function fetchInternalJson(request: NextRequest, path: string): Promise<any | null> {
     const url = new URL(path, request.nextUrl.origin);
 
     try {
@@ -109,36 +134,35 @@ export async function GET(
     context: { params: Promise<{ tenant: string }> | { tenant: string } }
 ) {
     const resolved = await Promise.resolve(context.params);
-    const tenant = resolved?.tenant;
+    const tenant = String(resolved?.tenant ?? "").trim();
 
     if (!tenant) {
-        return NextResponse.json(
-            { ok: false, message: "tenant is required" },
-            { status: 400 }
-        );
+        return NextResponse.json({ ok: false, message: "tenant is required" }, { status: 400 });
     }
 
-    const [productsRaw, ordersRaw] = await Promise.all([
-        fetchInternalJson(request, `/api/admin/products?page=1&pageSize=2000&limit=2000`),
-        fetchInternalJson(request, `/api/admin/orders?page=1&pageSize=2000&limit=2000`),
+    const [productsRaw, ordersRaw, membersRaw] = await Promise.all([
+        fetchInternalJson(request, `/api/admin/products?tenant=${encodeURIComponent(tenant)}&page=1&pageSize=2000&limit=2000`),
+        fetchInternalJson(request, `/api/admin/orders?tenant=${encodeURIComponent(tenant)}&page=1&pageSize=2000&limit=2000`),
+        fetchInternalJson(request, `/api/seller/${encodeURIComponent(tenant)}/members?summaryOnly=1`),
     ]);
 
     const allProducts = toArray(productsRaw);
     const allOrders = toArray(ordersRaw);
 
-    const products = allProducts.filter((item) => getTenantIdValue(item) === String(tenant));
-    const orders = allOrders.filter((item) => getTenantIdValue(item) === String(tenant));
+    const products = allProducts.filter((item) => matchesTenant(item, tenant));
+    const orders = allOrders.filter((item) => matchesTenant(item, tenant));
+
+    const memberSummary = membersRaw?.summary ?? {
+        totalMembers: 0,
+        todaySignups: 0,
+        weekSignups: 0,
+        todayInflows: 0,
+        todayLogins: 0,
+        sourceReady: false,
+    };
 
     const todayOrders = orders.filter((item) => isToday(getCreatedAt(item))).length;
-
-    const pendingStatuses = ["pending", "paid", "ready", "preparing", "confirmed"];
-    const completedStatuses = ["completed", "done", "delivered", "picked_up"];
-    const purchaseConfirmedStatuses = ["purchase_confirmed", "confirmed_done", "settled"];
-    const canceledStatuses = ["canceled", "cancelled", "cancel", "refund", "refunded"];
-
-    const pendingOrders = orders.filter((item) =>
-        pendingStatuses.includes(getStatusValue(item))
-    ).length;
+    const pendingOrders = orders.filter((item) => isPendingOrder(item)).length;
 
     const activeProducts = products.filter((item) => {
         const status = getStatusValue(item);
@@ -156,32 +180,12 @@ export async function GET(
         );
     }).length;
 
-    const last7Orders = orders.filter((item) =>
-        isWithinLastDays(getCreatedAt(item), 7)
-    );
-
+    const last7Orders = orders.filter((item) => isWithinLastDays(getCreatedAt(item), 7));
     const recentOrderCount = last7Orders.length;
-    const completedOrderCount = last7Orders.filter((item) =>
-        completedStatuses.includes(getStatusValue(item))
-    ).length;
-    const purchaseConfirmedCount = last7Orders.filter((item) =>
-        purchaseConfirmedStatuses.includes(getStatusValue(item))
-    ).length;
-    const canceledOrderCount = last7Orders.filter((item) =>
-        canceledStatuses.includes(getStatusValue(item))
-    ).length;
+    const completedOrderCount = last7Orders.filter((item) => isCompletedOrder(item)).length;
+    const canceledOrderCount = last7Orders.filter((item) => isCanceledOrder(item)).length;
 
     const now = new Date();
-    const dateLabel = now.toLocaleDateString("ko-KR", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-    });
-
-    const updatedAt = now.toLocaleTimeString("ko-KR", {
-        hour: "2-digit",
-        minute: "2-digit",
-    });
 
     return NextResponse.json({
         ok: true,
@@ -189,45 +193,45 @@ export async function GET(
         summary: {
             title: `매장 ${tenant}`,
             subtitle: "오늘 매장 운영 현황",
-            dateLabel,
-            updatedAt,
-
-            // 회원/유입/로그인 지표는 추후 실제 API 연동 예정
+            dateLabel: now.toLocaleDateString("ko-KR"),
+            updatedAt: now.toLocaleTimeString("ko-KR", {
+                hour: "2-digit",
+                minute: "2-digit",
+            }),
             memberKpis: [
                 {
                     key: "todaySignups",
                     label: "오늘 회원가입",
-                    value: 0,
+                    value: Number(memberSummary.todaySignups ?? 0),
                     unit: "명",
-                    hint: "금일 가입자",
+                    hint: "tenant 가입 회원",
                     tone: "green",
                 },
                 {
                     key: "weekSignups",
-                    label: "회원가입 수",
-                    value: 0,
+                    label: "최근 7일 회원가입",
+                    value: Number(memberSummary.weekSignups ?? 0),
                     unit: "명",
-                    hint: "최근 일주일",
+                    hint: "최근 7일 신규 회원",
                     tone: "blue",
                 },
                 {
                     key: "todayInflows",
                     label: "오늘 유입수",
-                    value: 0,
+                    value: Number(memberSummary.todayInflows ?? 0),
                     unit: "명",
-                    hint: "방문/유입",
+                    hint: "추후 유입 로그 연동",
                     tone: "orange",
                 },
                 {
                     key: "todayLogins",
                     label: "오늘 로그인한 수",
-                    value: 0,
+                    value: Number(memberSummary.todayLogins ?? 0),
                     unit: "명",
-                    hint: "로그인 사용자",
+                    hint: "오늘 로그인 회원",
                     tone: "blue",
                 },
             ],
-
             operationKpis: [
                 {
                     key: "todayOrders",
@@ -242,7 +246,7 @@ export async function GET(
                     label: "처리 대기",
                     value: pendingOrders,
                     unit: "건",
-                    hint: "확인/준비 필요",
+                    hint: "접수/결제/준비 상태",
                     tone: "blue",
                 },
                 {
@@ -262,7 +266,6 @@ export async function GET(
                     tone: "blue",
                 },
             ],
-
             recentWeek: {
                 total: recentOrderCount,
                 rows: [
@@ -271,7 +274,7 @@ export async function GET(
                         label: "최근 주문 수",
                         value: recentOrderCount,
                         text: getCountText(recentOrderCount, "건"),
-                        percent: 100,
+                        percent: recentOrderCount > 0 ? 100 : 0,
                         tone: "blue",
                     },
                     {
@@ -280,14 +283,6 @@ export async function GET(
                         value: completedOrderCount,
                         text: getCountText(completedOrderCount, "건"),
                         percent: ratio(completedOrderCount, recentOrderCount),
-                        tone: "green",
-                    },
-                    {
-                        key: "purchaseConfirmed",
-                        label: "구매확정",
-                        value: purchaseConfirmedCount,
-                        text: getCountText(purchaseConfirmedCount, "건"),
-                        percent: ratio(purchaseConfirmedCount, recentOrderCount),
                         tone: "green",
                     },
                     {
@@ -305,6 +300,7 @@ export async function GET(
         debug: {
             productCountFetched: products.length,
             orderCountFetched: orders.length,
+            memberSourceReady: Boolean(memberSummary.sourceReady),
         },
     });
 }

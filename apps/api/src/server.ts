@@ -17,7 +17,8 @@ import { adminDashboardRoutes } from "./modules/admin/dashboard.routes.js";
 import { adminOrdersRoutes } from "./modules/admin/orders.routes.js";
 import { adminProductsRoutes } from "./modules/admin/products.routes.js";
 import { adminUploadsRoutes } from "./modules/admin/uploads.routes.js";
-
+import { sellerMembersRoutes } from "./modules/seller/members.routes.js";
+import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
 const app = Fastify({ logger: true });
@@ -54,6 +55,12 @@ await adminProductsRoutes(app);
 await adminUploadsRoutes(app);
 
 await adminRoutes(app);
+
+// public auth를 먼저 등록
+await publicAuthRoutes(app);
+
+// seller members는 전역 hook 대신 route 단위 preHandler로 보호
+await sellerMembersRoutes(app);
 
 app.register(
     async (tenantScoped) => {

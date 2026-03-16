@@ -1,3 +1,4 @@
+// src/app/auth/kakao/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -17,8 +18,12 @@ function verifyState(state: string, secret: string) {
     const sigBuf = base64urlToBuffer(parts[1]);
 
     const expected = crypto.createHmac("sha256", secret).update(payloadBuf).digest();
-    if (sigBuf.length !== expected.length) return { ok: false as const, error: "INVALID_STATE_SIG" };
-    if (!crypto.timingSafeEqual(sigBuf, expected)) return { ok: false as const, error: "INVALID_STATE_SIG" };
+    if (sigBuf.length !== expected.length) {
+        return { ok: false as const, error: "INVALID_STATE_SIG" };
+    }
+    if (!crypto.timingSafeEqual(sigBuf, expected)) {
+        return { ok: false as const, error: "INVALID_STATE_SIG" };
+    }
 
     try {
         const payload = JSON.parse(payloadBuf.toString("utf8")) as {
@@ -52,9 +57,7 @@ function getForwardedHost(req: NextRequest) {
 function isDevHttp(req: NextRequest) {
     const host = (getForwardedHost(req) || "").toLowerCase();
     const proto = getForwardedProto(req) || req.nextUrl.protocol.replace(":", "");
-    if (proto === "http") return true;
-    if (host.includes(":3000")) return true;
-    return false;
+    return proto === "http" || host.includes(":3000");
 }
 
 function isLikelyLocalHost(host: string) {
@@ -67,6 +70,12 @@ function isLikelyLocalHost(host: string) {
     return false;
 }
 
+function cookieDomainForShare(req: NextRequest) {
+    const host = (getForwardedHost(req) || "").split(",")[0].trim();
+    if (isLikelyLocalHost(host)) return undefined;
+    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
+}
+
 function safeTenantSlug(raw: string) {
     const t = (raw || "").trim().toLowerCase();
     if (!t) return "";
@@ -74,95 +83,181 @@ function safeTenantSlug(raw: string) {
     return t;
 }
 
-function cookieDomainForShare(req: NextRequest) {
-    const host = (getForwardedHost(req) || "").split(",")[0].trim();
-    if (isLikelyLocalHost(host)) return undefined;
-    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
-}
-
 function buildTenantOrigin(req: NextRequest, tenant: string) {
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
     const dev = isDevHttp(req);
-
     const proto = dev ? "http" : "https";
-    const localPort = process.env.LOCAL_TENANT_PORT || "3000";
+    const localPort =
+        process.env.NEXT_PUBLIC_LOCAL_TENANT_PORT ||
+        process.env.LOCAL_TENANT_PORT ||
+        "3000";
     const portPart = dev ? `:${localPort}` : "";
-
     return `${proto}://${tenant}.${baseDomain}${portPart}`;
 }
 
-function normalizeReturnToToHome(req: NextRequest, returnTo: string, tenant: string) {
-    if (isAbsoluteUrl(returnTo)) {
-        try {
-            const u = new URL(returnTo);
-            if (u.pathname === "/" || u.pathname === "") {
-                u.pathname = "/home";
-                u.search = "";
-                u.hash = "";
-                return u.toString();
-            }
-            return u.toString();
-        } catch {}
-    }
-
-    const path = returnTo?.startsWith("/") ? returnTo : "/";
-    if ((path === "/" || path === "") && tenant) {
-        return new URL("/home", buildTenantOrigin(req, tenant)).toString();
-    }
-    return returnTo;
+function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
+    if (isAbsoluteUrl(returnTo)) return returnTo;
+    const path = returnTo.startsWith("/") ? returnTo : "/home";
+    return new URL(path, buildTenantOrigin(req, tenant)).toString();
 }
 
-function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
-    const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://discountallday.kr";
+async function exchangeKakaoToken(code: string, redirectUri: string) {
+    const clientId = process.env.KAKAO_CLIENT_ID || "";
+    const clientSecret = process.env.KAKAO_CLIENT_SECRET || "";
 
-    if (isAbsoluteUrl(returnTo)) return returnTo;
+    const body = new URLSearchParams();
+    body.set("grant_type", "authorization_code");
+    body.set("client_id", clientId);
+    body.set("redirect_uri", redirectUri);
+    body.set("code", code);
 
-    const path = returnTo.startsWith("/") ? returnTo : "/home";
-    if (tenant) return new URL(path, buildTenantOrigin(req, tenant)).toString();
+    if (clientSecret) {
+        body.set("client_secret", clientSecret);
+    }
 
-    return new URL(path, SITE_ORIGIN).toString();
+    const res = await fetch("https://kauth.kakao.com/oauth/token", {
+        method: "POST",
+        headers: {
+            "content-type": "application/x-www-form-urlencoded;charset=utf-8",
+        },
+        body,
+        cache: "no-store",
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.access_token) {
+        throw new Error(data?.error_description || data?.error || "KAKAO_TOKEN_FAILED");
+    }
+
+    return data;
+}
+
+async function fetchKakaoProfile(accessToken: string) {
+    const res = await fetch("https://kapi.kakao.com/v2/user/me", {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "content-type": "application/x-www-form-urlencoded;charset=utf-8",
+        },
+        cache: "no-store",
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.id) {
+        throw new Error("KAKAO_PROFILE_FAILED");
+    }
+
+    return data;
+}
+
+function getApiBase() {
+    return (
+        process.env.API_BASE_URL ||
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        "http://127.0.0.1:4000"
+    ).replace(/\/+$/, "");
+}
+
+function parseSessionCookie(rawSetCookie: string | null) {
+    if (!rawSetCookie) return null;
+
+    const firstPart = rawSetCookie.split(";")[0] || "";
+    const eqIndex = firstPart.indexOf("=");
+    if (eqIndex < 0) return null;
+
+    const name = firstPart.slice(0, eqIndex).trim();
+    const rawValue = firstPart.slice(eqIndex + 1).trim();
+    if (!name || !rawValue) return null;
+
+    let value = rawValue;
+
+    try {
+        // 백엔드 Set-Cookie 값은 이미 encode 되어 있을 수 있으므로 1회 decode
+        value = decodeURIComponent(rawValue);
+    } catch {
+        value = rawValue;
+    }
+
+    return { name, value };
 }
 
 export async function GET(req: NextRequest) {
     const url = req.nextUrl;
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-
-    const err = url.searchParams.get("error");
-    const errDesc = url.searchParams.get("error_description");
+    const error = url.searchParams.get("error");
+    const errorDescription = url.searchParams.get("error_description");
 
     if (!state) {
         return NextResponse.json({ ok: false, error: "Missing state" }, { status: 400 });
     }
 
-    const AUTH_STATE_SECRET = process.env.AUTH_STATE_SECRET;
-    if (!AUTH_STATE_SECRET) {
+    const authStateSecret = process.env.AUTH_STATE_SECRET;
+    if (!authStateSecret) {
         return NextResponse.json({ ok: false, error: "Missing env: AUTH_STATE_SECRET" }, { status: 500 });
     }
 
-    const v = verifyState(state, AUTH_STATE_SECRET);
-    if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 });
+    const verified = verifyState(state, authStateSecret);
+    if (!verified.ok) {
+        return NextResponse.json({ ok: false, error: verified.error }, { status: 400 });
+    }
 
-    const tenant = safeTenantSlug(v.payload.tenant || "");
-    const rawReturnTo = v.payload.returnTo || (tenant ? "/home" : "/");
-    const returnTo = normalizeReturnToToHome(req, rawReturnTo, tenant);
+    const tenant = safeTenantSlug(verified.payload.tenant || "");
+    const returnTo = verified.payload.returnTo || "/home";
 
-    if (!code && err) {
-        const AUTH_ORIGIN = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "http://localhost:3000";
-        const retry = new URL("/auth/kakao/login", AUTH_ORIGIN);
-        if (tenant) retry.searchParams.set("tenant", tenant);
-        retry.searchParams.set("returnTo", returnTo);
-        retry.searchParams.set("auto", "0");
-        return NextResponse.redirect(retry, { status: 302 });
+    if (!code && error) {
+        return NextResponse.redirect(
+            new URL(`/login?tenant=${tenant}&returnTo=${encodeURIComponent(returnTo)}`, process.env.AUTH_ORIGIN),
+            { status: 302 }
+        );
     }
 
     if (!code) {
-        return NextResponse.json({ ok: false, error: "Missing code", err, errDesc }, { status: 400 });
+        return NextResponse.json({ ok: false, error: "Missing code", detail: errorDescription || "" }, { status: 400 });
     }
 
-    const MOCK_AUTH = process.env.MOCK_AUTH === "1";
-    if (MOCK_AUTH) {
-        const target = safeNextUrl(req, returnTo, tenant);
+    const authOrigin = process.env.AUTH_ORIGIN || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    const redirectUri = new URL("/auth/kakao/callback", authOrigin).toString();
+
+    try {
+        const token = await exchangeKakaoToken(code, redirectUri);
+        const profile = await fetchKakaoProfile(token.access_token);
+
+        const kakaoAccount = profile.kakao_account ?? {};
+        const kakaoProfile = kakaoAccount.profile ?? {};
+        const tenantSlug = String(tenant || "a").trim().toLowerCase();
+
+        const completeRes = await fetch(`${getApiBase()}/v1/auth/kakao/complete`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                cookie: req.headers.get("cookie") || "",
+            },
+            body: JSON.stringify({
+                tenantSlug,
+                providerUserId: String(profile.id),
+                email: String(kakaoAccount.email || ""),
+                name: String(kakaoProfile.nickname || profile.properties?.nickname || ""),
+                phone: String(kakaoAccount.phone_number || ""),
+                profileImage: String(kakaoProfile.profile_image_url || ""),
+                rawProfile: profile,
+            }),
+            cache: "no-store",
+            redirect: "manual",
+        });
+
+        const completeData = await completeRes.json().catch(() => null);
+        if (!completeRes.ok) {
+            return NextResponse.json(
+                { ok: false, error: completeData?.error || completeData?.message || "AUTH_COMPLETE_FAILED" },
+                { status: completeRes.status || 500 }
+            );
+        }
+
+        const backendSetCookie = completeRes.headers.get("set-cookie");
+        const parsedSessionCookie = parseSessionCookie(backendSetCookie);
+
+        const target = safeNextUrl(req, returnTo, tenantSlug);
         const res = NextResponse.redirect(target, { status: 302 });
 
         const dev = isDevHttp(req);
@@ -170,15 +265,18 @@ export async function GET(req: NextRequest) {
         const sameSite = secure ? ("none" as const) : ("lax" as const);
         const domain = cookieDomainForShare(req);
 
-        res.cookies.set("mockLogin", "1", {
-            httpOnly: true,
-            path: "/",
-            sameSite,
-            secure,
-            domain,
-        });
+        if (parsedSessionCookie) {
+            res.cookies.set(parsedSessionCookie.name, parsedSessionCookie.value, {
+                httpOnly: true,
+                path: "/",
+                sameSite,
+                secure,
+                domain,
+                maxAge: 60 * 60 * 24 * 7,
+            });
+        }
 
-        res.cookies.set("mockTenant", tenant, {
+        res.cookies.set("selectedTenant", tenantSlug, {
             httpOnly: true,
             path: "/",
             sameSite,
@@ -187,10 +285,10 @@ export async function GET(req: NextRequest) {
         });
 
         return res;
+    } catch (e: any) {
+        return NextResponse.json(
+            { ok: false, error: e?.message || "KAKAO_CALLBACK_FAILED" },
+            { status: 500 }
+        );
     }
-
-    return NextResponse.json(
-        { ok: false, error: "PHP_AUTH_NOT_CONNECTED_YET", tenant, returnTo },
-        { status: 501 }
-    );
 }

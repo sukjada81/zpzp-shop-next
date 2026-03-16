@@ -1,7 +1,16 @@
-// src/app/api/seller/[tenant]/orders/[id]/page.tsx
+// src/app/api/seller/[tenant]/orders/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 type AnyObj = Record<string, any>;
+
+function getTenantSlugValue(item: AnyObj): string {
+    return String(
+        item?.tenantSlug ??
+        item?.tenant_slug ??
+        item?.tenant?.slug ??
+        ""
+    ).trim();
+}
 
 function getTenantIdValue(item: AnyObj): string {
     return String(
@@ -10,7 +19,15 @@ function getTenantIdValue(item: AnyObj): string {
         item?.tenant?.id ??
         item?.tenant ??
         ""
-    );
+    ).trim();
+}
+
+function matchesTenant(item: AnyObj, tenant: string): boolean {
+    const slug = getTenantSlugValue(item);
+    if (slug) return slug === tenant;
+
+    const tenantId = getTenantIdValue(item);
+    return tenantId === tenant;
 }
 
 function parseDateLike(v: any): Date | null {
@@ -21,8 +38,8 @@ function parseDateLike(v: any): Date | null {
 
 function getDateText(item: AnyObj): string {
     const d =
-        parseDateLike(item?.created_at) ??
         parseDateLike(item?.createdAt) ??
+        parseDateLike(item?.created_at) ??
         parseDateLike(item?.regdate) ??
         parseDateLike(item?.signdate);
 
@@ -38,21 +55,23 @@ function getDateText(item: AnyObj): string {
 }
 
 function getOrderNo(item: AnyObj): string {
-    return String(item?.order_no ?? item?.orderNo ?? item?.uid ?? item?.id ?? "-");
+    return String(item?.orderNum ?? item?.order_no ?? item?.orderNo ?? item?.uid ?? item?.id ?? "-");
 }
 
 function getBuyerName(item: AnyObj): string {
     return String(
-        item?.buyer_name ??
         item?.buyerName ??
+        item?.buyer_name ??
         item?.member_name ??
         item?.receiver_name ??
+        item?.name ??
         "주문자"
     );
 }
 
 function getAmount(item: AnyObj): number {
     const raw =
+        item?.payTotal ??
         item?.amount ??
         item?.total_amount ??
         item?.totalPrice ??
@@ -91,8 +110,8 @@ export async function GET(
     context: { params: Promise<{ tenant: string; id: string }> | { tenant: string; id: string } }
 ) {
     const resolved = await Promise.resolve(context.params);
-    const tenant = resolved?.tenant;
-    const id = resolved?.id;
+    const tenant = String(resolved?.tenant ?? "").trim();
+    const id = String(resolved?.id ?? "").trim();
 
     if (!tenant || !id) {
         return NextResponse.json(
@@ -101,7 +120,11 @@ export async function GET(
         );
     }
 
-    const result = await fetchInternalJson(request, `/api/admin/orders?page=1&pageSize=2000&limit=2000`);
+    const result = await fetchInternalJson(
+        request,
+        `/api/admin/orders?tenant=${encodeURIComponent(tenant)}&page=1&pageSize=200&limit=200`
+    );
+
     const rows =
         result.data?.items ??
         result.data?.rows ??
@@ -110,7 +133,7 @@ export async function GET(
         (Array.isArray(result.data) ? result.data : []);
 
     const order = Array.isArray(rows)
-        ? rows.find((row) => String(row?.uid ?? row?.id ?? "") === String(id))
+        ? rows.find((row) => String(row?.id ?? row?.uid ?? "") === id)
         : null;
 
     if (!result.ok || !order) {
@@ -120,7 +143,7 @@ export async function GET(
         );
     }
 
-    if (getTenantIdValue(order) !== String(tenant)) {
+    if (!matchesTenant(order, tenant)) {
         return NextResponse.json(
             { ok: false, message: "해당 매장 주문이 아닙니다." },
             { status: 403 }
@@ -130,15 +153,27 @@ export async function GET(
     return NextResponse.json({
         ok: true,
         item: {
-            id: String(order?.uid ?? order?.id ?? ""),
+            id: String(order?.id ?? order?.uid ?? ""),
             orderNo: getOrderNo(order),
             buyerName: getBuyerName(order),
             amount: getAmount(order),
-            status: String(order?.status ?? order?.order_status ?? order?.orderStatus ?? "pending"),
+            status: String(order?.statusLabel ?? order?.status ?? "pending"),
             createdAtText: getDateText(order),
-            phone: String(order?.buyer_phone ?? order?.phone ?? order?.receiver_phone ?? ""),
+            phone: String(
+                order?.buyerPhone ??
+                order?.buyer_phone ??
+                order?.phone ??
+                order?.receiverPhone ??
+                order?.receiver_phone ??
+                ""
+            ),
             memo: String(order?.memo ?? order?.order_memo ?? ""),
-            address: String(order?.address ?? order?.receiver_address ?? ""),
+            address: String(
+                order?.address ??
+                order?.receiver_address ??
+                order?.address1 ??
+                ""
+            ),
             raw: order,
         },
     });

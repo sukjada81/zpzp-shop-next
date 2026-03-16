@@ -1,5 +1,6 @@
 // src/app/(seller)/seller/[tenant]/page.tsx
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import SellerDashboardClient, {
     type SellerDashboardData,
 } from "@/components/seller/SellerDashboardClient";
@@ -12,13 +13,29 @@ function getInternalOrigin() {
     );
 }
 
+async function getCookieHeader() {
+    const store = await cookies();
+    return store
+        .getAll()
+        .map((item) => `${item.name}=${item.value}`)
+        .join("; ");
+}
+
 async function fetchSellerDashboard(
     tenant: string
 ): Promise<SellerDashboardData | null> {
     const origin = getInternalOrigin();
     const url = new URL(`/api/seller/${tenant}/dashboard`, origin);
+    const cookie = await getCookieHeader();
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await fetch(url.toString(), {
+        cache: "no-store",
+        headers: {
+            cookie,
+            "x-tenant-slug": tenant,
+        },
+    });
+
     if (!res.ok) return null;
 
     const data = (await res.json().catch(() => null)) as SellerDashboardData | null;

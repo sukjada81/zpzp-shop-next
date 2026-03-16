@@ -1,7 +1,16 @@
-// src/app/api/seller/[tenant]/orders/[id]/status/page.tsx
+// src/app/api/seller/[tenant]/orders/[id]/status/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 type AnyObj = Record<string, any>;
+
+function getTenantSlugValue(item: AnyObj): string {
+    return String(
+        item?.tenantSlug ??
+        item?.tenant_slug ??
+        item?.tenant?.slug ??
+        ""
+    ).trim();
+}
 
 function getTenantIdValue(item: AnyObj): string {
     return String(
@@ -10,7 +19,19 @@ function getTenantIdValue(item: AnyObj): string {
         item?.tenant?.id ??
         item?.tenant ??
         ""
-    );
+    ).trim();
+}
+
+function matchesTenant(item: AnyObj, tenant: string): boolean {
+    const slug = getTenantSlugValue(item);
+    if (slug) return slug === tenant;
+
+    const tenantId = getTenantIdValue(item);
+    return tenantId === tenant;
+}
+
+function getOrderNo(item: AnyObj): string {
+    return String(item?.orderNum ?? item?.order_no ?? item?.orderNo ?? item?.uid ?? item?.id ?? "-");
 }
 
 async function fetchInternalJson(
@@ -67,8 +88,8 @@ export async function PATCH(
     context: { params: Promise<{ tenant: string; id: string }> | { tenant: string; id: string } }
 ) {
     const resolved = await Promise.resolve(context.params);
-    const tenant = resolved?.tenant;
-    const id = resolved?.id;
+    const tenant = String(resolved?.tenant ?? "").trim();
+    const id = String(resolved?.id ?? "").trim();
 
     if (!tenant || !id) {
         return NextResponse.json(
@@ -77,7 +98,11 @@ export async function PATCH(
         );
     }
 
-    const verify = await fetchInternalJson(request, `/api/admin/orders?page=1&pageSize=2000&limit=2000`);
+    const verify = await fetchInternalJson(
+        request,
+        `/api/admin/orders?tenant=${encodeURIComponent(tenant)}&page=1&pageSize=200&limit=200`
+    );
+
     const rows =
         verify.data?.items ??
         verify.data?.rows ??
@@ -86,7 +111,7 @@ export async function PATCH(
         (Array.isArray(verify.data) ? verify.data : []);
 
     const order = Array.isArray(rows)
-        ? rows.find((row) => String(row?.uid ?? row?.id ?? "") === String(id))
+        ? rows.find((row) => String(row?.id ?? row?.uid ?? "") === id)
         : null;
 
     if (!verify.ok || !order) {
@@ -96,7 +121,7 @@ export async function PATCH(
         );
     }
 
-    if (getTenantIdValue(order) !== String(tenant)) {
+    if (!matchesTenant(order, tenant)) {
         return NextResponse.json(
             { ok: false, message: "해당 매장 주문이 아닙니다." },
             { status: 403 }
@@ -104,18 +129,27 @@ export async function PATCH(
     }
 
     const body = await request.json().catch(() => null);
-    const nextStatus = String(body?.status ?? "").trim();
+    const nextStatusRaw = body?.status;
+    const nextStatus = Number(nextStatusRaw);
 
-    if (!nextStatus) {
+    if (!Number.isFinite(nextStatus)) {
         return NextResponse.json(
             { ok: false, message: "변경할 상태값이 필요합니다." },
             { status: 400 }
         );
     }
 
+    const orderNo = getOrderNo(order);
+    if (!orderNo || orderNo === "-") {
+        return NextResponse.json(
+            { ok: false, message: "주문번호를 확인할 수 없습니다." },
+            { status: 400 }
+        );
+    }
+
     const result = await forwardInternalJson(
         request,
-        `/api/admin/orders/${encodeURIComponent(id)}/status`,
+        `/api/admin/orders/${encodeURIComponent(orderNo)}/status`,
         "PATCH",
         { status: nextStatus }
     );
@@ -123,14 +157,20 @@ export async function PATCH(
     if (!result.ok) {
         const fallback = await forwardInternalJson(
             request,
-            `/api/admin/orders/${encodeURIComponent(id)}/status`,
+            `/api/admin/orders/${encodeURIComponent(orderNo)}/status`,
             "PUT",
             { status: nextStatus }
         );
 
         if (!fallback.ok) {
             return NextResponse.json(
-                { ok: false, message: fallback.data?.message || result.data?.message || "주문 상태 변경에 실패했습니다." },
+                {
+                    ok: false,
+                    message:
+                        fallback.data?.message ||
+                        result.data?.message ||
+                        "주문 상태 변경에 실패했습니다.",
+                },
                 { status: fallback.status || result.status || 500 }
             );
         }

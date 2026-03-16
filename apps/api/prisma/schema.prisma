@@ -1557,76 +1557,125 @@ model mallRN_list_show_config {
   fields String @default("") @db.VarChar(250)
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model mallRN_member {
-  uid             Int                    @id @default(autoincrement()) @db.UnsignedInt
-  id              String                 @unique(map: "id") @default("") @db.VarChar(50)
-  name            String                 @default("") @db.VarChar(50)
-  passwd          String                 @default("") @db.VarChar(100)
-  tel             String                 @default("") @db.VarChar(30)
-  cell            String                 @default("") @db.VarChar(30)
-  postcode        String                 @default("") @db.VarChar(10)
-  address1        String                 @default("") @db.VarChar(100)
-  address2        String                 @default("") @db.VarChar(100)
-  email           String                 @default("") @db.VarChar(80)
-  birth           String                 @default("") @db.VarChar(30)
-  birth_sl        mallRN_member_birth_sl @default(N)
-  gender          mallRN_member_gender   @default(N)
-  marry           mallRN_member_marry    @default(N)
-  hobby           String                 @default("") @db.VarChar(50)
-  job             String                 @default("") @db.VarChar(250)
-  level           Int                    @default(1) @db.UnsignedTinyInt
-  member_role     Int?                   @db.TinyInt
-  mileage         Int                    @default(0)
-  mailling        mallRN_member_mailling @default(N)
-  mailling_date   Int                    @default(0) @db.UnsignedInt
-  sms             mallRN_member_sms      @default(N)
-  sms_date        Int                    @default(0) @db.UnsignedInt
-  comp            String                 @default("") @db.VarChar(50)
-  comp_owner      String                 @default("") @db.VarChar(50)
-  comp_num        String                 @default("") @db.VarChar(50)
-  comp_postcode   String                 @default("") @db.VarChar(10)
-  comp_address1   String                 @default("") @db.VarChar(100)
-  comp_address2   String                 @default("") @db.VarChar(100)
-  comp_type       String                 @default("") @db.VarChar(100)
-  comp_item       String                 @default("") @db.VarChar(100)
-  comp_name       String                 @default("") @db.VarChar(100)
-  comp_license_no String?                @db.VarChar(50)
-  comp_email      String                 @default("") @db.VarChar(100)
-  comp_tel        String                 @default("") @db.VarChar(20)
-  comp_fax        String                 @default("") @db.VarChar(20)
-  cont_name       String                 @default("") @db.VarChar(100)
-  cont_cell       String                 @default("") @db.VarChar(20)
-  cont_email      String                 @default("") @db.VarChar(50)
-  cont_part       String                 @default("") @db.VarChar(50)
-  cont_position   String                 @default("") @db.VarChar(50)
-  add1            String                 @db.Text
-  add2            String                 @db.Text
-  add3            String                 @db.Text
-  add4            String                 @db.Text
-  add5            String                 @db.Text
-  memo            String                 @db.Text
-  image1          String                 @default("") @db.VarChar(100)
-  sns_type        String                 @default("") @db.VarChar(50)
-  sns_id          String                 @default("") @db.VarChar(50)
-  sns_name        String                 @default("") @db.VarChar(50)
-  dup_info        String                 @default("") @db.VarChar(100)
-  cnts            Int                    @default(0) @db.UnsignedInt
-  fail_cnts       Int                    @default(0) @db.UnsignedInt
-  fail_time       Int                    @default(0) @db.UnsignedInt
-  mobile          mallRN_member_mobile   @default(N)
-  auth            mallRN_member_auth     @default(Y)
-  reference       String                 @default("") @db.VarChar(50)
-  auth_code       String                 @default("") @db.VarChar(10)
-  auth_code_time  Int                    @default(0) @db.UnsignedInt
-  nondormant_time Int                    @default(0) @db.UnsignedInt
-  login_time      Int                    @default(0) @db.UnsignedInt
-  order_time      Int                    @default(0) @db.UnsignedInt
-  sleep_time      Int                    @default(0) @db.UnsignedInt
-  signdate        Int                    @default(0) @db.UnsignedInt
+  uid                     Int                    @id @default(autoincrement()) @db.UnsignedInt
+  id                      String                 @unique(map: "id") @default("") @db.VarChar(50)
+  name                    String                 @default("") @db.VarChar(50)
+  passwd                  String                 @default("") @db.VarChar(100)
+  tel                     String                 @default("") @db.VarChar(30)
+  cell                    String                 @default("") @db.VarChar(30)
+  postcode                String                 @default("") @db.VarChar(10)
+  address1                String                 @default("") @db.VarChar(100)
+  address2                String                 @default("") @db.VarChar(100)
+  email                   String                 @default("") @db.VarChar(80)
+  birth                   String                 @default("") @db.VarChar(30)
+  birth_sl                mallRN_member_birth_sl @default(N)
+  gender                  mallRN_member_gender   @default(N)
+  marry                   mallRN_member_marry    @default(N)
+  hobby                   String                 @default("") @db.VarChar(50)
+  job                     String                 @default("") @db.VarChar(250)
+  level                   Int                    @default(1) @db.UnsignedTinyInt
+  member_role             Int?                   @db.TinyInt
+  mileage                 Int                    @default(0)
+  mailling                mallRN_member_mailling @default(N)
+  mailling_date           Int                    @default(0) @db.UnsignedInt
+  sms                     mallRN_member_sms      @default(N)
+  sms_date                Int                    @default(0) @db.UnsignedInt
+  comp                    String                 @default("") @db.VarChar(50)
+  comp_owner              String                 @default("") @db.VarChar(50)
+  comp_num                String                 @default("") @db.VarChar(50)
+  comp_postcode           String                 @default("") @db.VarChar(10)
+  comp_address1           String                 @default("") @db.VarChar(100)
+  comp_address2           String                 @default("") @db.VarChar(100)
+  comp_type               String                 @default("") @db.VarChar(100)
+  comp_item               String                 @default("") @db.VarChar(100)
+  comp_name               String                 @default("") @db.VarChar(100)
+  comp_license_no         String?                @db.VarChar(50)
+  comp_email              String                 @default("") @db.VarChar(100)
+  comp_tel                String                 @default("") @db.VarChar(20)
+  comp_fax                String                 @default("") @db.VarChar(20)
+  cont_name               String                 @default("") @db.VarChar(100)
+  cont_cell               String                 @default("") @db.VarChar(20)
+  cont_email              String                 @default("") @db.VarChar(50)
+  cont_part               String                 @default("") @db.VarChar(50)
+  cont_position           String                 @default("") @db.VarChar(50)
+  add1                    String                 @db.Text
+  add2                    String                 @db.Text
+  add3                    String                 @db.Text
+  add4                    String                 @db.Text
+  add5                    String                 @db.Text
+  memo                    String                 @db.Text
+  image1                  String                 @default("") @db.VarChar(100)
+  sns_type                String                 @default("") @db.VarChar(50)
+  sns_id                  String                 @default("") @db.VarChar(50)
+  sns_name                String                 @default("") @db.VarChar(50)
+  dup_info                String                 @default("") @db.VarChar(100)
+  cnts                    Int                    @default(0) @db.UnsignedInt
+  fail_cnts               Int                    @default(0) @db.UnsignedInt
+  fail_time               Int                    @default(0) @db.UnsignedInt
+  mobile                  mallRN_member_mobile   @default(N)
+  auth                    mallRN_member_auth     @default(Y)
+  status                  String                 @default("active") @db.VarChar(32)
+  primary_role            String                 @default("consumer") @db.VarChar(32)
+  default_tenant_id       BigInt?                @db.UnsignedBigInt
+  last_selected_tenant_id BigInt?                @db.UnsignedBigInt
+  deleted_at              DateTime?
+  created_at_dt           DateTime?              @default(now())
+  updated_at_dt           DateTime?              @default(now()) @updatedAt
+  last_login_at_dt        DateTime?
+  reference               String                 @default("") @db.VarChar(50)
+  auth_code               String                 @default("") @db.VarChar(10)
+  auth_code_time          Int                    @default(0) @db.UnsignedInt
+  nondormant_time         Int                    @default(0) @db.UnsignedInt
+  login_time              Int                    @default(0) @db.UnsignedInt
+  order_time              Int                    @default(0) @db.UnsignedInt
+  sleep_time              Int                    @default(0) @db.UnsignedInt
+  signdate                Int                    @default(0) @db.UnsignedInt
 
   @@index([member_role], map: "idx_member_role")
   @@index([name], map: "name")
+}
+
+model mallRN_member_membership {
+  uid         BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  member_uid  Int       @db.UnsignedInt
+  role_code   String    @db.VarChar(32)
+  scope_type  String    @db.VarChar(16)
+  scope_id    BigInt?   @db.UnsignedBigInt
+  status      String    @default("active") @db.VarChar(32)
+  is_primary  Boolean   @default(false)
+  joined_at   DateTime  @default(now())
+  approved_at DateTime?
+  left_at     DateTime?
+  memo        String    @default("") @db.VarChar(255)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @default(now()) @updatedAt
+
+  @@unique([member_uid, role_code, scope_type, scope_id], map: "uq_member_role_scope")
+  @@index([member_uid], map: "idx_member_uid")
+  @@index([scope_type, scope_id], map: "idx_scope")
+  @@index([role_code, scope_type, scope_id, status], map: "idx_role_scope_status")
+}
+
+model mallRN_member_social_account {
+  uid                    BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  member_uid             Int       @db.UnsignedInt
+  provider               String    @db.VarChar(32)
+  provider_user_id       String    @db.VarChar(100)
+  provider_email         String    @default("") @db.VarChar(120)
+  provider_name          String    @default("") @db.VarChar(100)
+  provider_phone         String    @default("") @db.VarChar(30)
+  provider_profile_image String    @default("") @db.VarChar(255)
+  linked_at              DateTime  @default(now())
+  last_login_at          DateTime?
+  is_active              Boolean   @default(true)
+  raw_profile_json       Json?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @default(now()) @updatedAt
+
+  @@unique([provider, provider_user_id], map: "uq_provider_user")
+  @@index([member_uid], map: "idx_member_uid")
+  @@index([provider, provider_email], map: "idx_provider_email")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments

@@ -1,8 +1,10 @@
-// src/app/(seller)/seller/[tenant]/members/[id]/page.tsx
+// src/app/(seller)/seller/[tenant]/members/page.tsx
 import { notFound } from "next/navigation";
-import SellerMemberDetailClient, {
-    type SellerMemberDetail,
-} from "@/components/seller/SellerMemberDetailClient";
+import { cookies } from "next/headers";
+import SellerMembersClient, {
+    type SellerMemberItem,
+    type SellerMembersSummary,
+} from "@/components/seller/SellerMembersClient";
 
 function getInternalOrigin() {
     return (
@@ -12,42 +14,72 @@ function getInternalOrigin() {
     );
 }
 
-type MemberDetailResponse = {
-    ok: boolean;
-    item?: SellerMemberDetail;
-};
-
-async function fetchSellerMemberDetail(
-    tenant: string,
-    id: string
-): Promise<SellerMemberDetail | null> {
-    const origin = getInternalOrigin();
-    const url = new URL(`/api/seller/${tenant}/members/${id}`, origin);
-
-    const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) return null;
-
-    const data = (await res.json().catch(() => null)) as MemberDetailResponse | null;
-    if (!data?.ok || !data.item) return null;
-
-    return data.item;
+async function getCookieHeader() {
+    const store = await cookies();
+    return store
+        .getAll()
+        .map((item) => `${item.name}=${item.value}`)
+        .join("; ");
 }
 
-export default async function SellerMemberDetailPage({
-                                                         params,
-                                                     }: {
-    params:
-        | Promise<{ tenant: string; id: string }>
-        | { tenant: string; id: string };
+type MembersResponse = {
+    ok: boolean;
+    summary?: SellerMembersSummary;
+    items?: SellerMemberItem[];
+};
+
+async function fetchSellerMembers(
+    tenant: string,
+    keyword: string
+): Promise<MembersResponse | null> {
+    const origin = getInternalOrigin();
+    const url = new URL(`/api/seller/${tenant}/members`, origin);
+
+    if (keyword) {
+        url.searchParams.set("q", keyword);
+    }
+
+    const cookie = await getCookieHeader();
+
+    const res = await fetch(url.toString(), {
+        cache: "no-store",
+        headers: {
+            cookie,
+            "x-tenant-slug": tenant,
+        },
+    });
+
+    if (!res.ok) return null;
+
+    const data = (await res.json().catch(() => null)) as MembersResponse | null;
+    if (!data?.ok) return null;
+
+    return data;
+}
+
+export default async function SellerMembersPage({
+                                                    params,
+                                                    searchParams,
+                                                }: {
+    params: Promise<{ tenant: string }> | { tenant: string };
+    searchParams?: Promise<{ q?: string }> | { q?: string };
 }) {
     const resolved = await Promise.resolve(params);
+    const resolvedSearch = await Promise.resolve(searchParams);
     const tenant = String(resolved?.tenant ?? "").trim();
-    const id = String(resolved?.id ?? "").trim();
+    const keyword = String(resolvedSearch?.q ?? "").trim();
 
-    if (!tenant || !id) notFound();
+    if (!tenant) notFound();
 
-    const item = await fetchSellerMemberDetail(tenant, id);
-    if (!item) notFound();
+    const data = await fetchSellerMembers(tenant, keyword);
+    if (!data) notFound();
 
-    return <SellerMemberDetailClient item={item} />;
+    return (
+        <SellerMembersClient
+            tenant={tenant}
+            items={Array.isArray(data.items) ? data.items : []}
+            summary={data.summary}
+            keyword={keyword}
+        />
+    );
 }

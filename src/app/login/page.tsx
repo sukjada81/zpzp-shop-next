@@ -1,61 +1,131 @@
 // src/app/login/page.tsx
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+
+type SessionResponse = {
+    ok?: boolean;
+    loggedIn?: boolean;
+    member?: {
+        uid?: number | string;
+        id?: string;
+        name?: string;
+        tenantSlug?: string;
+    } | null;
+    tenant?: string;
+};
+
 export default function LoginPage() {
-    const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const [loading, setLoading] = useState(true);
+    const [loggedIn, setLoggedIn] = useState(false);
+    const [error, setError] = useState("");
 
-    const tenant = sp?.get("tenant") || "";
-    const returnToParam = sp?.get("returnTo");
+    const params = useMemo(() => {
+        if (typeof window === "undefined") {
+            return new URLSearchParams();
+        }
+        return new URLSearchParams(window.location.search);
+    }, []);
 
-    const baseDomain =
-        process.env.NEXT_PUBLIC_TENANT_BASE_DOMAIN || "discountallday.kr";
+    const tenant = params.get("tenant") || "a";
+    const returnToParam = params.get("returnTo") || "/home";
 
-    const selectTenantOrigin =
-        process.env.NEXT_PUBLIC_SELECT_TENANT_ORIGIN ||
-        process.env.NEXT_PUBLIC_SITE_ORIGIN ||
-        "https://select-tenant.discountallday.kr";
+    const returnTo = useMemo(() => {
+        if (/^https?:\/\//i.test(returnToParam)) {
+            return returnToParam;
+        }
+        return returnToParam.startsWith("/") ? returnToParam : "/home";
+    }, [returnToParam]);
 
-    const defaultReturnTo = tenant
-        ? `https://${tenant}.${baseDomain}/home`
-        : `${selectTenantOrigin}/`;
+    useEffect(() => {
+        let ignore = false;
 
-    const returnTo = returnToParam || defaultReturnTo;
+        async function checkSession() {
+            try {
+                setLoading(true);
+                setError("");
+
+                const res = await fetch("/auth/session", {
+                    method: "GET",
+                    cache: "no-store",
+                });
+
+                const data = (await res.json().catch(() => null)) as SessionResponse | null;
+
+                if (ignore) return;
+
+                const isLoggedIn = Boolean(data?.loggedIn);
+                setLoggedIn(isLoggedIn);
+
+                if (isLoggedIn) {
+                    window.location.replace(returnTo);
+                    return;
+                }
+            } catch {
+                if (!ignore) {
+                    setError("세션 확인 중 오류가 발생했습니다.");
+                }
+            } finally {
+                if (!ignore) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        checkSession();
+
+        return () => {
+            ignore = true;
+        };
+    }, [returnTo]);
+
+    function startKakaoLogin() {
+        const qs = new URLSearchParams();
+        qs.set("tenant", tenant);
+        qs.set("returnTo", returnTo);
+        window.location.href = `/auth/kakao/login?${qs.toString()}`;
+    }
 
     return (
-        <main className="min-h-dvh flex flex-col items-center justify-center px-6">
-            <div className="w-full max-w-[420px] flex flex-col items-center">
+        <main className="min-h-dvh flex items-center justify-center bg-slate-50 px-4">
+            <div className="w-full max-w-[420px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="mb-6 text-center">
-                    <div className="text-xl font-extrabold tracking-wide">매장 로그인</div>
-                    <div className="mt-2 text-sm text-slate-500">카카오 계정으로 간편하게 시작하세요.</div>
+                    <h1 className="text-xl font-bold text-slate-900">매장 로그인</h1>
+                    <p className="mt-2 text-sm text-slate-500">
+                        카카오 계정으로 간편하게 로그인하세요.
+                    </p>
                 </div>
 
-                <div className="w-full rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="text-sm text-slate-700 leading-6">
-                        <div>• 필수 / 선택 동의 후 이용 가능합니다.</div>
-                        <div>• 픽업 안내 알림을 받을 수 있습니다.</div>
+                <div className="space-y-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+                    <div className="whitespace-pre-line text-center font-medium leading-6 text-slate-700">
+                        {"🍀 필수 · 선택 모두 동의하기 눌러주셔야\n🔔 픽업 안내 알림톡을 발송해드릴 수 있어요!"}
                     </div>
                 </div>
 
-                <button
-                    type="button"
-                    className="mt-5 w-full rounded-xl bg-[var(--kakao)] py-4 font-bold text-black shadow-sm active:scale-[0.99]"
-                    onClick={() => {
-                        const qs = new URLSearchParams();
-                        if (tenant) qs.set("tenant", tenant);
-                        qs.set("returnTo", returnTo);
-                        qs.set("auto", "0");
-                        window.location.href = `/auth/kakao/login?${qs.toString()}`;
-                    }}
-                >
-                    카카오로 시작하기
-                </button>
+                {error ? (
+                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                        {error}
+                    </div>
+                ) : null}
 
-                <p className="mt-3 text-xs text-slate-400 text-center">
-                    로그인 시 서비스 이용약관에 동의하는 것으로 간주됩니다.
-                </p>
-
-                <div className="mt-14 w-full border-t pt-8 text-center text-xs text-slate-400">
-                    © 2026. All rights reserved.
+                <div className="mt-6">
+                    {loading ? (
+                        <div className="rounded-xl border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
+                            로그인 상태를 확인하는 중입니다...
+                        </div>
+                    ) : loggedIn ? (
+                        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-center text-sm text-green-700">
+                            로그인 상태입니다. 이동 중입니다...
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={startKakaoLogin}
+                            className="w-full rounded-xl bg-[#FEE500] px-4 py-4 text-sm font-bold text-slate-900 shadow-sm transition hover:brightness-95 active:scale-[0.99]"
+                        >
+                            카카오로 로그인
+                        </button>
+                    )}
                 </div>
             </div>
         </main>

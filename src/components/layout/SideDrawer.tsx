@@ -18,15 +18,37 @@ type AuthSession = {
     ok: boolean;
     loggedIn: boolean;
     tenant?: string;
+    member?: { id: string; provider: string } | null;
     user?: { id: string; provider: string } | null;
 };
 
 const BRAND_NAME = "디스카운트 올데이";
-
-// 임시 숨김 정책
-const HIDE_POINTS_MENU = true;
+const HIDE_POINTS_MENU = false;
 const HIDE_SELECT_TENANT_MENU = true;
-const HIDE_AUTH_BUTTON = true;
+const HIDE_AUTH_BUTTON = false;
+
+function resolveAuthOrigin() {
+    if (typeof window === "undefined") {
+        return process.env.NEXT_PUBLIC_AUTH_ORIGIN || "http://auth.discountallday.kr:3000";
+    }
+
+    const envOrigin = process.env.NEXT_PUBLIC_AUTH_ORIGIN;
+    if (envOrigin) return envOrigin;
+
+    const { protocol, host } = window.location;
+    const hostWithoutPort = host.split(":")[0];
+    const port = host.includes(":") ? `:${host.split(":")[1]}` : "";
+
+    if (hostWithoutPort === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostWithoutPort)) {
+        return `${protocol}//localhost${port}`;
+    }
+
+    if (hostWithoutPort.endsWith(".discountallday.kr")) {
+        return `${protocol}//auth.discountallday.kr${port}`;
+    }
+
+    return `${protocol}//auth.discountallday.kr${port}`;
+}
 
 export default function SideDrawer({
                                        open,
@@ -98,25 +120,31 @@ export default function SideDrawer({
     function goLogin() {
         onCloseAction();
 
-        const authOrigin =
-            process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
-
+        const authOrigin = resolveAuthOrigin();
         const returnTo =
             typeof window !== "undefined"
                 ? window.location.href
-                : `https://${tenant}.discountallday.kr/home`;
+                : `http://${tenant}.discountallday.kr:3000/home`;
 
         const url = new URL("/login", authOrigin);
         if (tenant) url.searchParams.set("tenant", tenant);
         url.searchParams.set("returnTo", returnTo);
+        url.searchParams.set("auto", "0");
 
         window.location.href = url.toString();
     }
 
     function doLogout() {
         onCloseAction();
-        const t = tenant && tenant !== "undefined" ? tenant : "";
-        window.location.href = `/auth/logout?tenant=${encodeURIComponent(t)}`;
+
+        const authOrigin = resolveAuthOrigin();
+        const url = new URL("/auth/logout", authOrigin);
+
+        if (tenant && tenant !== "undefined") {
+            url.searchParams.set("tenant", tenant);
+        }
+
+        window.location.href = url.toString();
     }
 
     const cleanStoreName = (brandLabel || "").trim();
@@ -252,6 +280,7 @@ export default function SideDrawer({
         </>
     );
 }
+
 
 function DrawerItem({
                         href,

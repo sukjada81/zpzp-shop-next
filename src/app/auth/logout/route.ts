@@ -1,12 +1,14 @@
+// src/app/auth/logout/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-function safeTenant(t: string) {
-    if (!t) return "";
-    const v = t.trim().toLowerCase();
-    if (v === "undefined" || v === "null") return "";
-    return v;
+function getApiBase() {
+    return (
+        process.env.API_BASE_URL ||
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        "http://127.0.0.1:4000"
+    ).replace(/\/+$/, "");
 }
 
 function getHeaderFirst(req: NextRequest, key: string) {
@@ -24,19 +26,13 @@ function getForwardedHost(req: NextRequest) {
 function isDevHttp(req: NextRequest) {
     const host = (getForwardedHost(req) || "").toLowerCase();
     const proto = getForwardedProto(req) || req.nextUrl.protocol.replace(":", "");
-    if (proto === "http") return true;
-    if (host.includes(":3000")) return true;
-    return false;
+    return proto === "http" || host.includes(":3000");
 }
 
 function isLikelyLocalHost(host: string) {
     const h = (host || "").split(",")[0].trim().toLowerCase();
     const hostOnly = h.split(":")[0];
-    if (!hostOnly) return true;
-    if (hostOnly === "localhost") return true;
-    if (hostOnly.endsWith(".localhost")) return true;
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return true;
-    return false;
+    return !hostOnly || hostOnly === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly);
 }
 
 function cookieDomainForShare(req: NextRequest) {
@@ -45,53 +41,64 @@ function cookieDomainForShare(req: NextRequest) {
     return process.env.COOKIE_DOMAIN || ".discountallday.kr";
 }
 
-function getAuthOrigin() {
-    return process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "http://localhost:3000";
-}
+function parseSessionCookie(rawSetCookie: string | null) {
+    if (!rawSetCookie) return null;
+    const firstPart = rawSetCookie.split(";")[0] || "";
+    const eqIndex = firstPart.indexOf("=");
+    if (eqIndex < 0) return null;
 
-function buildTenantOrigin(req: NextRequest, tenant: string) {
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
-    const dev = isDevHttp(req);
-
-    const proto = dev ? "http" : "https";
-    const localPort = process.env.LOCAL_TENANT_PORT || "3000";
-    const portPart = dev ? `:${localPort}` : "";
-
-    return `${proto}://${tenant}.${baseDomain}${portPart}`;
+    const name = firstPart.slice(0, eqIndex).trim();
+    return name || null;
 }
 
 export async function GET(req: NextRequest) {
-    const url = new URL(req.url);
-    const tenant = safeTenant(url.searchParams.get("tenant") || "");
+    const tenant = req.nextUrl.searchParams.get("tenant") || "a";
+    const authOrigin =
+        process.env.NEXT_PUBLIC_AUTH_ORIGIN ||
+        process.env.AUTH_ORIGIN ||
+        `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 
-    const returnToAbs = tenant ? new URL("/home", buildTenantOrigin(req, tenant)).toString() : "/";
+    const returnTo = new URL(
+        `/login?tenant=${encodeURIComponent(tenant)}&returnTo=/home&loggedOut=1`,
+        authOrigin
+    ).toString();
 
-    const AUTH_ORIGIN = getAuthOrigin();
-    const loginUrl = new URL("/login", AUTH_ORIGIN);
-    if (tenant) loginUrl.searchParams.set("tenant", tenant);
-    loginUrl.searchParams.set("returnTo", returnToAbs);
+    const backendRes = await fetch(`${getApiBase()}/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            cookie: req.headers.get("cookie") || "",
+        },
+        cache: "no-store",
+        redirect: "manual",
+    });
 
-    const res = NextResponse.redirect(loginUrl, { status: 302 });
+    const backendSetCookie = backendRes.headers.get("set-cookie");
+    const sessionCookieName = parseSessionCookie(backendSetCookie) || "dad_admin_sid";
+
+    const res = NextResponse.redirect(returnTo, { status: 302 });
 
     const dev = isDevHttp(req);
     const secure = dev ? false : true;
     const sameSite = secure ? ("none" as const) : ("lax" as const);
     const domain = cookieDomainForShare(req);
 
-    const kill = (name: string) => {
-        res.cookies.set(name, "", {
-            httpOnly: true,
-            path: "/",
-            maxAge: 0,
-            sameSite,
-            secure,
-            domain,
-        });
-    };
+    res.cookies.set(sessionCookieName, "", {
+        httpOnly: true,
+        path: "/",
+        sameSite,
+        secure,
+        domain,
+        maxAge: 0,
+    });
 
-    kill("mockLogin");
-    kill("mockTenant");
-    kill("selectedTenant");
+    res.cookies.set("selectedTenant", "", {
+        httpOnly: true,
+        path: "/",
+        sameSite,
+        secure,
+        domain,
+        maxAge: 0,
+    });
 
     return res;
 }
