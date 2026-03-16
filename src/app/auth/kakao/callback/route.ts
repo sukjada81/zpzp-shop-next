@@ -1,7 +1,7 @@
 // src/app/auth/kakao/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-
+console.log("KAKAO_CALLBACK_BUILD_MARK_20260316_v1");
 export const runtime = "nodejs";
 
 function base64urlToBuffer(s: string) {
@@ -182,12 +182,12 @@ function parseSessionCookie(rawSetCookie: string | null) {
 }
 
 export async function GET(req: NextRequest) {
+    console.log("KAKAO_CALLBACK_ROUTE_HIT_20260316_v1", req.nextUrl.toString());
     const url = req.nextUrl;
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     const error = url.searchParams.get("error");
     const errorDescription = url.searchParams.get("error_description");
-
     if (!state) {
         return NextResponse.json({ ok: false, error: "Missing state" }, { status: 400 });
     }
