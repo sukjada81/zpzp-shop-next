@@ -273,11 +273,9 @@ export async function GET(req: NextRequest) {
         }
 
         const backendSetCookie = completeRes.headers.get("set-cookie");
-        const sessionValue = extractCookieValueFromSetCookie(
-            backendSetCookie,
-            "dad_admin_sid"
-        );
-        console.log("KAKAO_SESSION_VALUE", sessionValue);
+
+        console.log("KAKAO_COMPLETE_STATUS", completeRes.status);
+        console.log("KAKAO_COMPLETE_SET_COOKIE", backendSetCookie);
 
         const target = safeNextUrl(req, returnTo, tenantSlug);
         const res = NextResponse.redirect(target, { status: 302 });
@@ -287,17 +285,12 @@ export async function GET(req: NextRequest) {
         const sameSite = secure ? ("none" as const) : ("lax" as const);
         const domain = cookieDomainForShare(req);
 
-        if (sessionValue) {
-            res.cookies.set("dad_admin_sid", sessionValue, {
-                httpOnly: true,
-                path: "/",
-                sameSite,
-                secure,
-                domain,
-                maxAge: 60 * 60 * 24 * 7,
-            });
+// 핵심: 세션 쿠키는 백엔드가 준 Set-Cookie를 그대로 전달
+        if (backendSetCookie) {
+            res.headers.append("set-cookie", backendSetCookie);
         }
 
+// 부가 쿠키만 Next에서 별도로 세팅
         res.cookies.set("selectedTenant", tenantSlug, {
             httpOnly: true,
             path: "/",
