@@ -182,25 +182,128 @@ function parseSessionCookie(rawSetCookie: string | null) {
 }
 
 export async function GET(req: NextRequest) {
-    console.log("KAKAO_CALLBACK_ROUTE_HIT", req.nextUrl.toString());
+    console.log("KAKAO_CALLBACK_ROUTE_HIT_20260316_v1", req.nextUrl.toString());
+    const url = req.nextUrl;
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const error = url.searchParams.get("error");
+    const errorDescription = url.searchParams.get("error_description");
+    if (!state) {
+        return NextResponse.json({ ok: false, error: "Missing state" }, { status: 400 });
+    }
 
-    const code = req.nextUrl.searchParams.get("code");
-    const state = req.nextUrl.searchParams.get("state");
-    const error = req.nextUrl.searchParams.get("error");
-    const errorDescription = req.nextUrl.searchParams.get("error_description");
+    const authStateSecret = process.env.AUTH_STATE_SECRET;
+    if (!authStateSecret) {
+        return NextResponse.json({ ok: false, error: "Missing env: AUTH_STATE_SECRET" }, { status: 500 });
+    }
 
-    console.log("KAKAO_CALLBACK_QUERY", {
-        code,
-        state,
-        error,
-        errorDescription,
-    });
+    const verified = verifyState(state, authStateSecret);
+    if (!verified.ok) {
+        return NextResponse.json({ ok: false, error: verified.error }, { status: 400 });
+    }
 
-    return NextResponse.json({
-        ok: true,
-        code,
-        state,
-        error,
-        errorDescription,
-    });
+    const tenant = safeTenantSlug(verified.payload.tenant || "");
+    const returnTo = verified.payload.returnTo || "/home";
+
+    if (!code && error) {
+        console.error("KAKAO_CALLBACK_PROVIDER_ERROR", {
+            error,
+            errorDescription,
+            tenant,
+            returnTo,
+            fullUrl: req.nextUrl.toString(),
+        });
+
+        return NextResponse.json(
+            {
+                ok: false,
+                stage: "kakao_callback",
+                error,
+                error_description: errorDescription || "",
+                tenant,
+                returnTo,
+            },
+            { status: 400 }
+        );
+    }
+
+    if (!code) {
+        return NextResponse.json({ ok: false, error: "Missing code", detail: errorDescription || "" }, { status: 400 });
+    }
+
+    const authOrigin = process.env.AUTH_ORIGIN || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    const redirectUri = new URL("/auth/kakao/callback", authOrigin).toString();
+
+    try {
+        const token = await exchangeKakaoToken(code, redirectUri);
+        const profile = await fetchKakaoProfile(token.access_token);
+
+        const kakaoAccount = profile.kakao_account ?? {};
+        const kakaoProfile = kakaoAccount.profile ?? {};
+        const tenantSlug = String(tenant || "a").trim().toLowerCase();
+
+        const completeRes = await fetch(`${getApiBase()}/v1/auth/kakao/complete`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                cookie: req.headers.get("cookie") || "",
+            },
+            body: JSON.stringify({
+                tenantSlug,
+                providerUserId: String(profile.id),
+                email: String(kakaoAccount.email || ""),
+                name: String(kakaoProfile.nickname || profile.properties?.nickname || ""),
+                phone: String(kakaoAccount.phone_number || ""),
+                profileImage: String(kakaoProfile.profile_image_url || ""),
+                rawProfile: profile,
+            }),
+            cache: "no-store",
+            redirect: "manual",
+        });
+
+        const completeData = await completeRes.json().catch(() => null);
+        if (!completeRes.ok) {
+            return NextResponse.json(
+                { ok: false, error: completeData?.error || completeData?.message || "AUTH_COMPLETE_FAILED" },
+                { status: completeRes.status || 500 }
+            );
+        }
+
+        const backendSetCookie = completeRes.headers.get("set-cookie");
+        const parsedSessionCookie = parseSessionCookie(backendSetCookie);
+
+        const target = safeNextUrl(req, returnTo, tenantSlug);
+        const res = NextResponse.redirect(target, { status: 302 });
+
+        const dev = isDevHttp(req);
+        const secure = dev ? false : true;
+        const sameSite = secure ? ("none" as const) : ("lax" as const);
+        const domain = cookieDomainForShare(req);
+
+        if (parsedSessionCookie) {
+            res.cookies.set(parsedSessionCookie.name, parsedSessionCookie.value, {
+                httpOnly: true,
+                path: "/",
+                sameSite,
+                secure,
+                domain,
+                maxAge: 60 * 60 * 24 * 7,
+            });
+        }
+
+        res.cookies.set("selectedTenant", tenantSlug, {
+            httpOnly: true,
+            path: "/",
+            sameSite,
+            secure,
+            domain,
+        });
+
+        return res;
+    } catch (e: any) {
+        return NextResponse.json(
+            { ok: false, error: e?.message || "KAKAO_CALLBACK_FAILED" },
+            { status: 500 }
+        );
+    }
 }

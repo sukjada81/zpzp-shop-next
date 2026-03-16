@@ -26,6 +26,19 @@ function safeTenantSlug(raw: string) {
     return t;
 }
 
+function buildTenantHome(originProtocol: string, tenant: string) {
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const port =
+        process.env.NEXT_PUBLIC_LOCAL_TENANT_PORT ||
+        process.env.LOCAL_TENANT_PORT ||
+        "";
+
+    const isLocal = originProtocol === "http:";
+    const portPart = isLocal && port ? `:${port}` : "";
+
+    return `${originProtocol}//${tenant}.${baseDomain}${portPart}/home`;
+}
+
 export async function GET(req: NextRequest) {
     const kakaoClientId = process.env.KAKAO_CLIENT_ID || "";
     const authOrigin = process.env.AUTH_ORIGIN || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
@@ -38,8 +51,19 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    const tenant = safeTenantSlug(req.nextUrl.searchParams.get("tenant") || "");
-    const returnTo = req.nextUrl.searchParams.get("returnTo") || (tenant ? "/home" : "/select-tenant");
+    // tenant 우선순위:
+    // 1) 쿼리스트링
+    // 2) selectedTenant 쿠키
+    // 3) 기본값 a
+    const tenant =
+        safeTenantSlug(req.nextUrl.searchParams.get("tenant") || "") ||
+        safeTenantSlug(req.cookies.get("selectedTenant")?.value || "") ||
+        "a";
+
+    // 로그인 후 무조건 유저 홈페이지
+    const defaultReturnTo = buildTenantHome(req.nextUrl.protocol, tenant);
+    const returnTo = req.nextUrl.searchParams.get("returnTo") || defaultReturnTo;
+
     const auto = req.nextUrl.searchParams.get("auto") || "0";
 
     const redirectUri = new URL("/auth/kakao/callback", authOrigin).toString();
@@ -60,14 +84,14 @@ export async function GET(req: NextRequest) {
     authorizeUrl.searchParams.set("response_type", "code");
     authorizeUrl.searchParams.set("state", state);
 
-    // 기존 회원은 scope 동일하면 동의창 스킵
-    authorizeUrl.searchParams.set("scope", ["profile_nickname", "profile_image"].join(" "));
+    authorizeUrl.searchParams.set(
+        "scope",
+        ["profile_nickname", "profile_image"].join(" ")
+    );
 
     if (auto === "1") {
-        // 자동 세션 복구용
         authorizeUrl.searchParams.set("prompt", "none");
     } else {
-        // 수동 로그인 버튼은 자동 로그인 강제 방지
         authorizeUrl.searchParams.set("prompt", "login");
     }
 
