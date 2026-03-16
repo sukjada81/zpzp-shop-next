@@ -1,5 +1,5 @@
 // src/app/auth/kakao/callback/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -162,20 +162,24 @@ function getApiBase() {
     ).replace(/\/+$/, "");
 }
 
-function extractCookieValueFromSetCookie(rawSetCookie: string | null, cookieName: string) {
-    if (!rawSetCookie) return null;
+function buildSelectedTenantCookie(
+    tenantSlug: string,
+    domain: string | undefined,
+    secure: boolean,
+    sameSite: "None" | "Lax"
+) {
+    const parts = [
+        `selectedTenant=${encodeURIComponent(tenantSlug)}`,
+        "Path=/",
+        "HttpOnly",
+        `SameSite=${sameSite}`,
+        "Max-Age=604800",
+    ];
 
-    const firstPart = rawSetCookie.split(";")[0] || "";
-    const eqIndex = firstPart.indexOf("=");
-    if (eqIndex < 0) return null;
+    if (domain) parts.push(`Domain=${domain}`);
+    if (secure) parts.push("Secure");
 
-    const name = firstPart.slice(0, eqIndex).trim();
-    const value = firstPart.slice(eqIndex + 1).trim();
-
-    if (!name || !value) return null;
-    if (name !== cookieName) return null;
-
-    return value;
+    return parts.join("; ");
 }
 
 export async function GET(req: NextRequest) {
@@ -186,12 +190,12 @@ export async function GET(req: NextRequest) {
     const errorDescription = url.searchParams.get("error_description");
 
     if (!state) {
-        return NextResponse.json({ ok: false, error: "Missing state" }, { status: 400 });
+        return Response.json({ ok: false, error: "Missing state" }, { status: 400 });
     }
 
     const authStateSecret = process.env.AUTH_STATE_SECRET;
     if (!authStateSecret) {
-        return NextResponse.json(
+        return Response.json(
             { ok: false, error: "Missing env: AUTH_STATE_SECRET" },
             { status: 500 }
         );
@@ -199,14 +203,14 @@ export async function GET(req: NextRequest) {
 
     const verified = verifyState(state, authStateSecret);
     if (!verified.ok) {
-        return NextResponse.json({ ok: false, error: verified.error }, { status: 400 });
+        return Response.json({ ok: false, error: verified.error }, { status: 400 });
     }
 
     const tenant = safeTenantSlug(verified.payload.tenant || "");
     const returnTo = verified.payload.returnTo || "/home";
 
     if (!code && error) {
-        return NextResponse.json(
+        return Response.json(
             {
                 ok: false,
                 stage: "kakao_callback",
@@ -220,7 +224,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!code) {
-        return NextResponse.json(
+        return Response.json(
             { ok: false, error: "Missing code", detail: errorDescription || "" },
             { status: 400 }
         );
@@ -255,12 +259,14 @@ export async function GET(req: NextRequest) {
             cache: "no-store",
             redirect: "manual",
         });
-        console.log("KAKAO_COMPLETE_STATUS", completeRes.status);
-        console.log("KAKAO_COMPLETE_SET_COOKIE", completeRes.headers.get("set-cookie"));
+
         const completeData = await completeRes.json().catch(() => null);
 
+        console.log("KAKAO_COMPLETE_STATUS", completeRes.status);
+        console.log("KAKAO_COMPLETE_SET_COOKIE", completeRes.headers.get("set-cookie"));
+
         if (!completeRes.ok) {
-            return NextResponse.json(
+            return Response.json(
                 {
                     ok: false,
                     error:
@@ -273,36 +279,33 @@ export async function GET(req: NextRequest) {
         }
 
         const backendSetCookie = completeRes.headers.get("set-cookie");
-
-        console.log("KAKAO_COMPLETE_STATUS", completeRes.status);
-        console.log("KAKAO_COMPLETE_SET_COOKIE", backendSetCookie);
-
         const target = safeNextUrl(req, returnTo, tenantSlug);
-        const res = NextResponse.redirect(target, { status: 302 });
 
         const dev = isDevHttp(req);
         const secure = dev ? false : true;
-        const sameSite = secure ? ("none" as const) : ("lax" as const);
+        const sameSite = secure ? "None" : "Lax";
         const domain = cookieDomainForShare(req);
 
-// 핵심: 세션 쿠키는 백엔드가 준 Set-Cookie를 그대로 전달
+        const headers = new Headers();
+        headers.set("Location", target);
+
+        // 핵심: 세션 쿠키는 백엔드가 내려준 원문을 그대로 전달
         if (backendSetCookie) {
-            res.headers.append("set-cookie", backendSetCookie);
+            headers.append("Set-Cookie", backendSetCookie);
         }
 
-// 부가 쿠키만 Next에서 별도로 세팅
-        res.cookies.set("selectedTenant", tenantSlug, {
-            httpOnly: true,
-            path: "/",
-            sameSite,
-            secure,
-            domain,
-            maxAge: 60 * 60 * 24 * 7,
-        });
+        // selectedTenant 는 별도 쿠키로 직접 추가
+        headers.append(
+            "Set-Cookie",
+            buildSelectedTenantCookie(tenantSlug, domain, secure, sameSite)
+        );
 
-        return res;
+        return new Response(null, {
+            status: 302,
+            headers,
+        });
     } catch (e: any) {
-        return NextResponse.json(
+        return Response.json(
             { ok: false, error: e?.message || "KAKAO_CALLBACK_FAILED" },
             { status: 500 }
         );
