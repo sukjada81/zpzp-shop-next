@@ -448,7 +448,7 @@ export async function middleware(req: NextRequest) {
     const addDebug = (res: NextResponse, action: string) => {
         res.headers.set("X-Dad-Debug-Action", action);
         res.headers.set("X-Dad-Debug-Host", host);
-        res.headers.set("X-Dad-Debug-Sub", subdomain);
+        res.headers.set("X-Dad-Debug-Sub", subdomain ?? "");
         res.headers.set("X-Dad-Debug-Path", pathname);
         res.headers.set("X-Dad-Debug-Internal", internalPathname);
         res.headers.set("X-Dad-Debug-Protected", String(isProtected));
