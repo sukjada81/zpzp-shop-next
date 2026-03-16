@@ -100,10 +100,10 @@ function buildOptionKey(productId: string | number, optionId: string | number) {
 }
 
 function SuccessToast({
-                          open,
-                          message,
-                          onClose,
-                      }: {
+    open,
+    message,
+    onClose,
+}: {
     open: boolean;
     message: string;
     onClose: () => void;
@@ -142,8 +142,8 @@ function SuccessToast({
 }
 
 function CompactNoticeBar({
-                              notice,
-                          }: {
+    notice,
+}: {
     notice?: NoticeItem;
 }) {
     if (!notice) return null;
@@ -180,11 +180,11 @@ function CompactNoticeBar({
 }
 
 function QtyControl({
-                        value,
-                        onMinus,
-                        onPlus,
-                        disabled,
-                    }: {
+    value,
+    onMinus,
+    onPlus,
+    disabled,
+}: {
     value: number;
     onMinus: () => void;
     onPlus: () => void;
@@ -229,8 +229,8 @@ function QtyControl({
 }
 
 function ProductThumbStrip({
-                               images,
-                           }: {
+    images,
+}: {
     images: { key: string; label?: string }[];
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
@@ -261,11 +261,11 @@ function ProductThumbStrip({
 }
 
 function GroupBuyItemBlock({
-                               item,
-                               qtyMap,
-                               onMinus,
-                               onPlus,
-                           }: {
+    item,
+    qtyMap,
+    onMinus,
+    onPlus,
+}: {
     item: OngoingGroupBuyItem;
     qtyMap: Record<string, number>;
     onMinus: (optionKey: string) => void;
@@ -346,20 +346,19 @@ function GroupBuyItemBlock({
                     return (
                         <div
                             key={optionKey}
-                            className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow"
+                            className={`flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow shadow-sm`}
                             style={{
                                 borderColor: "#e5e7eb",
-                                boxShadow: "none",
-                                opacity: soldout ? 0.92 : 1,
+                                opacity: soldout ? 0.60 : 1,
                             }}
                         >
                             <div className="min-w-0 flex-1">
-                    <span
-                        className="inline-flex items-center gap-1 text-xs"
-                        style={{ color: "#ff6b6b" }}
-                    >
-                        <span>{stockText}</span>
-                    </span>
+                                <span
+                                    className="inline-flex items-center gap-1 text-xs"
+                                    style={{ color: "#ff6b6b" }}
+                                >
+                                    <span>{stockText}</span>
+                                </span>
 
                                 <div className="mt-1 font-medium text-neutral-900">
                                     {option.name}
@@ -391,10 +390,10 @@ function GroupBuyItemBlock({
 }
 
 export default function OngoingGroupBuySection({
-                                                   title = "🔥 진행 중인 공구",
-                                                   items,
-                                                   showOrderBar = true,
-                                               }: {
+    title = "🔥 진행 중인 공구",
+    items,
+    showOrderBar = true,
+}: {
     title?: string;
     items: OngoingGroupBuyItem[];
     showOrderBar?: boolean;
