@@ -38,8 +38,8 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    const tenant = safeTenantSlug(req.nextUrl.searchParams.get("tenant") || "a");
-    const returnTo = req.nextUrl.searchParams.get("returnTo") || "/home";
+    const tenant = safeTenantSlug(req.nextUrl.searchParams.get("tenant") || "");
+    const returnTo = req.nextUrl.searchParams.get("returnTo") || (tenant ? "/home" : "/select-tenant");
     const auto = req.nextUrl.searchParams.get("auto") || "0";
 
     const redirectUri = new URL("/auth/kakao/callback", authOrigin).toString();
