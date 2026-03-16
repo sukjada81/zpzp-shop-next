@@ -1,7 +1,7 @@
 // src/app/auth/kakao/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-console.log("KAKAO_CALLBACK_BUILD_MARK_20260316_v1");
+
 export const runtime = "nodejs";
 
 function base64urlToBuffer(s: string) {
@@ -12,15 +12,19 @@ function base64urlToBuffer(s: string) {
 
 function verifyState(state: string, secret: string) {
     const parts = state.split(".");
-    if (parts.length !== 2) return { ok: false as const, error: "INVALID_STATE_FORMAT" };
+    if (parts.length !== 2) {
+        return { ok: false as const, error: "INVALID_STATE_FORMAT" };
+    }
 
     const payloadBuf = base64urlToBuffer(parts[0]);
     const sigBuf = base64urlToBuffer(parts[1]);
 
     const expected = crypto.createHmac("sha256", secret).update(payloadBuf).digest();
+
     if (sigBuf.length !== expected.length) {
         return { ok: false as const, error: "INVALID_STATE_SIG" };
     }
+
     if (!crypto.timingSafeEqual(sigBuf, expected)) {
         return { ok: false as const, error: "INVALID_STATE_SIG" };
     }
@@ -158,7 +162,7 @@ function getApiBase() {
     ).replace(/\/+$/, "");
 }
 
-function parseSessionCookie(rawSetCookie: string | null) {
+function extractCookieValueFromSetCookie(rawSetCookie: string | null, cookieName: string) {
     if (!rawSetCookie) return null;
 
     const firstPart = rawSetCookie.split(";")[0] || "";
@@ -166,35 +170,31 @@ function parseSessionCookie(rawSetCookie: string | null) {
     if (eqIndex < 0) return null;
 
     const name = firstPart.slice(0, eqIndex).trim();
-    const rawValue = firstPart.slice(eqIndex + 1).trim();
-    if (!name || !rawValue) return null;
+    const value = firstPart.slice(eqIndex + 1).trim();
 
-    let value = rawValue;
+    if (!name || !value) return null;
+    if (name !== cookieName) return null;
 
-    try {
-        // 백엔드 Set-Cookie 값은 이미 encode 되어 있을 수 있으므로 1회 decode
-        value = decodeURIComponent(rawValue);
-    } catch {
-        value = rawValue;
-    }
-
-    return { name, value };
+    return value;
 }
 
 export async function GET(req: NextRequest) {
-    console.log("KAKAO_CALLBACK_ROUTE_HIT_20260316_v1", req.nextUrl.toString());
     const url = req.nextUrl;
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     const error = url.searchParams.get("error");
     const errorDescription = url.searchParams.get("error_description");
+
     if (!state) {
         return NextResponse.json({ ok: false, error: "Missing state" }, { status: 400 });
     }
 
     const authStateSecret = process.env.AUTH_STATE_SECRET;
     if (!authStateSecret) {
-        return NextResponse.json({ ok: false, error: "Missing env: AUTH_STATE_SECRET" }, { status: 500 });
+        return NextResponse.json(
+            { ok: false, error: "Missing env: AUTH_STATE_SECRET" },
+            { status: 500 }
+        );
     }
 
     const verified = verifyState(state, authStateSecret);
@@ -206,14 +206,6 @@ export async function GET(req: NextRequest) {
     const returnTo = verified.payload.returnTo || "/home";
 
     if (!code && error) {
-        console.error("KAKAO_CALLBACK_PROVIDER_ERROR", {
-            error,
-            errorDescription,
-            tenant,
-            returnTo,
-            fullUrl: req.nextUrl.toString(),
-        });
-
         return NextResponse.json(
             {
                 ok: false,
@@ -228,7 +220,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (!code) {
-        return NextResponse.json({ ok: false, error: "Missing code", detail: errorDescription || "" }, { status: 400 });
+        return NextResponse.json(
+            { ok: false, error: "Missing code", detail: errorDescription || "" },
+            { status: 400 }
+        );
     }
 
     const authOrigin = process.env.AUTH_ORIGIN || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
@@ -262,15 +257,25 @@ export async function GET(req: NextRequest) {
         });
 
         const completeData = await completeRes.json().catch(() => null);
+
         if (!completeRes.ok) {
             return NextResponse.json(
-                { ok: false, error: completeData?.error || completeData?.message || "AUTH_COMPLETE_FAILED" },
+                {
+                    ok: false,
+                    error:
+                        completeData?.error ||
+                        completeData?.message ||
+                        "AUTH_COMPLETE_FAILED",
+                },
                 { status: completeRes.status || 500 }
             );
         }
 
         const backendSetCookie = completeRes.headers.get("set-cookie");
-        const parsedSessionCookie = parseSessionCookie(backendSetCookie);
+        const sessionValue = extractCookieValueFromSetCookie(
+            backendSetCookie,
+            "dad_admin_sid"
+        );
 
         const target = safeNextUrl(req, returnTo, tenantSlug);
         const res = NextResponse.redirect(target, { status: 302 });
@@ -280,8 +285,8 @@ export async function GET(req: NextRequest) {
         const sameSite = secure ? ("none" as const) : ("lax" as const);
         const domain = cookieDomainForShare(req);
 
-        if (parsedSessionCookie) {
-            res.cookies.set(parsedSessionCookie.name, parsedSessionCookie.value, {
+        if (sessionValue) {
+            res.cookies.set("dad_admin_sid", sessionValue, {
                 httpOnly: true,
                 path: "/",
                 sameSite,
@@ -297,6 +302,7 @@ export async function GET(req: NextRequest) {
             sameSite,
             secure,
             domain,
+            maxAge: 60 * 60 * 24 * 7,
         });
 
         return res;
