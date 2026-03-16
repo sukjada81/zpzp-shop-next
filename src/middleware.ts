@@ -188,6 +188,30 @@ async function hasAdminSession(req: NextRequest) {
     return res.ok;
 }
 
+async function hasUserSession(req: NextRequest) {
+    const apiBase =
+        process.env.API_BASE_URL ||
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        "http://127.0.0.1:4000";
+
+    try {
+        const res = await fetch(`${apiBase.replace(/\/+$/, "")}/v1/auth/session`, {
+            headers: {
+                accept: "application/json",
+                cookie: req.headers.get("cookie") || "",
+            },
+            cache: "no-store",
+        });
+
+        if (!res.ok) return false;
+
+        const data = await res.json().catch(() => null);
+        return !!data?.loggedIn;
+    } catch {
+        return false;
+    }
+}
+
 export async function middleware(req: NextRequest) {
     const { pathname, search } = req.nextUrl;
 
@@ -290,6 +314,7 @@ export async function middleware(req: NextRequest) {
 
         const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
         const mockLogin = bypassAuth ? true : mockLoginCookie;
+        const hasSession = bypassAuth ? true : await hasUserSession(req);
         const isProtected = needsAuth(internalPath);
 
         const addDebug = (res: NextResponse, action: string) => {
@@ -301,10 +326,11 @@ export async function middleware(req: NextRequest) {
             res.headers.set("X-Dad-Debug-Protected", String(isProtected));
             res.headers.set("X-Dad-Debug-Mocklogin", String(mockLogin));
             res.headers.set("X-Dad-Debug-BypassAuth", String(bypassAuth));
+            res.headers.set("X-Dad-Debug-HasSession", String(hasSession));
             return res;
         };
 
-        if (!isProtected || mockLogin) {
+        if (!isProtected || mockLogin || hasSession) {
             return addDebug(
                 NextResponse.rewrite(makeInternalRewriteUrl(req, internalPath, search)),
                 !isProtected ? "seller-rewrite(unprotected)" : "seller-rewrite(protected OK)"
@@ -358,8 +384,9 @@ export async function middleware(req: NextRequest) {
 
         const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
         const mockLogin = bypassAuth ? true : mockLoginCookie;
+        const hasSession = bypassAuth ? true : await hasUserSession(req);
 
-        if (!needsAuth(pathname) || mockLogin) {
+        if (!needsAuth(pathname) || mockLogin || hasSession) {
             return NextResponse.next();
         }
 
@@ -415,6 +442,7 @@ export async function middleware(req: NextRequest) {
 
     const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
     const mockLogin = bypassAuth ? true : mockLoginCookie;
+    const hasSession = bypassAuth ? true : await hasUserSession(req);
     const isProtected = needsAuth(internalPathname);
 
     const addDebug = (res: NextResponse, action: string) => {
@@ -425,9 +453,9 @@ export async function middleware(req: NextRequest) {
         res.headers.set("X-Dad-Debug-Internal", internalPathname);
         res.headers.set("X-Dad-Debug-Protected", String(isProtected));
         res.headers.set("X-Dad-Debug-Has-Mocklogin", String(!!req.cookies.get("mockLogin")?.value));
-        res.headers.set("X-Dad-Debug-Has-Mocktenant", String(!!req.cookies.get("mockTenant")?.value));
         res.headers.set("X-Dad-Debug-Mocklogin", String(mockLogin));
         res.headers.set("X-Dad-Debug-BypassAuth", String(bypassAuth));
+        res.headers.set("X-Dad-Debug-HasSession", String(hasSession));
         return res;
     };
 
@@ -441,7 +469,7 @@ export async function middleware(req: NextRequest) {
         return addDebug(NextResponse.next(), "next(unprotected)");
     }
 
-    if (mockLogin) {
+    if (mockLogin || hasSession) {
         if (internalPathname !== pathname) {
             return addDebug(
                 NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search)),
