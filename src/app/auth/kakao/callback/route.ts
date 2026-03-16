@@ -206,9 +206,24 @@ export async function GET(req: NextRequest) {
     const returnTo = verified.payload.returnTo || "/home";
 
     if (!code && error) {
-        return NextResponse.redirect(
-            new URL(`/login?tenant=${tenant}&returnTo=${encodeURIComponent(returnTo)}`, process.env.AUTH_ORIGIN),
-            { status: 302 }
+        console.error("KAKAO_CALLBACK_PROVIDER_ERROR", {
+            error,
+            errorDescription,
+            tenant,
+            returnTo,
+            fullUrl: req.nextUrl.toString(),
+        });
+
+        return NextResponse.json(
+            {
+                ok: false,
+                stage: "kakao_callback",
+                error,
+                error_description: errorDescription || "",
+                tenant,
+                returnTo,
+            },
+            { status: 400 }
         );
     }
 
