@@ -21,7 +21,6 @@ import { sellerMembersRoutes } from "./modules/seller/members.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
-
 const app = Fastify({
     logger: true,
     trustProxy: true,
@@ -59,7 +58,11 @@ await adminProductsRoutes(app);
 await adminUploadsRoutes(app);
 
 await adminRoutes(app);
+
+// public auth를 먼저 등록
 await publicAuthRoutes(app);
+
+// seller members는 전역 hook 대신 route 단위 preHandler로 보호
 await sellerMembersRoutes(app);
 
 app.register(

@@ -255,7 +255,8 @@ export async function GET(req: NextRequest) {
             cache: "no-store",
             redirect: "manual",
         });
-
+        console.log("KAKAO_COMPLETE_STATUS", completeRes.status);
+        console.log("KAKAO_COMPLETE_SET_COOKIE", completeRes.headers.get("set-cookie"));
         const completeData = await completeRes.json().catch(() => null);
 
         if (!completeRes.ok) {
@@ -276,6 +277,7 @@ export async function GET(req: NextRequest) {
             backendSetCookie,
             "dad_admin_sid"
         );
+        console.log("KAKAO_SESSION_VALUE", sessionValue);
 
         const target = safeNextUrl(req, returnTo, tenantSlug);
         const res = NextResponse.redirect(target, { status: 302 });
