@@ -1,8 +1,17 @@
-export default function SellerProductNewPage() {
-    return (
-        <div className="p-4">
-            <h2 className="text-base font-extrabold">상품 등록</h2>
-            <p className="mt-2 text-sm text-gray-600">폼 연결 예정</p>
-        </div>
-    );
+// src/app/(seller)/seller/[tenant]/products/new/page.tsx
+import { redirect } from "next/navigation";
+
+export default async function SellerProductNewPage({
+                                                       params,
+                                                   }: {
+    params: Promise<{ tenant: string }> | { tenant: string };
+}) {
+    const resolved = await Promise.resolve(params);
+    const tenant = resolved?.tenant;
+
+    if (!tenant) {
+        redirect("/seller");
+    }
+
+    redirect(`/seller/${tenant}/orders`);
 }

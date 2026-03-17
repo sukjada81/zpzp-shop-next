@@ -3,7 +3,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Package2, Search, ShoppingBag, Tag } from "lucide-react";
+import {
+    CalendarDays,
+    CheckCircle2,
+    Loader2,
+    Package2,
+    Search,
+    ShoppingBag,
+    Tag,
+} from "lucide-react";
 import { getSellerHref } from "@/lib/seller/getSellerHref";
 
 type SellerOrderLine = {
@@ -14,19 +22,15 @@ type SellerOrderLine = {
     optionValue?: string;
     quantity?: number;
     qty?: number;
-
     categoryName?: string;
     categoryLabel?: string;
     category?: string;
     cate?: string | number;
-
     pickupDate?: string;
     pickupAt?: string;
     pickup_at?: string;
-
     pickupOnly?: boolean;
     pickup_only?: boolean;
-
     tab?: string;
     groupType?: string;
 };
@@ -38,7 +42,6 @@ type SellerOrderItem = {
     amount: number;
     status: number;
     createdAtText: string;
-
     itemSummary?: string;
     orderSummary?: string;
     productName?: string;
@@ -56,7 +59,7 @@ function getStatusLabel(status?: number) {
         case 2:
             return "픽업준비완료";
         case 4:
-            return "수령완료";
+            return "픽업완료";
         case 9:
             return "주문취소";
         default:
@@ -122,9 +125,7 @@ function getOrderSummary(item: SellerOrderItem) {
     }
 
     if (Array.isArray(item.items) && item.items.length > 0) {
-        const labels = item.items
-            .map(getLineLabel)
-            .filter(Boolean);
+        const labels = item.items.map(getLineLabel).filter(Boolean);
 
         if (labels.length === 1) return labels[0];
         if (labels.length > 1) {
@@ -173,6 +174,17 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
     const [items, setItems] = useState<SellerOrderItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [query, setQuery] = useState("");
+    const [savingId, setSavingId] = useState<string | null>(null);
+
+    async function load() {
+        const res = await fetch(`/api/seller/${tenant}/orders`, {
+            cache: "no-store",
+            credentials: "include",
+        });
+
+        const json = await res.json().catch(() => null);
+        setItems(Array.isArray(json?.items) ? json.items : []);
+    }
 
     useEffect(() => {
         let active = true;
@@ -183,7 +195,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                     cache: "no-store",
                     credentials: "include",
                 });
-                const json = await res.json();
+                const json = await res.json().catch(() => null);
 
                 if (!active) return;
                 setItems(Array.isArray(json?.items) ? json.items : []);
@@ -196,6 +208,34 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
             active = false;
         };
     }, [tenant]);
+
+    async function handleConfirm(orderId: string) {
+        try {
+            setSavingId(orderId);
+
+            const res = await fetch(`/api/seller/${tenant}/orders/${orderId}/status`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    accept: "application/json",
+                },
+                body: JSON.stringify({ status: 4 }),
+            });
+
+            const json = await res.json().catch(() => null);
+
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "픽업완료 처리에 실패했습니다.");
+            }
+
+            await load();
+        } catch (e: any) {
+            alert(e?.message || "픽업완료 처리에 실패했습니다.");
+        } finally {
+            setSavingId(null);
+        }
+    }
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -226,7 +266,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                     주문 관리
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    최근 주문을 확인하고 상태를 관리할 수 있습니다.
+                    최근 주문을 확인하고 확인 처리 후 픽업완료로 변경할 수 있습니다.
                 </p>
             </div>
 
@@ -266,15 +306,20 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                         const category = getCategoryLabel(item);
                         const pickupDate = getPickupDate(item);
                         const groupBadge = getGroupBadge(item);
+                        const isDone = Number(item.status) === 4;
+                        const isCanceled = Number(item.status) === 9;
+                        const isSaving = savingId === item.id;
 
                         return (
-                            <Link
+                            <div
                                 key={item.id}
-                                href={getSellerHref(tenant, `/orders/${item.id}`)}
                                 className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md"
                             >
                                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                    <div className="min-w-0 flex-1">
+                                    <Link
+                                        href={getSellerHref(tenant, `/orders/${item.id}`)}
+                                        className="min-w-0 flex-1"
+                                    >
                                         <div className="truncate text-base font-bold tracking-[-0.02em] text-slate-900">
                                             주문번호 {item.orderNo}
                                         </div>
@@ -283,7 +328,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                             주문자 {item.buyerName}
                                         </div>
 
-                                        {(groupBadge || category) ? (
+                                        {groupBadge || category ? (
                                             <div className="mt-2 flex flex-wrap items-center gap-2">
                                                 {groupBadge ? (
                                                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
@@ -303,9 +348,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                         {summary ? (
                                             <div className="mt-2 flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
                                                 <Package2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                                                <span className="line-clamp-2">
-                                                    {summary}
-                                                </span>
+                                                <span className="line-clamp-2">{summary}</span>
                                             </div>
                                         ) : null}
 
@@ -319,20 +362,45 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                         <div className="mt-2 text-xs text-slate-400">
                                             {item.createdAtText}
                                         </div>
-                                    </div>
+                                    </Link>
 
-                                    <div className="flex items-center gap-3">
-                                        <span
-                                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(item.status)}`}
-                                        >
-                                            {getStatusLabel(item.status)}
-                                        </span>
-                                        <span className="text-sm font-bold text-slate-900">
-                                            {(item.amount ?? 0).toLocaleString("ko-KR")}원
-                                        </span>
+                                    <div className="flex flex-col items-end gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <span
+                                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(item.status)}`}
+                                            >
+                                                {getStatusLabel(item.status)}
+                                            </span>
+                                            <span className="text-sm font-bold text-slate-900">
+                                                {(item.amount ?? 0).toLocaleString("ko-KR")}원
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <Link
+                                                href={getSellerHref(tenant, `/orders/${item.id}`)}
+                                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                                            >
+                                                상세보기
+                                            </Link>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleConfirm(item.id)}
+                                                disabled={isDone || isCanceled || isSaving}
+                                                className="inline-flex min-w-[96px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                            >
+                                                {isSaving ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <CheckCircle2 className="h-4 w-4" />
+                                                )}
+                                                {isDone ? "픽업완료" : isCanceled ? "취소주문" : "확인"}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </Link>
+                            </div>
                         );
                     })}
                 </div>

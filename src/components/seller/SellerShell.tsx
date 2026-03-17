@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
     LayoutDashboard,
-    Package,
     ShoppingBag,
     Users,
     LogIn,
@@ -67,15 +66,10 @@ export default function SellerShell({
     const [logoutLoading, setLogoutLoading] = useState(false);
 
     const dashboardHref = `/${tenant}`;
-    const productsHref = `/${tenant}/products`;
     const ordersHref = `/${tenant}/orders`;
     const membersHref = `/${tenant}/members`;
 
     const isDashboardActive = pathname === `/${tenant}` || pathname === `/seller/${tenant}`;
-
-    const isProductsActive =
-        pathname.startsWith(`/${tenant}/products`) ||
-        pathname.startsWith(`/seller/${tenant}/products`);
 
     const isOrdersActive =
         pathname.startsWith(`/${tenant}/orders`) ||
@@ -162,7 +156,7 @@ export default function SellerShell({
                                 {tenant}
                             </div>
                             <div className="mt-1 text-sm text-slate-500">
-                                매장 운영 / 상품 / 주문 / 회원 관리
+                                매장 운영 / 주문 / 회원 관리
                             </div>
                         </div>
 
@@ -215,12 +209,6 @@ export default function SellerShell({
                                 label="대시보드"
                                 icon={LayoutDashboard}
                                 active={isDashboardActive}
-                            />
-                            <NavItem
-                                href={productsHref}
-                                label="상품 관리"
-                                icon={Package}
-                                active={isProductsActive}
                             />
                             <NavItem
                                 href={ordersHref}

@@ -1,5 +1,5 @@
 // src/app/(seller)/seller/[tenant]/products/page.tsx
-import SellerProductsClient from "@/components/seller/SellerProductsClient";
+import { redirect } from "next/navigation";
 
 export default async function SellerProductsPage({
                                                      params,
@@ -10,8 +10,8 @@ export default async function SellerProductsPage({
     const tenant = resolved?.tenant;
 
     if (!tenant) {
-        return <div className="p-6">tenant 정보가 없습니다.</div>;
+        redirect("/seller");
     }
 
-    return <SellerProductsClient tenant={tenant} />;
+    redirect(`/seller/${tenant}/orders`);
 }

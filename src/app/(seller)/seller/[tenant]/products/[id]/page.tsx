@@ -1,20 +1,17 @@
 // src/app/(seller)/seller/[tenant]/products/[id]/page.tsx
-import SellerProductDetailClient from "@/components/seller/SellerProductDetailClient";
+import { redirect } from "next/navigation";
 
 export default async function SellerProductDetailPage({
                                                           params,
                                                       }: {
-    params:
-        | Promise<{ tenant: string; id: string }>
-        | { tenant: string; id: string };
+    params: Promise<{ tenant: string; id: string }> | { tenant: string; id: string };
 }) {
     const resolved = await Promise.resolve(params);
     const tenant = resolved?.tenant;
-    const id = resolved?.id;
 
-    if (!tenant || !id) {
-        return <div className="p-6">tenant 또는 상품 ID가 없습니다.</div>;
+    if (!tenant) {
+        redirect("/seller");
     }
 
-    return <SellerProductDetailClient tenant={tenant} id={id} />;
+    redirect(`/seller/${tenant}/orders`);
 }
