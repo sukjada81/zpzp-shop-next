@@ -1,185 +1,88 @@
-// src/app/api/seller/[tenant]/orders/route.ts
+// src/app/api/tenant/select/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getTenantList } from "@/lib/tenant/tenants";
 
-type AnyObj = Record<string, any>;
+export const runtime = "nodejs";
 
-function getApiBase() {
-    return (
-        process.env.API_BASE_URL ||
-        process.env.NEXT_PUBLIC_API_BASE_URL ||
-        "http://127.0.0.1:4000"
-    ).replace(/\/+$/, "");
+function isValidTenant(slug: string) {
+    const s = (slug || "").toLowerCase().trim();
+    if (!s) return false;
+    const list = getTenantList();
+    return list.some((t) => (t.slug || "").toLowerCase() === s);
 }
 
-function normalizeText(value: unknown) {
-    return typeof value === "string" ? value.trim() : "";
+function getForwardedProto(req: NextRequest) {
+    return (req.headers.get("x-forwarded-proto") || "")
+        .split(",")[0]
+        .trim()
+        .toLowerCase();
 }
 
-function toNumber(value: unknown, fallback = 0) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
+function isHttpsRequest(req: NextRequest) {
+    const xfProto = getForwardedProto(req);
+    if (xfProto) return xfProto === "https";
+    return req.nextUrl.protocol === "https:";
 }
 
-function parseDateLike(v: any): Date | null {
-    if (!v) return null;
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d;
+function isLikelyLocalHost(host: string) {
+    const h = (host || "").split(",")[0].trim().toLowerCase();
+    const hostOnly = h.split(":")[0];
+    if (!hostOnly) return true;
+    if (hostOnly === "localhost") return true;
+    if (hostOnly.endsWith(".localhost")) return true;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return true;
+    return false;
 }
 
-function formatDateText(v: any): string {
-    const d = parseDateLike(v);
-    if (!d) return "-";
-
-    return d.toLocaleString("ko-KR", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+function cookieDomainForShare(req: NextRequest) {
+    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+        .split(",")[0]
+        .trim();
+    if (isLikelyLocalHost(host)) return undefined;
+    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
 }
 
-function buildSummaryFromItems(items: AnyObj[]) {
-    if (!Array.isArray(items) || items.length === 0) return "";
-
-    const first = items[0] || {};
-    const firstName =
-        normalizeText(first.productName) ||
-        normalizeText(first.goodsName) ||
-        normalizeText(first.title) ||
-        normalizeText(first.name);
-
-    const optionName =
-        normalizeText(first.optionName) ||
-        normalizeText(first.optionValue);
-
-    const qty = toNumber(first.quantity ?? first.qty, 0);
-
-    if (!firstName) return "";
-
-    const firstLabel =
-        optionName && qty > 0
-            ? `${firstName} / ${optionName} × ${qty}`
-            : optionName
-                ? `${firstName} / ${optionName}`
-                : qty > 0
-                    ? `${firstName} × ${qty}`
-                    : firstName;
-
-    if (items.length === 1) return firstLabel;
-    return `${firstLabel} 외 ${items.length - 1}건`;
+function buildTenantHomeAbs(tenant: string) {
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    return `https://${tenant}.${baseDomain}/home`;
 }
 
-function normalizeOrderItem(item: AnyObj) {
-    const items = Array.isArray(item?.items)
-        ? item.items.map((row: AnyObj) => ({
-            id: String(row?.id ?? row?.uid ?? ""),
-            productId: String(row?.productId ?? row?.product_id ?? row?.g_uid ?? ""),
-            productName: String(
-                row?.productName ??
-                row?.goodsName ??
-                row?.title ??
-                row?.g_name ??
-                ""
-            ),
-            goodsName: String(
-                row?.goodsName ??
-                row?.productName ??
-                row?.title ??
-                row?.g_name ??
-                ""
-            ),
-            optionName: String(row?.optionName ?? row?.option_name ?? ""),
-            optionValue: String(row?.optionValue ?? ""),
-            quantity: toNumber(row?.quantity ?? row?.qty, 0),
-            qty: toNumber(row?.qty ?? row?.quantity, 0),
-            price: toNumber(row?.price, 0),
-            status: toNumber(row?.status, 0),
-        }))
-        : [];
+export async function GET(req: NextRequest) {
+    const tenant = (req.nextUrl.searchParams.get("tenant") || "")
+        .toLowerCase()
+        .trim();
 
-    const itemSummary =
-        normalizeText(item?.itemSummary) ||
-        normalizeText(item?.orderSummary) ||
-        buildSummaryFromItems(items);
-
-    return {
-        id: String(item?.id ?? item?.uid ?? ""),
-        orderNo: String(item?.orderNo ?? item?.order_num ?? ""),
-        buyerName: String(item?.buyerName ?? item?.buyer_name ?? item?.name ?? "주문자"),
-        amount: toNumber(item?.amount ?? item?.pay_total ?? item?.payTotal, 0),
-        status: toNumber(item?.status, 0),
-        statusLabel: String(item?.statusLabel ?? ""),
-        createdAtText:
-            normalizeText(item?.createdAtText) ||
-            formatDateText(item?.createdAt ?? item?.created_at ?? item?.signdate),
-        phone: String(item?.phone ?? item?.cell ?? ""),
-        memo: String(item?.memo ?? ""),
-        address: String(item?.address ?? ""),
-        itemSummary,
-        items,
-    };
-}
-
-async function fetchBackend(request: NextRequest, tenant: string, path: string) {
-    const res = await fetch(`${getApiBase()}${path}`, {
-        method: "GET",
-        headers: {
-            accept: "application/json",
-            cookie: request.headers.get("cookie") || "",
-            "x-tenant-slug": tenant,
-        },
-        cache: "no-store",
-    });
-
-    const data = await res.json().catch(() => null);
-    return { ok: res.ok, status: res.status, data };
-}
-
-export async function GET(
-    request: NextRequest,
-    context: { params: Promise<{ tenant: string }> | { tenant: string } }
-) {
-    const resolved = await Promise.resolve(context.params);
-    const tenant = String(resolved?.tenant ?? "").trim();
-
-    if (!tenant) {
-        return NextResponse.json(
-            { ok: false, message: "tenant is required" },
-            { status: 400 }
-        );
+    if (!isValidTenant(tenant)) {
+        return NextResponse.redirect(new URL("/select-tenant", req.url));
     }
 
-    const page = request.nextUrl.searchParams.get("page") ?? "1";
-    const limit = request.nextUrl.searchParams.get("limit") ?? "100";
-    const query = request.nextUrl.searchParams.get("query") ?? "";
+    const https = isHttpsRequest(req);
+    const sameSite = https ? ("none" as const) : ("lax" as const);
+    const secure = https;
+    const domain = cookieDomainForShare(req);
 
-    const path =
-        `/v1/seller/orders?page=${encodeURIComponent(page)}` +
-        `&limit=${encodeURIComponent(limit)}` +
-        `&query=${encodeURIComponent(query)}`;
+    const enableSubdomainTenant = process.env.TENANT_BY_SUBDOMAIN === "1";
 
-    const result = await fetchBackend(request, tenant, path);
+    const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+        .split(",")[0]
+        .trim();
+    const localLike = isLikelyLocalHost(host);
 
-    if (!result.ok) {
-        return NextResponse.json(
-            result.data ?? {
-                ok: false,
-                message: "seller orders fetch failed",
-            },
-            { status: result.status || 500 }
-        );
-    }
+    const dest =
+        enableSubdomainTenant && !localLike
+            ? buildTenantHomeAbs(tenant)
+            : new URL(`/${tenant}/home`, req.url).toString();
 
-    const rawItems = Array.isArray(result.data?.items) ? result.data.items : [];
-    const items = rawItems.map(normalizeOrderItem);
+    const res = NextResponse.redirect(dest);
 
-    return NextResponse.json({
-        ok: true,
-        tenant,
-        items,
-        total: Number(result.data?.total ?? items.length),
-        page: Number(result.data?.page ?? page),
-        limit: Number(result.data?.limit ?? limit),
+    res.cookies.set("selectedTenant", tenant, {
+        path: "/",
+        httpOnly: true,
+        sameSite,
+        secure,
+        domain,
+        maxAge: 60 * 60 * 24 * 30,
     });
+
+    return res;
 }
