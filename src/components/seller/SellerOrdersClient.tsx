@@ -181,6 +181,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
             try {
                 const res = await fetch(`/api/seller/${tenant}/orders`, {
                     cache: "no-store",
+                    credentials: "include",
                 });
                 const json = await res.json();
 

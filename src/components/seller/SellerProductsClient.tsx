@@ -43,6 +43,7 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
             try {
                 const res = await fetch(`/api/seller/${tenant}/products`, {
                     cache: "no-store",
+                    credentials: "include"
                 });
                 const json = await res.json();
 

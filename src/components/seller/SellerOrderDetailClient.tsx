@@ -66,6 +66,7 @@ export default function SellerOrderDetailClient({
 
             const res = await fetch(`/api/seller/${tenant}/orders/${id}`, {
                 cache: "no-store",
+                credentials: "include",
             });
             const json = await res.json();
 

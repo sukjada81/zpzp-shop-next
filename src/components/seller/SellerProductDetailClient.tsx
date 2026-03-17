@@ -55,6 +55,7 @@ export default function SellerProductDetailClient({
                 setError("");
                 const res = await fetch(`/api/seller/${tenant}/products/${id}`, {
                     cache: "no-store",
+                    credentials: "include", // ✅ 이거 추가
                 });
                 const json = await res.json();
 
