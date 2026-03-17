@@ -3,104 +3,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 type AnyObj = Record<string, any>;
 
-function toArray<T = AnyObj>(payload: any): T[] {
-    if (Array.isArray(payload)) return payload as T[];
-    if (Array.isArray(payload?.items)) return payload.items as T[];
-    if (Array.isArray(payload?.data)) return payload.data as T[];
-    if (Array.isArray(payload?.rows)) return payload.rows as T[];
-    if (Array.isArray(payload?.orders)) return payload.orders as T[];
-    return [];
+function getApiBase() {
+    return (process.env.API_BASE_URL || "http://127.0.0.1:4000").replace(/\/+$/, "");
 }
 
-function getTenantSlugValue(item: AnyObj): string {
-    return String(
-        item?.tenantSlug ??
-        item?.tenant_slug ??
-        item?.tenant?.slug ??
-        ""
-    ).trim();
+function normalizeText(value: unknown) {
+    return typeof value === "string" ? value.trim() : "";
 }
 
-function getTenantIdValue(item: AnyObj): string {
-    return String(
-        item?.tenant_id ??
-        item?.tenantId ??
-        item?.tenant?.id ??
-        item?.tenant ??
-        ""
-    ).trim();
-}
-
-function matchesTenant(item: AnyObj, tenant: string): boolean {
-    const slug = getTenantSlugValue(item);
-    if (slug) return slug === tenant;
-
-    const tenantId = getTenantIdValue(item);
-    return tenantId === tenant;
-}
-
-function getStatusNumber(item: AnyObj): number | null {
-    const raw = item?.status ?? item?.order_status ?? item?.orderStatus;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-}
-
-function getStatusText(item: AnyObj): string {
-    const n = getStatusNumber(item);
-    if (n !== null) {
-        switch (n) {
-            case 0:
-                return "접수";
-            case 1:
-                return "현장결제완료";
-            case 2:
-                return "픽업준비완료";
-            case 4:
-                return "픽업완료";
-            case 9:
-                return "주문취소";
-            default:
-                return `상태(${n})`;
-        }
-    }
-
-    return String(item?.statusLabel ?? item?.status_label ?? item?.status ?? "pending");
-}
-
-function getOrderNo(item: AnyObj): string {
-    return String(
-        item?.orderNum ??
-        item?.order_no ??
-        item?.orderNo ??
-        item?.uid ??
-        item?.id ??
-        "-"
-    );
-}
-
-function getBuyerName(item: AnyObj): string {
-    return String(
-        item?.buyerName ??
-        item?.buyer_name ??
-        item?.member_name ??
-        item?.receiver_name ??
-        item?.name ??
-        "주문자"
-    );
-}
-
-function getAmount(item: AnyObj): number {
-    const raw =
-        item?.payTotal ??
-        item?.amount ??
-        item?.total_amount ??
-        item?.totalPrice ??
-        item?.pay_amount ??
-        item?.payment_amount ??
-        0;
-
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
+function toNumber(value: unknown, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
 }
 
 function parseDateLike(v: any): Date | null {
@@ -109,13 +22,8 @@ function parseDateLike(v: any): Date | null {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function getCreatedAtText(item: AnyObj): string {
-    const d =
-        parseDateLike(item?.createdAt) ??
-        parseDateLike(item?.created_at) ??
-        parseDateLike(item?.regdate) ??
-        parseDateLike(item?.signdate);
-
+function formatDateText(v: any): string {
+    const d = parseDateLike(v);
     if (!d) return "-";
 
     return d.toLocaleString("ko-KR", {
@@ -127,66 +35,186 @@ function getCreatedAtText(item: AnyObj): string {
     });
 }
 
-async function fetchInternalJson(
-    request: NextRequest,
-    path: string
-): Promise<any | null> {
-    const url = new URL(path, request.nextUrl.origin);
+function buildSummaryFromItems(items: AnyObj[]) {
+    if (!Array.isArray(items) || items.length === 0) return "";
 
-    try {
-        const res = await fetch(url.toString(), {
-            method: "GET",
-            headers: {
-                cookie: request.headers.get("cookie") || "",
-            },
-            cache: "no-store",
-        });
+    const first = items[0] || {};
+    const firstName =
+        normalizeText(first.productName) ||
+        normalizeText(first.goodsName) ||
+        normalizeText(first.title) ||
+        normalizeText(first.name);
 
-        if (!res.ok) return null;
-        return await res.json();
-    } catch {
-        return null;
-    }
+    const optionName =
+        normalizeText(first.optionName) ||
+        normalizeText(first.optionValue);
+
+    const qty = toNumber(first.quantity ?? first.qty, 0);
+
+    if (!firstName) return "";
+
+    const firstLabel =
+        optionName && qty > 0
+            ? `${firstName} / ${optionName} × ${qty}`
+            : optionName
+                ? `${firstName} / ${optionName}`
+                : qty > 0
+                    ? `${firstName} × ${qty}`
+                    : firstName;
+
+    if (items.length === 1) return firstLabel;
+    return `${firstLabel} 외 ${items.length - 1}건`;
+}
+
+function normalizeOrderItem(item: AnyObj) {
+    const items = Array.isArray(item?.items)
+        ? item.items.map((row: AnyObj) => ({
+            id: String(row?.id ?? row?.uid ?? ""),
+            productId: String(row?.productId ?? row?.product_id ?? row?.g_uid ?? ""),
+            productName: String(
+                row?.productName ??
+                row?.goodsName ??
+                row?.title ??
+                row?.g_name ??
+                ""
+            ),
+            goodsName: String(
+                row?.goodsName ??
+                row?.productName ??
+                row?.title ??
+                row?.g_name ??
+                ""
+            ),
+            optionName: String(row?.optionName ?? row?.option_name ?? ""),
+            optionValue: String(row?.optionValue ?? ""),
+            quantity: toNumber(row?.quantity ?? row?.qty, 0),
+            qty: toNumber(row?.qty ?? row?.quantity, 0),
+            price: toNumber(row?.price, 0),
+            status: toNumber(row?.status, 0),
+        }))
+        : [];
+
+    const itemSummary =
+        normalizeText(item?.itemSummary) ||
+        normalizeText(item?.orderSummary) ||
+        buildSummaryFromItems(items);
+
+    return {
+        id: String(item?.id ?? item?.uid ?? ""),
+        orderNo: String(item?.orderNo ?? item?.order_num ?? ""),
+        buyerName: String(item?.buyerName ?? item?.buyer_name ?? item?.name ?? "주문자"),
+        amount: toNumber(item?.amount ?? item?.pay_total ?? item?.payTotal, 0),
+        status: toNumber(item?.status, 0),
+        createdAtText:
+            normalizeText(item?.createdAtText) ||
+            formatDateText(item?.createdAt ?? item?.created_at ?? item?.signdate),
+        phone: String(item?.phone ?? item?.cell ?? ""),
+        memo: String(item?.memo ?? ""),
+        address: String(item?.address ?? ""),
+        itemSummary,
+        items,
+    };
 }
 
 export async function GET(
     request: NextRequest,
     context: { params: Promise<{ tenant: string }> | { tenant: string } }
 ) {
-    const resolved = await Promise.resolve(context.params);
-    const tenant = String(resolved?.tenant ?? "").trim();
+    try {
+        const resolved = await Promise.resolve(context.params);
+        const tenant = String(resolved?.tenant ?? "").trim();
 
-    if (!tenant) {
+        console.log("SELLER_ORDERS_ROUTE_HIT", {
+            url: request.url,
+            tenant,
+            cookie: request.headers.get("cookie") || "",
+            host: request.headers.get("host") || "",
+        });
+
+        if (!tenant) {
+            return NextResponse.json(
+                { ok: false, message: "tenant is required" },
+                { status: 400 }
+            );
+        }
+
+        const apiBase = getApiBase();
+        const upstreamUrl = `${apiBase}/v1/seller/orders?page=1&limit=100`;
+
+        console.log("SELLER_ORDERS_FETCH", {
+            apiBase,
+            upstreamUrl,
+            tenant,
+        });
+
+        const res = await fetch(upstreamUrl, {
+            method: "GET",
+            headers: {
+                accept: "application/json",
+                cookie: request.headers.get("cookie") || "",
+                "x-tenant-slug": tenant,
+                "x-forwarded-host":
+                    request.headers.get("host") || `${tenant}.discountallday.kr:3000`,
+                "x-forwarded-proto": request.nextUrl.protocol.replace(":", "") || "http",
+            },
+            cache: "no-store",
+        });
+
+        console.log("SELLER_ORDERS_FETCH_STATUS", res.status);
+
+        const text = await res.text();
+        console.log("SELLER_ORDERS_FETCH_TEXT", text);
+
+        let json: AnyObj | null = null;
+
+        try {
+            json = text ? JSON.parse(text) : null;
+        } catch (err) {
+            console.error("SELLER_ORDERS_JSON_PARSE_ERROR", err);
+            json = null;
+        }
+
+        console.log("SELLER_ORDERS_RESPONSE", json);
+
+        if (!res.ok) {
+            return NextResponse.json(
+                {
+                    ok: false,
+                    message:
+                        json?.message ||
+                        json?.error ||
+                        "seller orders fetch failed",
+                    detail: json ?? text,
+                },
+                { status: res.status || 500 }
+            );
+        }
+
+        const rawItems = Array.isArray(json?.items) ? json.items : [];
+        const items = rawItems.map(normalizeOrderItem);
+
+        console.log("SELLER_ORDERS_NORMALIZED", {
+            count: items.length,
+            first: items[0] ?? null,
+        });
+
+        return NextResponse.json({
+            ok: true,
+            tenant,
+            items,
+            total: Number(json?.total ?? items.length),
+            page: Number(json?.page ?? 1),
+            limit: Number(json?.limit ?? 100),
+        });
+    } catch (error: any) {
+        console.error("SELLER_ORDERS_ROUTE_ERROR", error);
+
         return NextResponse.json(
-            { ok: false, message: "tenant is required" },
-            { status: 400 }
+            {
+                ok: false,
+                message: error?.message || "seller orders route error",
+            },
+            { status: 500 }
         );
     }
-
-    const ordersRaw = await fetchInternalJson(
-        request,
-        `/api/admin/orders?tenant=${encodeURIComponent(tenant)}&page=1&pageSize=200&limit=200`
-    );
-
-    const allOrders = toArray(ordersRaw);
-
-    const orders = allOrders
-        .filter((item) => matchesTenant(item, tenant))
-        .map((item) => ({
-            id: String(item?.id ?? item?.uid ?? ""),
-            orderNo: getOrderNo(item),
-            buyerName: getBuyerName(item),
-            amount: getAmount(item),
-            status: getStatusText(item),
-            statusCode: getStatusNumber(item),
-            createdAtText: getCreatedAtText(item),
-            raw: item,
-        }));
-
-    return NextResponse.json({
-        ok: true,
-        tenant,
-        items: orders,
-        total: orders.length,
-    });
 }

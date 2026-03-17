@@ -3,7 +3,6 @@
 
 import Link from "next/link";
 import { Users, Search, UserPlus, LogIn, CalendarDays, UserCircle2 } from "lucide-react";
-import { getSellerHref } from "@/lib/seller/getSellerHref";
 
 export type SellerMembersSummary = {
     totalMembers: number;
@@ -132,7 +131,7 @@ export default function SellerMembersClient({
             </div>
 
             <form
-                action={getSellerHref(tenant, "/members")}
+                action={`/${tenant}/members`}
                 method="get"
                 className="flex items-center gap-2 rounded-xl border px-3 py-2"
             >
@@ -175,7 +174,7 @@ export default function SellerMembersClient({
                             <tr key={`${m.memberUid}-${m.id}`} className="border-t hover:bg-slate-50">
                                 <td className="px-4 py-3">
                                     <Link
-                                        href={getSellerHref(tenant, `/members/${m.memberUid}`)}
+                                        href={`/${tenant}/members/${m.memberUid}`}
                                         className="inline-flex items-center gap-2 font-medium text-slate-900 hover:underline"
                                     >
                                         <UserCircle2 className="h-4 w-4 text-slate-400" />

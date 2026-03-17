@@ -3,8 +3,29 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ShoppingBag, Users } from "lucide-react";
-import { getSellerHref } from "@/lib/seller/getSellerHref";
+import {
+    LayoutDashboard,
+    Package,
+    ShoppingBag,
+    Users,
+    LogIn,
+    LogOut,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
+type SessionResponse = {
+    ok?: boolean;
+    loggedIn?: boolean;
+    member?: {
+        uid?: number | string;
+        id?: string;
+        name?: string;
+        email?: string;
+        phone?: string;
+        tenantSlug?: string;
+    } | null;
+    tenant?: string;
+};
 
 function NavItem({
                      href,
@@ -41,26 +62,92 @@ export default function SellerShell({
     children: React.ReactNode;
 }) {
     const pathname = usePathname();
+    const [session, setSession] = useState<SessionResponse | null>(null);
+    const [sessionLoading, setSessionLoading] = useState(true);
+    const [logoutLoading, setLogoutLoading] = useState(false);
 
-    const dashboardHref = getSellerHref(tenant);
-    const productsHref = getSellerHref(tenant, "/products");
-    const ordersHref = getSellerHref(tenant, "/orders");
-    const membersHref = getSellerHref(tenant, "/members");
+    const dashboardHref = `/${tenant}`;
+    const productsHref = `/${tenant}/products`;
+    const ordersHref = `/${tenant}/orders`;
+    const membersHref = `/${tenant}/members`;
 
-    const isDashboardActive =
-        pathname === `/seller/${tenant}` || pathname === `/${tenant}`;
+    const isDashboardActive = pathname === `/${tenant}` || pathname === `/seller/${tenant}`;
 
     const isProductsActive =
-        pathname.startsWith(`/seller/${tenant}/products`) ||
-        pathname.startsWith(`/${tenant}/products`);
+        pathname.startsWith(`/${tenant}/products`) ||
+        pathname.startsWith(`/seller/${tenant}/products`);
 
     const isOrdersActive =
-        pathname.startsWith(`/seller/${tenant}/orders`) ||
-        pathname.startsWith(`/${tenant}/orders`);
+        pathname.startsWith(`/${tenant}/orders`) ||
+        pathname.startsWith(`/seller/${tenant}/orders`);
 
     const isMembersActive =
-        pathname.startsWith(`/seller/${tenant}/members`) ||
-        pathname.startsWith(`/${tenant}/members`);
+        pathname.startsWith(`/${tenant}/members`) ||
+        pathname.startsWith(`/seller/${tenant}/members`);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadSession() {
+            try {
+                setSessionLoading(true);
+
+                const res = await fetch("/auth/session", {
+                    method: "GET",
+                    cache: "no-store",
+                    credentials: "include",
+                    headers: {
+                        accept: "application/json",
+                    },
+                });
+
+                const data = (await res.json().catch(() => null)) as SessionResponse | null;
+
+                if (!alive) return;
+                setSession(data);
+            } catch {
+                if (!alive) return;
+                setSession(null);
+            } finally {
+                if (!alive) return;
+                setSessionLoading(false);
+            }
+        }
+
+        loadSession();
+
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    const loginHref = useMemo(() => {
+        if (typeof window === "undefined") return "#";
+        const origin = window.location.origin;
+        const returnTo = `${origin}/${tenant}`;
+        return `/auth/kakao/login?tenant=${encodeURIComponent(tenant)}&returnTo=${encodeURIComponent(returnTo)}`;
+    }, [tenant]);
+
+    async function handleLogout() {
+        try {
+            setLogoutLoading(true);
+
+            await fetch("/auth/logout?tenant=" + encodeURIComponent(tenant), {
+                method: "POST",
+                credentials: "include",
+            });
+        } finally {
+            const target =
+                typeof window !== "undefined"
+                    ? `${window.location.origin}/${tenant}`
+                    : `/${tenant}`;
+
+            window.location.href = target;
+        }
+    }
+
+    const memberName = session?.member?.name?.trim() || "회원";
+    const loggedIn = Boolean(session?.loggedIn && session?.member?.uid);
 
     return (
         <div className="min-h-screen bg-[#EEF2F8]">
@@ -77,6 +164,49 @@ export default function SellerShell({
                             <div className="mt-1 text-sm text-slate-500">
                                 매장 운영 / 상품 / 주문 / 회원 관리
                             </div>
+                        </div>
+
+                        <div className="mb-4 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                            {sessionLoading ? (
+                                <div className="text-sm text-slate-500">로그인 상태 확인 중...</div>
+                            ) : loggedIn ? (
+                                <div className="space-y-3">
+                                    <div>
+                                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                            Signed In
+                                        </div>
+                                        <div className="mt-1 text-sm font-semibold text-slate-900">
+                                            {memberName}
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            {session?.member?.email || "카카오 로그인 사용자"}
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleLogout}
+                                        disabled={logoutLoading}
+                                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        <LogOut className="h-4 w-4" />
+                                        <span>{logoutLoading ? "로그아웃 중..." : "로그아웃"}</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="text-sm text-slate-600">
+                                        셀러 콘솔 이용을 위해 로그인해주세요.
+                                    </div>
+                                    <Link
+                                        href={loginHref}
+                                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#FEE500] px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:brightness-95"
+                                    >
+                                        <LogIn className="h-4 w-4" />
+                                        <span>카카오 로그인</span>
+                                    </Link>
+                                </div>
+                            )}
                         </div>
 
                         <div className="space-y-2">

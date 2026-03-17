@@ -176,6 +176,48 @@ function buildSellerReturnAbs(req: NextRequest, tenant: string, pathAfterTenant 
     return `${sellerOrigin}/${tenant}${pathAfterTenant ? normalized : ""}`;
 }
 
+function getTenantCookieOptions(req: NextRequest) {
+    const host = getHost(req);
+    const localLike = isLikelyLocalHost(host);
+    const proto =
+        (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() ||
+        req.nextUrl.protocol.replace(":", "") ||
+        "http";
+
+    const secure = !localLike && proto === "https";
+    const sameSite: "lax" | "none" = secure ? "none" : "lax";
+
+    const base = {
+        path: "/",
+        httpOnly: true,
+        sameSite,
+        secure,
+        maxAge: 60 * 60 * 24 * 7,
+    } as const;
+
+    if (localLike) {
+        return base;
+    }
+
+    return {
+        ...base,
+        domain: process.env.COOKIE_DOMAIN || ".discountallday.kr",
+    } as const;
+}
+
+function setSelectedTenantCookie(
+    res: NextResponse,
+    req: NextRequest,
+    tenant: string | null | undefined
+) {
+    const value = String(tenant || "").trim().toLowerCase();
+    if (!value) return res;
+
+    res.cookies.set("selectedTenant", value, getTenantCookieOptions(req));
+    res.headers.set("X-Dad-Debug-SelectedTenant", value);
+    return res;
+}
+
 async function hasAdminSession(req: NextRequest) {
     const internalOrigin = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
     const internalSessionUrl = new URL("/api/admin/session", internalOrigin);
@@ -291,7 +333,29 @@ export async function middleware(req: NextRequest) {
             return NextResponse.next();
         }
 
+        // ✅ seller 루트에서는 기존 selectedTenant 쿠키가 있으면 해당 tenant로 바로 연결
         if (pathname === "/" || pathname === "") {
+            const selectedTenant = (req.cookies.get("selectedTenant")?.value || "").trim().toLowerCase();
+
+            if (selectedTenant) {
+
+                const redirectUrl = new URL(req.url);
+                redirectUrl.pathname = `/${selectedTenant}`;
+
+                return setSelectedTenantCookie(
+                    NextResponse.redirect(redirectUrl),
+                    req,
+                    selectedTenant
+                );
+                // return setSelectedTenantCookie(
+                //     NextResponse.rewrite(
+                //         makeInternalRewriteUrl(req, `/seller/${selectedTenant}`, search)
+                //     ),
+                //     req,
+                //     selectedTenant
+                // );
+            }
+
             return NextResponse.rewrite(makeInternalRewriteUrl(req, "/seller", search));
         }
 
@@ -332,7 +396,11 @@ export async function middleware(req: NextRequest) {
 
         if (!isProtected || mockLogin || hasSession) {
             return addDebug(
-                NextResponse.rewrite(makeInternalRewriteUrl(req, internalPath, search)),
+                setSelectedTenantCookie(
+                    NextResponse.rewrite(makeInternalRewriteUrl(req, internalPath, search)),
+                    req,
+                    tenant
+                ),
                 !isProtected ? "seller-rewrite(unprotected)" : "seller-rewrite(protected OK)"
             );
         }
@@ -346,7 +414,7 @@ export async function middleware(req: NextRequest) {
         );
 
         return addDebug(
-            NextResponse.redirect(loginUrl),
+            setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, tenant),
             "seller-redirect(auth)"
         );
     }
@@ -387,7 +455,9 @@ export async function middleware(req: NextRequest) {
         const hasSession = bypassAuth ? true : await hasUserSession(req);
 
         if (!needsAuth(pathname) || mockLogin || hasSession) {
-            return NextResponse.next();
+            const segs = pathname.split("/").filter(Boolean);
+            const tenant = segs[1] || "";
+            return setSelectedTenantCookie(NextResponse.next(), req, tenant);
         }
 
         const segs = pathname.split("/").filter(Boolean);
@@ -404,7 +474,7 @@ export async function middleware(req: NextRequest) {
             );
         }
 
-        return NextResponse.redirect(loginUrl);
+        return setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, tenant);
     }
 
     const ENABLE_SUBDOMAIN_TENANT = process.env.TENANT_BY_SUBDOMAIN === "1";
@@ -418,7 +488,7 @@ export async function middleware(req: NextRequest) {
         pathname === "/select-tenant" ||
         pathname.startsWith("/select-tenant/")
     ) {
-        return NextResponse.next();
+        return setSelectedTenantCookie(NextResponse.next(), req, subdomain);
     }
 
     const externalPath = pathname === "/" ? "/home" : pathname;
@@ -438,7 +508,7 @@ export async function middleware(req: NextRequest) {
     const internalPathname =
         !alreadyPrefixed && !bypass ? `/${subdomain}${externalPath}` : externalPath;
 
-    if (isPublicPath(pathname)) return NextResponse.next();
+    if (isPublicPath(pathname)) return setSelectedTenantCookie(NextResponse.next(), req, subdomain);
 
     const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
     const mockLogin = bypassAuth ? true : mockLoginCookie;
@@ -462,21 +532,35 @@ export async function middleware(req: NextRequest) {
     if (!isProtected) {
         if (internalPathname !== pathname) {
             return addDebug(
-                NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search)),
+                setSelectedTenantCookie(
+                    NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search)),
+                    req,
+                    subdomain
+                ),
                 "rewrite(unprotected)"
             );
         }
-        return addDebug(NextResponse.next(), "next(unprotected)");
+        return addDebug(
+            setSelectedTenantCookie(NextResponse.next(), req, subdomain),
+            "next(unprotected)"
+        );
     }
 
     if (mockLogin || hasSession) {
         if (internalPathname !== pathname) {
             return addDebug(
-                NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search)),
+                setSelectedTenantCookie(
+                    NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search)),
+                    req,
+                    subdomain
+                ),
                 "rewrite(protected OK)"
             );
         }
-        return addDebug(NextResponse.next(), "next(protected OK)");
+        return addDebug(
+            setSelectedTenantCookie(NextResponse.next(), req, subdomain),
+            "next(protected OK)"
+        );
     }
 
     const authOrigin = getEnvOrigin("AUTH");
@@ -485,7 +569,7 @@ export async function middleware(req: NextRequest) {
     loginUrl.searchParams.set("returnTo", buildTenantHomeAbs(req, subdomain));
 
     return addDebug(
-        NextResponse.redirect(loginUrl),
+        setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, subdomain),
         "redirect(tenant protected -> auth/login)"
     );
 }

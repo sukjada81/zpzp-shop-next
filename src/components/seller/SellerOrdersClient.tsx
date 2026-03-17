@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Package2, Search, ShoppingBag } from "lucide-react";
+import { CalendarDays, Package2, Search, ShoppingBag, Tag } from "lucide-react";
 import { getSellerHref } from "@/lib/seller/getSellerHref";
 
 type SellerOrderLine = {
@@ -14,6 +14,21 @@ type SellerOrderLine = {
     optionValue?: string;
     quantity?: number;
     qty?: number;
+
+    categoryName?: string;
+    categoryLabel?: string;
+    category?: string;
+    cate?: string | number;
+
+    pickupDate?: string;
+    pickupAt?: string;
+    pickup_at?: string;
+
+    pickupOnly?: boolean;
+    pickup_only?: boolean;
+
+    tab?: string;
+    groupType?: string;
 };
 
 type SellerOrderItem = {
@@ -24,7 +39,6 @@ type SellerOrderItem = {
     status: number;
     createdAtText: string;
 
-    // 주문 내역 요약용 확장 필드
     itemSummary?: string;
     orderSummary?: string;
     productName?: string;
@@ -121,6 +135,40 @@ function getOrderSummary(item: SellerOrderItem) {
     return "";
 }
 
+function getCategoryLabel(item: SellerOrderItem) {
+    const first = item.items?.[0];
+    return (
+        normalizeText(first?.categoryLabel) ||
+        normalizeText(first?.categoryName) ||
+        normalizeText(first?.category) ||
+        ""
+    );
+}
+
+function getPickupDate(item: SellerOrderItem) {
+    const first = item.items?.[0];
+    return (
+        normalizeText(first?.pickupDate) ||
+        normalizeText(first?.pickupAt) ||
+        normalizeText(first?.pickup_at) ||
+        ""
+    );
+}
+
+function getGroupBadge(item: SellerOrderItem) {
+    const first = item.items?.[0];
+
+    if (first?.pickupOnly || first?.pickup_only) return "바로픽업";
+
+    const tab = normalizeText(first?.tab).toLowerCase();
+    const groupType = normalizeText(first?.groupType).toLowerCase();
+
+    if (tab === "today" || groupType === "today") return "오늘의 공구";
+    if (tab === "ongoing" || groupType === "ongoing") return "진행중 공구";
+
+    return "";
+}
+
 export default function SellerOrdersClient({ tenant }: { tenant: string }) {
     const [items, setItems] = useState<SellerOrderItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -154,12 +202,18 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
 
         return items.filter((item) => {
             const summary = getOrderSummary(item).toLowerCase();
+            const category = getCategoryLabel(item).toLowerCase();
+            const pickupDate = getPickupDate(item).toLowerCase();
+            const badge = getGroupBadge(item).toLowerCase();
 
             return (
                 item.orderNo.toLowerCase().includes(q) ||
                 item.buyerName.toLowerCase().includes(q) ||
                 getStatusLabel(item.status).toLowerCase().includes(q) ||
-                summary.includes(q)
+                summary.includes(q) ||
+                category.includes(q) ||
+                pickupDate.includes(q) ||
+                badge.includes(q)
             );
         });
     }, [items, query]);
@@ -208,6 +262,9 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                 <div className="grid gap-3">
                     {filtered.map((item) => {
                         const summary = getOrderSummary(item);
+                        const category = getCategoryLabel(item);
+                        const pickupDate = getPickupDate(item);
+                        const groupBadge = getGroupBadge(item);
 
                         return (
                             <Link
@@ -225,12 +282,36 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                             주문자 {item.buyerName}
                                         </div>
 
+                                        {(groupBadge || category) ? (
+                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                {groupBadge ? (
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+                                                        <Tag className="h-3 w-3" />
+                                                        {groupBadge}
+                                                    </span>
+                                                ) : null}
+
+                                                {category ? (
+                                                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                                                        {category}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        ) : null}
+
                                         {summary ? (
                                             <div className="mt-2 flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
                                                 <Package2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                                                 <span className="line-clamp-2">
                                                     {summary}
                                                 </span>
+                                            </div>
+                                        ) : null}
+
+                                        {pickupDate ? (
+                                            <div className="mt-2 inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+                                                <CalendarDays className="h-3.5 w-3.5" />
+                                                픽업 예정일 {pickupDate}
                                             </div>
                                         ) : null}
 

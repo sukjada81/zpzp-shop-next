@@ -42,15 +42,18 @@ export async function GET(
     const summaryOnly = request.nextUrl.searchParams.get("summaryOnly") ?? "";
 
     const path =
-        `/seller/members?q=${encodeURIComponent(q)}` +
+        `/v1/seller/members?q=${encodeURIComponent(q)}` +
         (summaryOnly === "1" ? "&summaryOnly=1" : "");
 
     const result = await fetchBackend(request, tenant, path);
 
-    return NextResponse.json(result.data ?? {
-        ok: false,
-        message: "members fetch failed",
-    }, {
-        status: result.status || 500,
-    });
+    return NextResponse.json(
+        result.data ?? {
+            ok: false,
+            message: "members fetch failed",
+        },
+        {
+            status: result.status || 500,
+        }
+    );
 }

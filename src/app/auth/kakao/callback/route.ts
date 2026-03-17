@@ -199,20 +199,46 @@ async function parseResponseBody(res: Response) {
     }
 }
 
-function appendSetCookies(headers: Headers, res: Response) {
+function splitSetCookieString(raw: string) {
+    return raw
+        .split(/,(?=\s*[^;=]+=[^;]+)/g)
+        .map((v) => v.trim())
+        .filter(Boolean);
+}
+
+function normalizeSetCookieForEnv(cookie: string, req: NextRequest) {
+    // 운영은 그대로 유지
+    if (!isDevHttp(req)) return cookie;
+
+    let out = cookie;
+
+    // 로컬/http 에서는 Secure 쿠키 저장이 안 될 수 있음
+    out = out.replace(/;\s*Secure/gi, "");
+
+    // SameSite=None 은 Secure와 같이 가야 하므로 dev에서는 Lax로 보정
+    if (/;\s*SameSite=None/i.test(out)) {
+        out = out.replace(/;\s*SameSite=None/gi, "; SameSite=Lax");
+    }
+
+    return out;
+}
+
+function appendSetCookies(headers: Headers, res: Response, req: NextRequest) {
     const anyHeaders: any = res.headers as any;
 
     if (typeof anyHeaders.getSetCookie === "function") {
         const all = anyHeaders.getSetCookie();
         for (const cookie of all) {
-            headers.append("Set-Cookie", cookie);
+            headers.append("Set-Cookie", normalizeSetCookieForEnv(cookie, req));
         }
         return;
     }
 
-    const single = res.headers.get("set-cookie");
-    if (single) {
-        headers.append("Set-Cookie", single);
+    const raw = res.headers.get("set-cookie");
+    if (!raw) return;
+
+    for (const cookie of splitSetCookieString(raw)) {
+        headers.append("Set-Cookie", normalizeSetCookieForEnv(cookie, req));
     }
 }
 
@@ -331,7 +357,8 @@ export async function GET(req: NextRequest) {
         const headers = new Headers();
         headers.set("Location", target);
 
-        appendSetCookies(headers, completeRes);
+        // appendSetCookies(headers, completeRes);
+        appendSetCookies(headers, completeRes, req);
 
         headers.append(
             "Set-Cookie",

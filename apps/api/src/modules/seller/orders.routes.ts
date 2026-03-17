@@ -3,27 +3,30 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
 
-type SellerSessionLike = {
-    seller?: {
-        id?: string | number;
-        uid?: string | number;
-        loginId?: string;
-        name?: string;
-        tenantId?: string | number;
-        tenant_id?: string | number;
-    };
-    admin?: {
-        id?: string | number;
-        uid?: string | number;
-        loginId?: string;
-        name?: string;
-        isSuperAdmin?: boolean;
-        tenantId?: string | number;
-        tenant_id?: string | number;
-    };
+const PLATFORM_TYPE = "DAD";
+const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff"] as const;
+const TENANT_ALLOWED_ROLES = ["seller_owner", "seller_staff"] as const;
+
+type MemberSession = {
+    uid?: string | number;
+    id?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    provider?: string;
+    tenantId?: string | number;
+    tenantSlug?: string;
 };
 
-const PLATFORM_TYPE = "DAD";
+type SellerActor = {
+    memberUid: number;
+    actorId: string;
+    actorName: string;
+    actorType: "member";
+    grantedRole: string;
+    grantedScopeType: "global" | "tenant";
+    grantedScopeId: bigint | null;
+};
 
 function toInt(v: unknown, fallback = 0) {
     const n = Number(v);
@@ -81,47 +84,98 @@ function statusLabel(status: number) {
     }
 }
 
-function getCurrentActor(req: any) {
-    const session = (req.session ?? {}) as SellerSessionLike;
-    const seller = session.seller;
-    const admin = session.admin;
+function getSessionMember(req: any): MemberSession | null {
+    const member = req.session?.member as MemberSession | undefined;
+    if (!member?.uid) return null;
+    return member;
+}
 
-    if (seller) {
-        return {
-            ok: true,
-            actorId: normalizeText(seller.loginId ?? seller.id ?? seller.uid ?? "seller"),
-            actorName: normalizeText(seller.name ?? "seller"),
-            actorType: "seller" as const,
-            tenantId:
-                seller.tenantId != null
-                    ? BigInt(String(seller.tenantId))
-                    : seller.tenant_id != null
-                        ? BigInt(String(seller.tenant_id))
-                        : null,
-        };
+async function resolveSellerActor(
+    app: FastifyInstance,
+    req: any,
+    tenantId: bigint
+): Promise<
+    | { ok: true; actor: SellerActor }
+    | { ok: false; code: 401 | 403; message: string }
+> {
+    const member = getSessionMember(req);
+
+    if (!member?.uid) {
+        return { ok: false, code: 401, message: "seller login required" };
     }
 
-    if (admin) {
-        return {
-            ok: true,
-            actorId: normalizeText(admin.loginId ?? admin.id ?? admin.uid ?? "admin"),
-            actorName: normalizeText(admin.name ?? "admin"),
-            actorType: "admin" as const,
-            tenantId:
-                admin.tenantId != null
-                    ? BigInt(String(admin.tenantId))
-                    : admin.tenant_id != null
-                        ? BigInt(String(admin.tenant_id))
-                        : null,
-        };
+    const memberUid = toInt(member.uid, 0);
+    if (memberUid <= 0) {
+        return { ok: false, code: 401, message: "invalid member session" };
+    }
+
+    const memberRow = await app.prisma.mallRN_member.findFirst({
+        where: {
+            uid: memberUid,
+            status: "active",
+            deleted_at: null,
+        },
+        select: {
+            uid: true,
+            id: true,
+            name: true,
+            email: true,
+        },
+    });
+
+    if (!memberRow) {
+        return { ok: false, code: 403, message: "seller permission denied" };
+    }
+
+    const membership = await app.prisma.mallRN_member_membership.findFirst({
+        where: {
+            member_uid: memberUid,
+            status: "active",
+            OR: [
+                {
+                    scope_type: "global",
+                    role_code: {
+                        in: [...GLOBAL_ALLOWED_ROLES],
+                    },
+                },
+                {
+                    scope_type: "tenant",
+                    scope_id: tenantId,
+                    role_code: {
+                        in: [...TENANT_ALLOWED_ROLES],
+                    },
+                },
+            ],
+        },
+        orderBy: [{ is_primary: "desc" }, { uid: "asc" }],
+        select: {
+            uid: true,
+            role_code: true,
+            scope_type: true,
+            scope_id: true,
+            status: true,
+        },
+    });
+
+    if (!membership) {
+        return { ok: false, code: 403, message: "seller permission denied" };
     }
 
     return {
-        ok: false,
-        actorId: "",
-        actorName: "",
-        actorType: "guest" as const,
-        tenantId: null,
+        ok: true,
+        actor: {
+            memberUid,
+            actorId: normalizeText(memberRow.id || member.uid || memberUid),
+            actorName: normalizeText(memberRow.name || member.name || "member"),
+            actorType: "member",
+            grantedRole: normalizeText(membership.role_code),
+            grantedScopeType:
+                membership.scope_type === "global" ? "global" : "tenant",
+            grantedScopeId:
+                membership.scope_id != null
+                    ? BigInt(String(membership.scope_id))
+                    : null,
+        },
     };
 }
 
@@ -215,10 +269,12 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
     app.get("/v1/seller/orders", async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
-        const actor = getCurrentActor(req);
 
-        if (!actor.ok) {
-            return reply.code(401).send({ ok: false, message: "seller login required" });
+        const actorResult = await resolveSellerActor(app, req, tenantId);
+        if (!actorResult.ok) {
+            return reply
+                .code(actorResult.code)
+                .send({ ok: false, message: actorResult.message });
         }
 
         const q = z
@@ -328,16 +384,22 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             page: q.page,
             limit: q.limit,
             items,
+            actor: {
+                role: actorResult.actor.grantedRole,
+                scopeType: actorResult.actor.grantedScopeType,
+            },
         });
     });
 
     app.get("/v1/seller/orders/:id", async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
-        const actor = getCurrentActor(req);
 
-        if (!actor.ok) {
-            return reply.code(401).send({ ok: false, message: "seller login required" });
+        const actorResult = await resolveSellerActor(app, req, tenantId);
+        if (!actorResult.ok) {
+            return reply
+                .code(actorResult.code)
+                .send({ ok: false, message: actorResult.message });
         }
 
         const params = z
@@ -405,17 +467,25 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             ok: true,
             tenant: tenantSlug,
             item: buildOrderDetailItem(info, goods),
+            actor: {
+                role: actorResult.actor.grantedRole,
+                scopeType: actorResult.actor.grantedScopeType,
+            },
         });
     });
 
     app.patch("/v1/seller/orders/:id/status", async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
-        const actor = getCurrentActor(req);
 
-        if (!actor.ok) {
-            return reply.code(401).send({ ok: false, message: "seller login required" });
+        const actorResult = await resolveSellerActor(app, req, tenantId);
+        if (!actorResult.ok) {
+            return reply
+                .code(actorResult.code)
+                .send({ ok: false, message: actorResult.message });
         }
+
+        const actor = actorResult.actor;
 
         const params = z
             .object({
@@ -498,7 +568,7 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
                     data: {
                         order_num: String(info.order_num ?? ""),
                         og_uid: Number(row.uid),
-                        id: actor.actorId || actor.actorType,
+                        id: actor.actorId || String(actor.memberUid),
                         prev_status: Number(row.status ?? 0),
                         prev_status2: Number(row.status2 ?? 0),
                         status: body.status,
@@ -516,6 +586,10 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             orderNum: String(info.order_num ?? ""),
             status: body.status,
             statusLabel: statusLabel(body.status),
+            actor: {
+                role: actor.grantedRole,
+                scopeType: actor.grantedScopeType,
+            },
         });
     });
 }

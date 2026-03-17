@@ -4,15 +4,31 @@ import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
 
 const TENANT_CONSUMER_ROLE = "consumer";
+const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff"] as const;
+const TENANT_ALLOWED_ROLES = ["seller_owner", "seller_staff"] as const;
+
+type MemberSession = {
+    uid?: string | number;
+    id?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    provider?: string;
+    tenantId?: string | number;
+    tenantSlug?: string;
+};
+
+function getSessionMember(req: any): MemberSession | null {
+    const member = req.session?.member as MemberSession | undefined;
+    if (!member?.uid) return null;
+    return member;
+}
 
 function getSessionMemberUid(req: any): number | null {
-    const raw =
-        req.session?.member?.uid ??
-        req.session?.user?.uid ??
-        req.session?.authUser?.uid ??
-        null;
+    const member = getSessionMember(req);
+    if (!member?.uid) return null;
 
-    const n = Number(raw);
+    const n = Number(member.uid);
     return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
 }
 
@@ -39,42 +55,96 @@ function dateToIso(v?: Date | null) {
     return v ? v.toISOString() : "";
 }
 
-async function canReadTenantMembers(app: FastifyInstance, req: any, tenantId: bigint) {
+async function resolveSellerMemberPermission(
+    app: FastifyInstance,
+    req: any,
+    tenantId: bigint
+): Promise<
+    | {
+    ok: true;
+    memberUid: number;
+    grantedRole: string;
+    grantedScopeType: "global" | "tenant";
+}
+    | {
+    ok: false;
+    code: 401 | 403;
+    message: string;
+}
+> {
     const memberUid = getSessionMemberUid(req);
-    if (!memberUid) return false;
+    if (!memberUid) {
+        return { ok: false, code: 401, message: "seller login required" };
+    }
 
-    const count = await app.prisma.mallRN_member_membership.count({
+    const memberRow = await app.prisma.mallRN_member.findFirst({
+        where: {
+            uid: memberUid,
+            status: "active",
+            deleted_at: null,
+        },
+        select: {
+            uid: true,
+        },
+    });
+
+    if (!memberRow) {
+        return { ok: false, code: 403, message: "seller permission denied" };
+    }
+
+    const membership = await app.prisma.mallRN_member_membership.findFirst({
         where: {
             member_uid: memberUid,
             status: "active",
             OR: [
                 {
-                    role_code: { in: ["hq_admin", "hq_staff"] },
                     scope_type: "global",
+                    role_code: {
+                        in: [...GLOBAL_ALLOWED_ROLES],
+                    },
                 },
                 {
-                    role_code: { in: ["seller_owner", "seller_staff"] },
                     scope_type: "tenant",
                     scope_id: tenantId,
+                    role_code: {
+                        in: [...TENANT_ALLOWED_ROLES],
+                    },
                 },
             ],
         },
+        orderBy: [{ is_primary: "desc" }, { uid: "asc" }],
+        select: {
+            role_code: true,
+            scope_type: true,
+        },
     });
 
-    return count > 0;
+    if (!membership) {
+        return { ok: false, code: 403, message: "seller permission denied" };
+    }
+
+    return {
+        ok: true,
+        memberUid,
+        grantedRole: String(membership.role_code ?? ""),
+        grantedScopeType: membership.scope_type === "global" ? "global" : "tenant",
+    };
 }
 
 export async function sellerMembersRoutes(app: FastifyInstance) {
     app.get(
-        "/seller/members",
+        "/v1/seller/members",
         { preHandler: requireTenant() },
         async (req: any, reply) => {
             const tenantId = req.tenantId as bigint;
             const tenantSlug = String(req.tenantSlug ?? "");
 
-            const allowed = await canReadTenantMembers(app, req, tenantId);
-            if (!allowed) {
-                return reply.code(403).send({ ok: false, message: "forbidden" });
+            const permission = await resolveSellerMemberPermission(app, req, tenantId);
+            if (!permission.ok) {
+                return reply.code(permission.code).send({
+                    ok: false,
+                    message: permission.message,
+                });
             }
 
             const query = z.object({
@@ -154,7 +224,9 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                         phone: String(m.cell ?? ""),
                         email: String(m.email ?? ""),
                         status: String(m.status ?? ms.status ?? "active"),
-                        primaryRole: String(m.primary_role ?? ms.role_code ?? TENANT_CONSUMER_ROLE),
+                        primaryRole: String(
+                            m.primary_role ?? ms.role_code ?? TENANT_CONSUMER_ROLE
+                        ),
                         joinedAt:
                             dateToIso(ms.joined_at) ||
                             dateToIso(m.created_at_dt ?? null) ||
@@ -195,20 +267,27 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                     sourceReady: true,
                 },
                 items: summaryOnly ? [] : items,
+                actor: {
+                    role: permission.grantedRole,
+                    scopeType: permission.grantedScopeType,
+                },
             });
         }
     );
 
     app.get(
-        "/seller/members/:memberUid",
+        "/v1/seller/members/:memberUid",
         { preHandler: requireTenant() },
         async (req: any, reply) => {
             const tenantId = req.tenantId as bigint;
             const tenantSlug = String(req.tenantSlug ?? "");
 
-            const allowed = await canReadTenantMembers(app, req, tenantId);
-            if (!allowed) {
-                return reply.code(403).send({ ok: false, message: "forbidden" });
+            const permission = await resolveSellerMemberPermission(app, req, tenantId);
+            if (!permission.ok) {
+                return reply.code(permission.code).send({
+                    ok: false,
+                    message: permission.message,
+                });
             }
 
             const params = z.object({
@@ -278,7 +357,9 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                     address2: String(member.address2 ?? ""),
                     memo: String(member.memo ?? ""),
                     status: String(member.status ?? membership.status ?? "active"),
-                    primaryRole: String(member.primary_role ?? membership.role_code ?? TENANT_CONSUMER_ROLE),
+                    primaryRole: String(
+                        member.primary_role ?? membership.role_code ?? TENANT_CONSUMER_ROLE
+                    ),
                     joinedAt:
                         dateToIso(membership.joined_at) ||
                         dateToIso(member.created_at_dt ?? null) ||
@@ -286,6 +367,10 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                     lastLoginAt:
                         dateToIso(member.last_login_at_dt ?? null) ||
                         unixToIso(member.login_time),
+                },
+                actor: {
+                    role: permission.grantedRole,
+                    scopeType: permission.grantedScopeType,
                 },
             });
         }

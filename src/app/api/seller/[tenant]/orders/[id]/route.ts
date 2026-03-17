@@ -3,46 +3,32 @@ import { NextRequest, NextResponse } from "next/server";
 
 type AnyObj = Record<string, any>;
 
-function getTenantSlugValue(item: AnyObj): string {
-    return String(
-        item?.tenantSlug ??
-        item?.tenant_slug ??
-        item?.tenant?.slug ??
-        ""
-    ).trim();
+function getApiBase() {
+    return (
+        process.env.API_BASE_URL ||
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        "http://127.0.0.1:4000"
+    ).replace(/\/+$/, "");
 }
 
-function getTenantIdValue(item: AnyObj): string {
-    return String(
-        item?.tenant_id ??
-        item?.tenantId ??
-        item?.tenant?.id ??
-        item?.tenant ??
-        ""
-    ).trim();
+function toNumber(value: unknown, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
 }
 
-function matchesTenant(item: AnyObj, tenant: string): boolean {
-    const slug = getTenantSlugValue(item);
-    if (slug) return slug === tenant;
-
-    const tenantId = getTenantIdValue(item);
-    return tenantId === tenant;
+function toText(value: unknown, fallback = "") {
+    const s = String(value ?? "").trim();
+    return s || fallback;
 }
 
-function parseDateLike(v: any): Date | null {
+function parseDateLike(v: unknown): Date | null {
     if (!v) return null;
-    const d = new Date(v);
+    const d = new Date(v as any);
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function getDateText(item: AnyObj): string {
-    const d =
-        parseDateLike(item?.createdAt) ??
-        parseDateLike(item?.created_at) ??
-        parseDateLike(item?.regdate) ??
-        parseDateLike(item?.signdate);
-
+function formatDateTime(value: unknown) {
+    const d = parseDateLike(value);
     if (!d) return "-";
 
     return d.toLocaleString("ko-KR", {
@@ -54,64 +40,72 @@ function getDateText(item: AnyObj): string {
     });
 }
 
-function getOrderNo(item: AnyObj): string {
-    return String(item?.orderNum ?? item?.order_no ?? item?.orderNo ?? item?.uid ?? item?.id ?? "-");
+function normalizeOrderItem(row: AnyObj) {
+    return {
+        id: toText(row?.id ?? row?.uid),
+        productId: toText(row?.productId ?? row?.product_id ?? row?.g_uid),
+        title: toText(row?.title ?? row?.productName ?? row?.goodsName ?? row?.g_name),
+        goodsCode: toText(row?.goodsCode ?? row?.goods_code ?? row?.g_code),
+        price: toNumber(row?.price, 0),
+        origPrice: toNumber(row?.origPrice ?? row?.orig_price, 0),
+        qty: toNumber(row?.qty ?? row?.quantity, 0),
+        optionId: toNumber(row?.optionId ?? row?.option_id ?? row?.option, 0),
+        optionName: toText(row?.optionName ?? row?.option_name),
+        status: toNumber(row?.status, 0),
+        status2: toNumber(row?.status2, 0),
+        createdAt: toText(
+            row?.createdAt ?? row?.created_at ?? row?.created_at_dt,
+            ""
+        ),
+    };
 }
 
-function getBuyerName(item: AnyObj): string {
-    return String(
-        item?.buyerName ??
-        item?.buyer_name ??
-        item?.member_name ??
-        item?.receiver_name ??
-        item?.name ??
-        "주문자"
-    );
-}
+function normalizeOrderDetail(raw: AnyObj | null) {
+    if (!raw) return null;
 
-function getAmount(item: AnyObj): number {
-    const raw =
-        item?.payTotal ??
-        item?.amount ??
-        item?.total_amount ??
-        item?.totalPrice ??
-        item?.pay_amount ??
-        item?.payment_amount ??
-        0;
+    const itemRows = Array.isArray(raw?.items)
+        ? raw.items
+        : Array.isArray(raw?.rows)
+            ? raw.rows
+            : [];
 
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-}
+    const createdAtRaw =
+        raw?.createdAt ??
+        raw?.created_at ??
+        raw?.created_at_dt ??
+        raw?.createdAtText;
 
-async function fetchInternalJson(
-    request: NextRequest,
-    path: string
-): Promise<{ ok: boolean; status: number; data: any }> {
-    const url = new URL(path, request.nextUrl.origin);
-
-    try {
-        const res = await fetch(url.toString(), {
-            method: "GET",
-            headers: {
-                cookie: request.headers.get("cookie") || "",
-            },
-            cache: "no-store",
-        });
-
-        const data = await res.json().catch(() => null);
-        return { ok: res.ok, status: res.status, data };
-    } catch {
-        return { ok: false, status: 500, data: null };
-    }
+    return {
+        id: toText(raw?.id ?? raw?.uid),
+        orderNo: toText(raw?.orderNo ?? raw?.order_num),
+        buyerName: toText(raw?.buyerName ?? raw?.buyer_name ?? raw?.name, "주문자"),
+        amount: toNumber(raw?.amount ?? raw?.pay_total ?? raw?.payTotal, 0),
+        status: toNumber(raw?.status, 0),
+        statusLabel: toText(raw?.statusLabel ?? raw?.status_label),
+        createdAt: toText(
+            raw?.createdAt ?? raw?.created_at ?? raw?.created_at_dt,
+            ""
+        ),
+        createdAtText: toText(raw?.createdAtText, formatDateTime(createdAtRaw)),
+        phone: toText(raw?.phone ?? raw?.cell),
+        memo: toText(raw?.memo),
+        address: toText(raw?.address),
+        message: toText(raw?.message),
+        receiverName: toText(raw?.receiverName ?? raw?.receiver_name ?? raw?.name2),
+        receiverPhone: toText(raw?.receiverPhone ?? raw?.receiver_phone ?? raw?.cell2),
+        items: itemRows.map(normalizeOrderItem),
+    };
 }
 
 export async function GET(
-    request: NextRequest,
-    context: { params: Promise<{ tenant: string; id: string }> | { tenant: string; id: string } }
+    req: NextRequest,
+    context:
+        | { params: { tenant: string; id: string } }
+        | { params: Promise<{ tenant: string; id: string }> }
 ) {
-    const resolved = await Promise.resolve(context.params);
-    const tenant = String(resolved?.tenant ?? "").trim();
-    const id = String(resolved?.id ?? "").trim();
+    const params = await Promise.resolve(context.params);
+    const tenant = String(params?.tenant ?? "").trim();
+    const id = String(params?.id ?? "").trim();
 
     if (!tenant || !id) {
         return NextResponse.json(
@@ -120,61 +114,55 @@ export async function GET(
         );
     }
 
-    const result = await fetchInternalJson(
-        request,
-        `/api/admin/orders?tenant=${encodeURIComponent(tenant)}&page=1&pageSize=200&limit=200`
-    );
+    try {
+        const res = await fetch(`${getApiBase()}/v1/seller/orders/${encodeURIComponent(id)}`, {
+            method: "GET",
+            headers: {
+                accept: "application/json",
+                cookie: req.headers.get("cookie") || "",
+                "x-tenant-slug": tenant,
+            },
+            cache: "no-store",
+        });
 
-    const rows =
-        result.data?.items ??
-        result.data?.rows ??
-        result.data?.data ??
-        result.data?.orders ??
-        (Array.isArray(result.data) ? result.data : []);
+        const data = await res.json().catch(() => null);
 
-    const order = Array.isArray(rows)
-        ? rows.find((row) => String(row?.id ?? row?.uid ?? "") === id)
-        : null;
+        if (!res.ok) {
+            return NextResponse.json(
+                {
+                    ok: false,
+                    message: data?.message || "상세 조회 실패",
+                },
+                { status: res.status || 500 }
+            );
+        }
 
-    if (!result.ok || !order) {
+        const rawItem =
+            data?.item ??
+            data?.order?.item ??
+            data?.order ??
+            data?.data?.item ??
+            data?.data ??
+            null;
+
+        const item = normalizeOrderDetail(rawItem);
+
+        if (!item) {
+            return NextResponse.json(
+                { ok: false, message: "주문 상세 데이터가 없습니다." },
+                { status: 404 }
+            );
+        }
+
+        return NextResponse.json({
+            ok: true,
+            tenant,
+            item,
+        });
+    } catch (e: any) {
         return NextResponse.json(
-            { ok: false, message: "주문 정보를 찾을 수 없습니다." },
-            { status: 404 }
+            { ok: false, message: e?.message || "주문 상세 조회 중 오류가 발생했습니다." },
+            { status: 500 }
         );
     }
-
-    if (!matchesTenant(order, tenant)) {
-        return NextResponse.json(
-            { ok: false, message: "해당 매장 주문이 아닙니다." },
-            { status: 403 }
-        );
-    }
-
-    return NextResponse.json({
-        ok: true,
-        item: {
-            id: String(order?.id ?? order?.uid ?? ""),
-            orderNo: getOrderNo(order),
-            buyerName: getBuyerName(order),
-            amount: getAmount(order),
-            status: String(order?.statusLabel ?? order?.status ?? "pending"),
-            createdAtText: getDateText(order),
-            phone: String(
-                order?.buyerPhone ??
-                order?.buyer_phone ??
-                order?.phone ??
-                order?.receiverPhone ??
-                order?.receiver_phone ??
-                ""
-            ),
-            memo: String(order?.memo ?? order?.order_memo ?? ""),
-            address: String(
-                order?.address ??
-                order?.receiver_address ??
-                order?.address1 ??
-                ""
-            ),
-            raw: order,
-        },
-    });
 }
