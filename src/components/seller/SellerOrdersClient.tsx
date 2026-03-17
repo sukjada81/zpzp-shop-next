@@ -3,31 +3,122 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, ShoppingBag } from "lucide-react";
+import { Package2, Search, ShoppingBag } from "lucide-react";
 import { getSellerHref } from "@/lib/seller/getSellerHref";
+
+type SellerOrderLine = {
+    productName?: string;
+    goodsName?: string;
+    name?: string;
+    optionName?: string;
+    optionValue?: string;
+    quantity?: number;
+    qty?: number;
+};
 
 type SellerOrderItem = {
     id: string;
     orderNo: string;
     buyerName: string;
     amount: number;
-    status: string;
+    status: number;
     createdAtText: string;
+
+    // 주문 내역 요약용 확장 필드
+    itemSummary?: string;
+    orderSummary?: string;
+    productName?: string;
+    goodsName?: string;
+    itemNames?: string[];
+    items?: SellerOrderLine[];
 };
 
-function statusBadge(status: string) {
-    const s = (status || "").toLowerCase();
+function getStatusLabel(status?: number) {
+    switch (status) {
+        case 0:
+            return "주문접수";
+        case 1:
+            return "현장결제완료";
+        case 2:
+            return "픽업준비완료";
+        case 4:
+            return "수령완료";
+        case 9:
+            return "주문취소";
+        default:
+            return "알수없음";
+    }
+}
 
-    if (["pending", "paid", "ready", "preparing"].includes(s)) {
+function statusBadge(status?: number) {
+    if ([0, 1, 2].includes(Number(status))) {
         return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
     }
-    if (["completed", "done", "delivered", "picked_up"].includes(s)) {
+    if (Number(status) === 4) {
         return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
     }
-    if (["canceled", "cancelled", "refund", "refunded"].includes(s)) {
+    if (Number(status) === 9) {
         return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
     }
     return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
+}
+
+function normalizeText(value: unknown) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function getLineLabel(line: SellerOrderLine) {
+    const name =
+        normalizeText(line.productName) ||
+        normalizeText(line.goodsName) ||
+        normalizeText(line.name);
+
+    const option =
+        normalizeText(line.optionName) ||
+        normalizeText(line.optionValue);
+
+    const qty = Number(line.quantity ?? line.qty ?? 0);
+
+    if (!name) return "";
+
+    if (option && qty > 0) return `${name} / ${option} × ${qty}`;
+    if (option) return `${name} / ${option}`;
+    if (qty > 0) return `${name} × ${qty}`;
+    return name;
+}
+
+function getOrderSummary(item: SellerOrderItem) {
+    const directSummary =
+        normalizeText(item.itemSummary) ||
+        normalizeText(item.orderSummary) ||
+        normalizeText(item.productName) ||
+        normalizeText(item.goodsName);
+
+    if (directSummary) return directSummary;
+
+    if (Array.isArray(item.itemNames) && item.itemNames.length > 0) {
+        const cleaned = item.itemNames
+            .map((v) => normalizeText(v))
+            .filter(Boolean);
+
+        if (cleaned.length === 1) return cleaned[0];
+        if (cleaned.length > 1) {
+            return `${cleaned[0]} 외 ${cleaned.length - 1}건`;
+        }
+    }
+
+    if (Array.isArray(item.items) && item.items.length > 0) {
+        const labels = item.items
+            .map(getLineLabel)
+            .filter(Boolean);
+
+        if (labels.length === 1) return labels[0];
+        if (labels.length > 1) {
+            return `${labels[0]} 외 ${labels.length - 1}건`;
+        }
+    }
+
+    return "";
 }
 
 export default function SellerOrdersClient({ tenant }: { tenant: string }) {
@@ -62,10 +153,13 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
         if (!q) return items;
 
         return items.filter((item) => {
+            const summary = getOrderSummary(item).toLowerCase();
+
             return (
                 item.orderNo.toLowerCase().includes(q) ||
                 item.buyerName.toLowerCase().includes(q) ||
-                item.status.toLowerCase().includes(q)
+                getStatusLabel(item.status).toLowerCase().includes(q) ||
+                summary.includes(q)
             );
         });
     }, [items, query]);
@@ -86,7 +180,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                 <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="주문번호 / 주문자 / 상태 검색"
+                    placeholder="주문번호 / 주문자 / 주문내역 / 상태 검색"
                     className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
                 />
             </div>
@@ -96,7 +190,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                     {Array.from({ length: 5 }).map((_, idx) => (
                         <div
                             key={idx}
-                            className="h-24 animate-pulse rounded-2xl bg-slate-100"
+                            className="h-28 animate-pulse rounded-2xl bg-slate-100"
                         />
                     ))}
                 </div>
@@ -112,36 +206,53 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                 </div>
             ) : (
                 <div className="grid gap-3">
-                    {filtered.map((item) => (
-                        <Link
-                            key={item.id}
-                            href={getSellerHref(tenant, `/orders/${item.id}`)}
-                            className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md"
-                        >
-                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                <div className="min-w-0">
-                                    <div className="truncate text-base font-bold tracking-[-0.02em] text-slate-900">
-                                        주문번호 {item.orderNo}
-                                    </div>
-                                    <div className="mt-1 text-sm text-slate-500">
-                                        주문자 {item.buyerName}
-                                    </div>
-                                    <div className="mt-1 text-xs text-slate-400">
-                                        {item.createdAtText}
-                                    </div>
-                                </div>
+                    {filtered.map((item) => {
+                        const summary = getOrderSummary(item);
 
-                                <div className="flex items-center gap-3">
-                                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(item.status)}`}>
-                                        {item.status || "pending"}
-                                    </span>
-                                    <span className="text-sm font-bold text-slate-900">
-                                        {item.amount.toLocaleString("ko-KR")}원
-                                    </span>
+                        return (
+                            <Link
+                                key={item.id}
+                                href={getSellerHref(tenant, `/orders/${item.id}`)}
+                                className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md"
+                            >
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-base font-bold tracking-[-0.02em] text-slate-900">
+                                            주문번호 {item.orderNo}
+                                        </div>
+
+                                        <div className="mt-1 text-sm text-slate-500">
+                                            주문자 {item.buyerName}
+                                        </div>
+
+                                        {summary ? (
+                                            <div className="mt-2 flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                                <Package2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                                                <span className="line-clamp-2">
+                                                    {summary}
+                                                </span>
+                                            </div>
+                                        ) : null}
+
+                                        <div className="mt-2 text-xs text-slate-400">
+                                            {item.createdAtText}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                        <span
+                                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(item.status)}`}
+                                        >
+                                            {getStatusLabel(item.status)}
+                                        </span>
+                                        <span className="text-sm font-bold text-slate-900">
+                                            {(item.amount ?? 0).toLocaleString("ko-KR")}원
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                        </Link>
-                    ))}
+                            </Link>
+                        );
+                    })}
                 </div>
             )}
         </div>

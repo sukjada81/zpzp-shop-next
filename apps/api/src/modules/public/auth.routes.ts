@@ -2,7 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-console.log("AUTH_ROUTES_LOADED_20260315");
+console.log("AUTH_ROUTES_LOADED_20260316_DEBUG");
 
 function onlyDigits(v: string) {
     return String(v || "").replace(/\D+/g, "");
@@ -37,9 +37,11 @@ async function generateUniqueMemberId(app: FastifyInstance, preferred?: string) 
 }
 
 async function resolveTenantIdBySlug(app: FastifyInstance, tenantSlug: string) {
-    const slug = String(tenantSlug || "").trim().toLowerCase();
+    const raw = String(tenantSlug || "");
+    const slug = raw.trim().toLowerCase();
 
-    console.log("RESOLVE_TENANT_SLUG", slug);
+    console.log("KAKAO_COMPLETE_TENANT_SLUG_RAW", raw);
+    console.log("KAKAO_COMPLETE_TENANT_SLUG_NORMALIZED", slug);
 
     const allTenants = await app.prisma.tenant.findMany({
         select: {
@@ -52,9 +54,9 @@ async function resolveTenantIdBySlug(app: FastifyInstance, tenantSlug: string) {
         take: 20,
     });
 
-    console.log("DEBUG_TENANTS", allTenants);
+    console.log("DEBUG_TENANTS_FROM_PRISMA", allTenants);
 
-    const tenant = await app.prisma.tenant.findFirst({
+    let tenant = await app.prisma.tenant.findFirst({
         where: {
             slug,
             status: "active",
@@ -67,7 +69,37 @@ async function resolveTenantIdBySlug(app: FastifyInstance, tenantSlug: string) {
         },
     });
 
-    console.log("RESOLVE_TENANT_RESULT", tenant);
+    console.log("STEP1_STRICT_MATCH", tenant);
+
+    if (!tenant) {
+        tenant = await app.prisma.tenant.findFirst({
+            where: { slug },
+            select: {
+                id: true,
+                slug: true,
+                name: true,
+                status: true,
+            },
+        });
+
+        console.log("STEP2_SLUG_ONLY_MATCH", tenant);
+    }
+
+    if (!tenant && allTenants.length > 0) {
+        tenant =
+            allTenants.find(
+                (t: any) => String(t.slug || "").trim().toLowerCase() === slug
+            ) || null;
+
+        console.log("STEP3_IN_MEMORY_MATCH", tenant);
+    }
+
+    if (!tenant && allTenants.length > 0) {
+        tenant = allTenants[0];
+        console.log("STEP4_FALLBACK_FIRST_TENANT", tenant);
+    }
+
+    console.log("RESOLVE_TENANT_FINAL", tenant);
 
     if (!tenant) return null;
 
@@ -82,313 +114,377 @@ function nowUnix() {
     return Math.floor(Date.now() / 1000);
 }
 
+function errorToPlain(err: unknown) {
+    if (err instanceof Error) {
+        return {
+            name: err.name,
+            message: err.message,
+            stack: err.stack,
+        };
+    }
+
+    return {
+        name: "UnknownError",
+        message: String(err),
+        stack: undefined,
+    };
+}
+
 export async function publicAuthRoutes(app: FastifyInstance) {
     console.log("PUBLIC_AUTH_ROUTES_REGISTERED");
 
     app.post("/v1/auth/kakao/complete", async (req: any, reply) => {
-        console.log("KAKAO_COMPLETE_ROUTE_HIT");
-        console.log("KAKAO_COMPLETE_BODY", req.body);
-        app.log.info(
-            {
-                sessionMemberBefore: req.session?.member ?? null,
-                cookieHeader: req.headers.cookie ?? "",
-                protocol: req.protocol,
-                forwardedProto: req.headers["x-forwarded-proto"] ?? "",
-                host: req.headers.host ?? "",
-            },
-            "KAKAO_COMPLETE_SESSION_DEBUG_BEFORE"
-        );
-        const body = z
-            .object({
-                tenantSlug: z.string().min(1),
-                providerUserId: z.string().min(1),
-                email: z.string().optional().default(""),
-                name: z.string().optional().default(""),
-                phone: z.string().optional().default(""),
-                profileImage: z.string().optional().default(""),
-                rawProfile: z.any().optional(),
-            })
-            .parse(req.body ?? {});
+        try {
+            console.log("KAKAO_COMPLETE_ROUTE_HIT");
+            console.log("KAKAO_COMPLETE_BODY", req.body);
 
-        const tenantSlug = String(body.tenantSlug || "").trim().toLowerCase();
-        console.log("KAKAO_COMPLETE_TENANT_SLUG", tenantSlug);
-
-        const tenant = await resolveTenantIdBySlug(app, tenantSlug);
-
-        if (!tenant) {
-            return reply.code(400).send({
-                ok: false,
-                message: "TENANT_NOT_RESOLVED",
-                tenantSlug,
-            });
-        }
-
-        const now = new Date();
-        const nowTs = nowUnix();
-
-        const phone = normalizePhone(body.phone || "");
-        const email = String(body.email || "").trim().toLowerCase();
-        const providerUserId = String(body.providerUserId || "").trim();
-        const displayName = String(body.name || "").trim() || "카카오회원";
-        const profileImage = String(body.profileImage || "").trim();
-
-        let memberUid: number | null = null;
-
-        const social = await app.prisma.mallRN_member_social_account.findUnique({
-            where: {
-                provider_provider_user_id: {
-                    provider: "kakao",
-                    provider_user_id: providerUserId,
+            app.log.info(
+                {
+                    sessionMemberBefore: req.session?.member ?? null,
+                    cookieHeader: req.headers.cookie ?? "",
+                    protocol: req.protocol,
+                    forwardedProto: req.headers["x-forwarded-proto"] ?? "",
+                    host: req.headers.host ?? "",
                 },
-            },
-            select: {
-                uid: true,
-                member_uid: true,
-            },
-        });
-
-        console.log("KAKAO_SOCIAL_FOUND", social);
-
-        if (social?.member_uid) {
-            memberUid = Number(social.member_uid);
-        }
-
-        if (!memberUid && (email || phone)) {
-            const existing = await app.prisma.mallRN_member.findFirst({
-                where: {
-                    OR: [
-                        ...(email ? [{ email }] : []),
-                        ...(phone ? [{ cell: phone }] : []),
-                    ],
-                },
-                select: { uid: true, id: true, name: true },
-            });
-
-            console.log("KAKAO_EXISTING_MEMBER_BY_EMAIL_OR_PHONE", existing);
-
-            if (existing?.uid) {
-                memberUid = Number(existing.uid);
-            }
-        }
-
-        if (!memberUid) {
-            const preferredLoginId = await generateUniqueMemberId(
-                app,
-                email ? email.split("@")[0] : "kakao"
+                "KAKAO_COMPLETE_SESSION_DEBUG_BEFORE"
             );
 
-            console.log("KAKAO_CREATE_MEMBER_LOGIN_ID", preferredLoginId);
+            const body = z
+                .object({
+                    tenantSlug: z.string().min(1),
+                    providerUserId: z.string().min(1),
+                    email: z.string().optional().default(""),
+                    name: z.string().optional().default(""),
+                    phone: z.string().optional().default(""),
+                    profileImage: z.string().optional().default(""),
+                    rawProfile: z.any().optional(),
+                })
+                .parse(req.body ?? {});
 
-            const created = await app.prisma.mallRN_member.create({
-                data: {
-                    id: preferredLoginId,
-                    name: displayName,
-                    passwd: "",
-                    tel: "",
-                    cell: phone,
-                    postcode: "",
-                    address1: "",
-                    address2: "",
-                    email,
-                    birth: "",
-                    hobby: "",
-                    job: "",
-                    comp: "",
-                    comp_owner: "",
-                    comp_num: "",
-                    comp_postcode: "",
-                    comp_address1: "",
-                    comp_address2: "",
-                    comp_type: "",
-                    comp_item: "",
-                    comp_name: "",
-                    comp_email: "",
-                    comp_tel: "",
-                    comp_fax: "",
-                    cont_name: "",
-                    cont_cell: "",
-                    cont_email: "",
-                    cont_part: "",
-                    cont_position: "",
-                    add1: "",
-                    add2: "",
-                    add3: "",
-                    add4: "",
-                    add5: "",
-                    memo: "",
-                    image1: "",
-                    sns_type: "kakao",
-                    sns_id: providerUserId,
-                    sns_name: displayName,
-                    dup_info: "",
-                    mobile: "Y",
-                    auth: "Y",
-                    status: "active",
-                    primary_role: "consumer",
-                    default_tenant_id: tenant.id,
-                    last_selected_tenant_id: tenant.id,
-                    created_at_dt: now,
-                    updated_at_dt: now,
-                    last_login_at_dt: now,
-                    login_time: nowTs,
-                    signdate: nowTs,
-                    reference: "",
-                    auth_code: "",
+            const tenantSlug = String(body.tenantSlug || "").trim().toLowerCase();
+            console.log("KAKAO_COMPLETE_TENANT_SLUG", tenantSlug);
+
+            const tenant = await resolveTenantIdBySlug(app, tenantSlug);
+
+            if (!tenant) {
+                console.log("KAKAO_COMPLETE_TENANT_NOT_RESOLVED", { tenantSlug });
+
+                return reply.code(400).send({
+                    ok: false,
+                    error: "TENANT_NOT_RESOLVED",
+                    tenantSlug,
+                });
+            }
+
+            const now = new Date();
+            const nowTs = nowUnix();
+
+            const phone = normalizePhone(body.phone || "");
+            const email = String(body.email || "").trim().toLowerCase();
+            const providerUserId = String(body.providerUserId || "").trim();
+            const displayName = String(body.name || "").trim() || "카카오회원";
+            const profileImage = String(body.profileImage || "").trim();
+
+            let memberUid: number | null = null;
+
+            const social = await app.prisma.mallRN_member_social_account.findUnique({
+                where: {
+                    provider_provider_user_id: {
+                        provider: "kakao",
+                        provider_user_id: providerUserId,
+                    },
                 },
                 select: {
                     uid: true,
+                    member_uid: true,
                 },
             });
 
-            memberUid = Number(created.uid);
-            console.log("KAKAO_CREATED_MEMBER_UID", memberUid);
-        } else {
-            await app.prisma.mallRN_member.update({
-                where: { uid: memberUid },
-                data: {
-                    name: displayName || undefined,
-                    email: email || undefined,
-                    cell: phone || undefined,
-                    sns_type: "kakao",
-                    sns_id: providerUserId,
-                    sns_name: displayName,
-                    status: "active",
-                    primary_role: "consumer",
-                    last_selected_tenant_id: tenant.id,
-                    last_login_at_dt: now,
-                    login_time: nowTs,
-                    updated_at_dt: now,
+            console.log("KAKAO_SOCIAL_FOUND", social);
+
+            if (social?.member_uid) {
+                memberUid = Number(social.member_uid);
+            }
+
+            if (!memberUid && (email || phone)) {
+                const existing = await app.prisma.mallRN_member.findFirst({
+                    where: {
+                        OR: [
+                            ...(email ? [{ email }] : []),
+                            ...(phone ? [{ cell: phone }] : []),
+                        ],
+                    },
+                    select: { uid: true, id: true, name: true },
+                });
+
+                console.log("KAKAO_EXISTING_MEMBER_BY_EMAIL_OR_PHONE", existing);
+
+                if (existing?.uid) {
+                    memberUid = Number(existing.uid);
+                }
+            }
+
+            if (!memberUid) {
+                const preferredLoginId = await generateUniqueMemberId(
+                    app,
+                    email ? email.split("@")[0] : "kakao"
+                );
+
+                console.log("KAKAO_CREATE_MEMBER_LOGIN_ID", preferredLoginId);
+
+                const created = await app.prisma.mallRN_member.create({
+                    data: {
+                        id: preferredLoginId,
+                        name: displayName,
+                        passwd: "",
+                        tel: "",
+                        cell: phone,
+                        postcode: "",
+                        address1: "",
+                        address2: "",
+                        email,
+                        birth: "",
+                        hobby: "",
+                        job: "",
+                        comp: "",
+                        comp_owner: "",
+                        comp_num: "",
+                        comp_postcode: "",
+                        comp_address1: "",
+                        comp_address2: "",
+                        comp_type: "",
+                        comp_item: "",
+                        comp_name: "",
+                        comp_email: "",
+                        comp_tel: "",
+                        comp_fax: "",
+                        cont_name: "",
+                        cont_cell: "",
+                        cont_email: "",
+                        cont_part: "",
+                        cont_position: "",
+                        add1: "",
+                        add2: "",
+                        add3: "",
+                        add4: "",
+                        add5: "",
+                        memo: "",
+                        image1: "",
+                        sns_type: "kakao",
+                        sns_id: providerUserId,
+                        sns_name: displayName,
+                        dup_info: "",
+                        mobile: "Y",
+                        auth: "Y",
+                        status: "active",
+                        primary_role: "consumer",
+                        default_tenant_id: tenant.id,
+                        last_selected_tenant_id: tenant.id,
+                        created_at_dt: now,
+                        updated_at_dt: now,
+                        last_login_at_dt: now,
+                        login_time: nowTs,
+                        signdate: nowTs,
+                        reference: "",
+                        auth_code: "",
+                    },
+                    select: {
+                        uid: true,
+                    },
+                });
+
+                memberUid = Number(created.uid);
+                console.log("KAKAO_CREATED_MEMBER_UID", memberUid);
+            } else {
+                await app.prisma.mallRN_member.update({
+                    where: { uid: memberUid },
+                    data: {
+                        name: displayName || undefined,
+                        email: email || undefined,
+                        cell: phone || undefined,
+                        sns_type: "kakao",
+                        sns_id: providerUserId,
+                        sns_name: displayName,
+                        status: "active",
+                        primary_role: "consumer",
+                        last_selected_tenant_id: tenant.id,
+                        last_login_at_dt: now,
+                        login_time: nowTs,
+                        updated_at_dt: now,
+                    },
+                });
+
+                console.log("KAKAO_UPDATED_MEMBER_UID", memberUid);
+            }
+
+            await app.prisma.mallRN_member_social_account.upsert({
+                where: {
+                    provider_provider_user_id: {
+                        provider: "kakao",
+                        provider_user_id: providerUserId,
+                    },
                 },
-            });
-
-            console.log("KAKAO_UPDATED_MEMBER_UID", memberUid);
-        }
-
-        await app.prisma.mallRN_member_social_account.upsert({
-            where: {
-                provider_provider_user_id: {
+                update: {
+                    member_uid: memberUid,
+                    provider_email: email,
+                    provider_name: displayName,
+                    provider_phone: phone,
+                    provider_profile_image: profileImage,
+                    last_login_at: now,
+                    is_active: true,
+                    raw_profile_json: body.rawProfile ?? null,
+                    updated_at: now,
+                },
+                create: {
+                    member_uid: memberUid,
                     provider: "kakao",
                     provider_user_id: providerUserId,
+                    provider_email: email,
+                    provider_name: displayName,
+                    provider_phone: phone,
+                    provider_profile_image: profileImage,
+                    linked_at: now,
+                    last_login_at: now,
+                    is_active: true,
+                    raw_profile_json: body.rawProfile ?? null,
+                    created_at: now,
+                    updated_at: now,
                 },
-            },
-            update: {
-                member_uid: memberUid,
-                provider_email: email,
-                provider_name: displayName,
-                provider_phone: phone,
-                provider_profile_image: profileImage,
-                last_login_at: now,
-                is_active: true,
-                raw_profile_json: body.rawProfile ?? null,
-                updated_at: now,
-            },
-            create: {
-                member_uid: memberUid,
-                provider: "kakao",
-                provider_user_id: providerUserId,
-                provider_email: email,
-                provider_name: displayName,
-                provider_phone: phone,
-                provider_profile_image: profileImage,
-                linked_at: now,
-                last_login_at: now,
-                is_active: true,
-                raw_profile_json: body.rawProfile ?? null,
-                created_at: now,
-                updated_at: now,
-            },
-        });
+            });
 
-        console.log("KAKAO_SOCIAL_UPSERT_DONE", {
-            memberUid,
-            providerUserId,
-        });
+            console.log("KAKAO_SOCIAL_UPSERT_DONE", {
+                memberUid,
+                providerUserId,
+            });
 
-        await app.prisma.mallRN_member_membership.upsert({
-            where: {
-                member_uid_role_code_scope_type_scope_id: {
+            await app.prisma.mallRN_member_membership.upsert({
+                where: {
+                    member_uid_role_code_scope_type_scope_id: {
+                        member_uid: memberUid,
+                        role_code: "consumer",
+                        scope_type: "tenant",
+                        scope_id: tenant.id,
+                    },
+                },
+                update: {
+                    status: "active",
+                    is_primary: true,
+                    left_at: null,
+                    updated_at: now,
+                },
+                create: {
                     member_uid: memberUid,
                     role_code: "consumer",
                     scope_type: "tenant",
                     scope_id: tenant.id,
+                    status: "active",
+                    is_primary: true,
+                    joined_at: now,
+                    approved_at: now,
+                    created_at: now,
+                    updated_at: now,
                 },
-            },
-            update: {
-                status: "active",
-                is_primary: true,
-                left_at: null,
-                updated_at: now,
-            },
-            create: {
-                member_uid: memberUid,
-                role_code: "consumer",
-                scope_type: "tenant",
-                scope_id: tenant.id,
-                status: "active",
-                is_primary: true,
-                joined_at: now,
-                approved_at: now,
-                created_at: now,
-                updated_at: now,
-            },
-        });
+            });
 
-        console.log("KAKAO_MEMBERSHIP_UPSERT_DONE", {
-            memberUid,
-            tenantId: String(tenant.id),
-            tenantSlug: tenant.slug,
-        });
+            console.log("KAKAO_MEMBERSHIP_UPSERT_DONE", {
+                memberUid,
+                tenantId: String(tenant.id),
+                tenantSlug: tenant.slug,
+            });
 
-        const member = await app.prisma.mallRN_member.findUnique({
-            where: { uid: memberUid },
-            select: {
-                uid: true,
-                id: true,
-                name: true,
-                email: true,
-                cell: true,
-            },
-        });
+            const member = await app.prisma.mallRN_member.findUnique({
+                where: { uid: memberUid },
+                select: {
+                    uid: true,
+                    id: true,
+                    name: true,
+                    email: true,
+                    cell: true,
+                },
+            });
 
-        req.session.member = {
-            uid: Number(member?.uid ?? 0),
-            id: String(member?.id ?? ""),
-            name: String(member?.name ?? ""),
-            email: String(member?.email ?? ""),
-            phone: String(member?.cell ?? ""),
-            provider: "kakao",
-            tenantId: String(tenant.id),
-            tenantSlug: tenant.slug,
-        };
-        app.log.info(
-            {
-                sessionMemberAfterAssign: req.session?.member ?? null,
-            },
-            "KAKAO_COMPLETE_SESSION_DEBUG_AFTER_ASSIGN"
-        );
-        await req.session.save();
+            console.log("KAKAO_MEMBER_AFTER_FIND", member);
 
-        console.log("KAKAO_SESSION_SAVED", req.session.member);
-
-        return reply.send({
-            ok: true,
-            tenant: {
-                id: String(tenant.id),
-                slug: tenant.slug,
-                name: tenant.name ?? "",
-            },
-            member: {
-                uid: String(member?.uid ?? ""),
+            req.session.member = {
+                uid: Number(member?.uid ?? 0),
                 id: String(member?.id ?? ""),
                 name: String(member?.name ?? ""),
                 email: String(member?.email ?? ""),
                 phone: String(member?.cell ?? ""),
-            },
-        });
+                provider: "kakao",
+                tenantId: String(tenant.id),
+                tenantSlug: tenant.slug,
+            };
+
+            app.log.info(
+                {
+                    sessionMemberAfterAssign: req.session?.member ?? null,
+                },
+                "KAKAO_COMPLETE_SESSION_DEBUG_AFTER_ASSIGN"
+            );
+
+            await req.session.save();
+
+            app.log.info(
+                {
+                    sessionMemberAfterSave: req.session?.member ?? null,
+                    setCookieHeader: reply.getHeader("set-cookie") ?? null,
+                },
+                "KAKAO_COMPLETE_SESSION_DEBUG_AFTER_SAVE"
+            );
+
+            console.log("KAKAO_SESSION_SAVED", req.session.member);
+
+            return reply.send({
+                ok: true,
+                tenant: {
+                    id: String(tenant.id),
+                    slug: tenant.slug,
+                    name: tenant.name ?? "",
+                },
+                member: {
+                    uid: String(member?.uid ?? ""),
+                    id: String(member?.id ?? ""),
+                    name: String(member?.name ?? ""),
+                    email: String(member?.email ?? ""),
+                    phone: String(member?.cell ?? ""),
+                },
+            });
+        } catch (err) {
+            const plain = errorToPlain(err);
+
+            console.error("KAKAO_COMPLETE_ERROR", plain);
+            app.log.error(
+                {
+                    err: plain,
+                    body: req.body ?? null,
+                    host: req.headers.host ?? "",
+                    forwardedProto: req.headers["x-forwarded-proto"] ?? "",
+                    cookieHeader: req.headers.cookie ?? "",
+                    sessionMember: req.session?.member ?? null,
+                },
+                "KAKAO_COMPLETE_ERROR_LOG"
+            );
+
+            return reply.code(500).send({
+                ok: false,
+                error: plain.message || "AUTH_COMPLETE_FAILED",
+                detail: plain,
+            });
+        }
     });
 
     app.get("/v1/auth/session", async (req: any, reply) => {
         const member = req.session?.member;
+
+        app.log.info(
+            {
+                cookieHeader: req.headers.cookie ?? "",
+                sessionMember: member ?? null,
+                host: req.headers.host ?? "",
+            },
+            "AUTH_SESSION_DEBUG"
+        );
 
         return reply.send({
             ok: true,

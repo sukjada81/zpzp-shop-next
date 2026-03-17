@@ -18,8 +18,10 @@ import { adminOrdersRoutes } from "./modules/admin/orders.routes.js";
 import { adminProductsRoutes } from "./modules/admin/products.routes.js";
 import { adminUploadsRoutes } from "./modules/admin/uploads.routes.js";
 import { sellerMembersRoutes } from "./modules/seller/members.routes.js";
+import { sellerOrderRoutes } from "./modules/seller/orders.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
+
 
 const app = Fastify({
     logger: true,
@@ -64,6 +66,7 @@ await publicAuthRoutes(app);
 
 // seller members는 전역 hook 대신 route 단위 preHandler로 보호
 await sellerMembersRoutes(app);
+await sellerOrderRoutes(app);
 
 app.register(
     async (tenantScoped) => {

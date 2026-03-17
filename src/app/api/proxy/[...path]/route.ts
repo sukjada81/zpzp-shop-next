@@ -23,9 +23,25 @@ function buildUpstreamUrl(path: string[], req: NextRequest) {
 function toUpstreamHeaders(req: NextRequest) {
     const h = new Headers(req.headers);
 
-    h.delete("host");
+    const originalHost =
+        req.headers.get("x-forwarded-host") ||
+        req.headers.get("host") ||
+        req.nextUrl.host;
+
+    const originalProto =
+        req.headers.get("x-forwarded-proto") ||
+        req.nextUrl.protocol.replace(":", "") ||
+        "http";
+
     h.delete("connection");
     h.delete("content-length");
+
+    // host는 직접 넘기지 않고 forwarded 계열로 전달
+    h.delete("host");
+
+    h.set("x-forwarded-host", originalHost);
+    h.set("x-forwarded-proto", originalProto);
+    h.set("x-forwarded-port", req.nextUrl.port || (originalProto === "https" ? "443" : "80"));
 
     if (!h.get("accept")) h.set("accept", "application/json");
 
@@ -81,6 +97,8 @@ async function handle(req: NextRequest, ctx: any) {
 
     console.log("PROXY_BASE_API", baseApi());
     console.log("PROXY_UPSTREAM_URL", upstreamUrl.toString());
+    console.log("PROXY_ORIGINAL_HOST", req.headers.get("host"));
+    console.log("PROXY_FORWARDED_HOST", req.headers.get("x-forwarded-host"));
 
     const method = req.method.toUpperCase();
     const hasBody = method !== "GET" && method !== "HEAD";

@@ -9,8 +9,11 @@ export async function sessionPlugin(app: FastifyInstance) {
         throw new Error("SESSION_SECRET is missing or too short (min 16 chars).");
     }
 
-    const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
+    // const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
+    // const isProd = process.env.NODE_ENV === "production";
+
     const isProd = process.env.NODE_ENV === "production";
+    const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
 
     await app.register(cookie, {
         secret,

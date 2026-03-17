@@ -182,6 +182,40 @@ function buildSelectedTenantCookie(
     return parts.join("; ");
 }
 
+async function parseResponseBody(res: Response) {
+    const text = await res.text();
+    if (!text) return { text: "", json: null };
+
+    try {
+        return {
+            text,
+            json: JSON.parse(text),
+        };
+    } catch {
+        return {
+            text,
+            json: null,
+        };
+    }
+}
+
+function appendSetCookies(headers: Headers, res: Response) {
+    const anyHeaders: any = res.headers as any;
+
+    if (typeof anyHeaders.getSetCookie === "function") {
+        const all = anyHeaders.getSetCookie();
+        for (const cookie of all) {
+            headers.append("Set-Cookie", cookie);
+        }
+        return;
+    }
+
+    const single = res.headers.get("set-cookie");
+    if (single) {
+        headers.append("Set-Cookie", single);
+    }
+}
+
 export async function GET(req: NextRequest) {
     const url = req.nextUrl;
     const code = url.searchParams.get("code");
@@ -241,28 +275,36 @@ export async function GET(req: NextRequest) {
         const kakaoProfile = kakaoAccount.profile ?? {};
         const tenantSlug = String(tenant || "a").trim().toLowerCase();
 
+        const completePayload = {
+            tenantSlug,
+            providerUserId: String(profile.id),
+            email: String(kakaoAccount.email || ""),
+            name: String(kakaoProfile.nickname || profile.properties?.nickname || ""),
+            phone: String(kakaoAccount.phone_number || ""),
+            profileImage: String(kakaoProfile.profile_image_url || ""),
+            rawProfile: profile,
+        };
+
+        console.log("KAKAO_COMPLETE_REQUEST_URL", `${getApiBase()}/v1/auth/kakao/complete`);
+        console.log("KAKAO_COMPLETE_REQUEST_PAYLOAD", completePayload);
+
         const completeRes = await fetch(`${getApiBase()}/v1/auth/kakao/complete`, {
             method: "POST",
             headers: {
                 "content-type": "application/json",
+                accept: "application/json",
                 cookie: req.headers.get("cookie") || "",
+                "x-tenant-slug": tenantSlug,
             },
-            body: JSON.stringify({
-                tenantSlug,
-                providerUserId: String(profile.id),
-                email: String(kakaoAccount.email || ""),
-                name: String(kakaoProfile.nickname || profile.properties?.nickname || ""),
-                phone: String(kakaoAccount.phone_number || ""),
-                profileImage: String(kakaoProfile.profile_image_url || ""),
-                rawProfile: profile,
-            }),
+            body: JSON.stringify(completePayload),
             cache: "no-store",
             redirect: "manual",
         });
 
-        const completeData = await completeRes.json().catch(() => null);
+        const { text: completeText, json: completeData } = await parseResponseBody(completeRes);
 
         console.log("KAKAO_COMPLETE_STATUS", completeRes.status);
+        console.log("KAKAO_COMPLETE_TEXT", completeText);
         console.log("KAKAO_COMPLETE_SET_COOKIE", completeRes.headers.get("set-cookie"));
 
         if (!completeRes.ok) {
@@ -273,12 +315,12 @@ export async function GET(req: NextRequest) {
                         completeData?.error ||
                         completeData?.message ||
                         "AUTH_COMPLETE_FAILED",
+                    detail: completeData ?? completeText ?? null,
                 },
                 { status: completeRes.status || 500 }
             );
         }
 
-        const backendSetCookie = completeRes.headers.get("set-cookie");
         const target = safeNextUrl(req, returnTo, tenantSlug);
 
         const dev = isDevHttp(req);
@@ -289,22 +331,22 @@ export async function GET(req: NextRequest) {
         const headers = new Headers();
         headers.set("Location", target);
 
-        // 핵심: 세션 쿠키는 백엔드가 내려준 원문을 그대로 전달
-        if (backendSetCookie) {
-            headers.append("Set-Cookie", backendSetCookie);
-        }
+        appendSetCookies(headers, completeRes);
 
-        // selectedTenant 는 별도 쿠키로 직접 추가
         headers.append(
             "Set-Cookie",
             buildSelectedTenantCookie(tenantSlug, domain, secure, sameSite)
         );
+
+        console.log("KAKAO_CALLBACK_REDIRECT_TARGET", target);
 
         return new Response(null, {
             status: 302,
             headers,
         });
     } catch (e: any) {
+        console.error("KAKAO_CALLBACK_FATAL", e);
+
         return Response.json(
             { ok: false, error: e?.message || "KAKAO_CALLBACK_FAILED" },
             { status: 500 }

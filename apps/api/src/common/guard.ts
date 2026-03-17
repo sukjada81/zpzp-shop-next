@@ -55,6 +55,17 @@ export function requireTenant(
     return async (req: FastifyRequest, reply: FastifyReply) => {
         if (opts?.allowMissingTenant) return;
 
+        const url = String(req.raw?.url || req.url || "");
+
+        // ✅ 핵심: auth API는 tenant 검사 제외
+        if (
+            url.startsWith("/v1/auth/") ||
+            url === "/v1/auth" ||
+            url.startsWith("/health")
+        ) {
+            return;
+        }
+
         const tenantId = (req as any).tenantId as bigint | null | undefined;
         const tenantSlug = (req as any).tenantSlug as string | null | undefined;
 

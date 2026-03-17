@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
 import { getSellerHref } from "@/lib/seller/getSellerHref";
 
 type OrderItem = {
@@ -11,30 +11,38 @@ type OrderItem = {
     orderNo: string;
     buyerName: string;
     amount: number;
-    status: string;
+    status: number;
     createdAtText: string;
     phone?: string;
     memo?: string;
     address?: string;
 };
 
-const STATUS_OPTIONS = [
-    { value: "pending", label: "주문접수" },
-    { value: "preparing", label: "준비중" },
-    { value: "completed", label: "주문완료" },
-    { value: "canceled", label: "주문취소" },
-];
+function getStatusLabel(status?: number) {
+    switch (status) {
+        case 0:
+            return "주문접수";
+        case 1:
+            return "현장결제완료";
+        case 2:
+            return "픽업준비완료";
+        case 4:
+            return "수령완료";
+        case 9:
+            return "주문취소";
+        default:
+            return "알수없음";
+    }
+}
 
-function statusBadge(status: string) {
-    const s = (status || "").toLowerCase();
-
-    if (["pending", "paid", "ready", "preparing"].includes(s)) {
+function statusBadge(status?: number) {
+    if ([0, 1, 2].includes(Number(status))) {
         return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
     }
-    if (["completed", "done", "delivered", "picked_up"].includes(s)) {
+    if (Number(status) === 4) {
         return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
     }
-    if (["canceled", "cancelled", "refund", "refunded"].includes(s)) {
+    if (Number(status) === 9) {
         return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
     }
     return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
@@ -51,11 +59,11 @@ export default function SellerOrderDetailClient({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [loaded, setLoaded] = useState<OrderItem | null>(null);
-    const [status, setStatus] = useState("pending");
 
     async function load() {
         try {
             setError("");
+
             const res = await fetch(`/api/seller/${tenant}/orders/${id}`, {
                 cache: "no-store",
             });
@@ -67,7 +75,6 @@ export default function SellerOrderDetailClient({
 
             const item = json.item as OrderItem;
             setLoaded(item);
-            setStatus(item.status || "pending");
         } catch (e: any) {
             setError(e?.message || "주문 정보를 불러오지 못했습니다.");
         } finally {
@@ -80,7 +87,9 @@ export default function SellerOrderDetailClient({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tenant, id]);
 
-    async function updateStatus() {
+    async function handleReceive() {
+        if (!loaded || loaded.status === 4) return;
+
         try {
             setSaving(true);
             setError("");
@@ -91,19 +100,19 @@ export default function SellerOrderDetailClient({
                     "content-type": "application/json",
                     accept: "application/json",
                 },
-                body: JSON.stringify({ status }),
+                body: JSON.stringify({ status: 4 }),
             });
 
             const json = await res.json().catch(() => ({}));
 
             if (!res.ok || !json?.ok) {
-                throw new Error(json?.message || "상태 변경에 실패했습니다.");
+                throw new Error(json?.message || "수령 처리에 실패했습니다.");
             }
 
-            alert("주문 상태가 변경되었습니다.");
             await load();
+            alert("수령 처리되었습니다.");
         } catch (e: any) {
-            setError(e?.message || "상태 변경에 실패했습니다.");
+            setError(e?.message || "수령 처리에 실패했습니다.");
         } finally {
             setSaving(false);
         }
@@ -112,7 +121,7 @@ export default function SellerOrderDetailClient({
     if (loading) {
         return (
             <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-                <div className="space-y-4 animate-pulse">
+                <div className="animate-pulse space-y-4">
                     <div className="h-8 w-40 rounded-xl bg-slate-100" />
                     <div className="h-40 rounded-3xl bg-slate-100" />
                 </div>
@@ -136,6 +145,11 @@ export default function SellerOrderDetailClient({
         );
     }
 
+    const currentStatus = loaded?.status;
+    const isReceived = currentStatus === 4;
+    const isCanceled = currentStatus === 9;
+    const actionDisabled = saving || isReceived || isCanceled;
+
     return (
         <div className="space-y-5">
             <div className="flex items-center justify-between gap-3 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
@@ -147,7 +161,7 @@ export default function SellerOrderDetailClient({
                         주문 상세
                     </div>
                     <div className="mt-1 text-sm text-slate-500">
-                        주문 상태를 확인하고 변경할 수 있습니다.
+                        주문 상태를 확인하고 수령 처리할 수 있습니다.
                     </div>
                 </div>
 
@@ -161,12 +175,16 @@ export default function SellerOrderDetailClient({
                     </Link>
                     <button
                         type="button"
-                        onClick={updateStatus}
-                        disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                        onClick={handleReceive}
+                        disabled={actionDisabled}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                     >
-                        <RefreshCw className={`h-4 w-4 ${saving ? "animate-spin" : ""}`} />
-                        {saving ? "변경 중..." : "상태 저장"}
+                        {saving ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                        )}
+                        {isReceived ? "수령완료" : isCanceled ? "취소 주문" : saving ? "처리 중..." : "수령 처리"}
                     </button>
                 </div>
             </div>
@@ -190,8 +208,10 @@ export default function SellerOrderDetailClient({
                         <div>
                             <div className="text-sm font-semibold text-slate-500">주문상태</div>
                             <div className="mt-2">
-                                <span className={`rounded-full px-3 py-1.5 text-sm font-semibold ${statusBadge(loaded?.status || "")}`}>
-                                    {loaded?.status}
+                                <span
+                                    className={`rounded-full px-3 py-1.5 text-sm font-semibold ${statusBadge(currentStatus)}`}
+                                >
+                                    {getStatusLabel(currentStatus)}
                                 </span>
                             </div>
                         </div>
@@ -242,27 +262,37 @@ export default function SellerOrderDetailClient({
 
                 <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
                     <div className="text-lg font-bold tracking-[-0.03em] text-slate-900">
-                        주문 상태 변경
-                    </div>
-
-                    <div className="mt-4">
-                        <label className="text-sm font-semibold text-slate-700">변경 상태</label>
-                        <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value)}
-                            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium outline-none"
-                        >
-                            {STATUS_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                        처리 안내
                     </div>
 
                     <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                        실무에서는 주문접수 → 준비중 → 주문완료 순서로 주로 처리합니다.
-                        취소 주문은 canceled 로 변경합니다.
+                        현재 주문 상태는 <span className="font-semibold text-slate-900">{getStatusLabel(currentStatus)}</span> 입니다.
+                        <br />
+                        주문을 고객에게 전달 완료했다면 <span className="font-semibold text-slate-900">수령 처리</span> 버튼을 눌러
+                        <span className="font-semibold text-slate-900"> 수령완료</span> 상태로 변경하세요.
+                    </div>
+
+                    <div className="mt-4 space-y-2 text-sm text-slate-600">
+                        <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3">
+                            <span>주문접수</span>
+                            <span className="font-semibold text-slate-900">0</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3">
+                            <span>현장결제완료</span>
+                            <span className="font-semibold text-slate-900">1</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3">
+                            <span>픽업준비완료</span>
+                            <span className="font-semibold text-slate-900">2</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                            <span>수령완료</span>
+                            <span className="font-semibold text-emerald-700">4</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                            <span>주문취소</span>
+                            <span className="font-semibold text-rose-700">9</span>
+                        </div>
                     </div>
                 </section>
             </div>
