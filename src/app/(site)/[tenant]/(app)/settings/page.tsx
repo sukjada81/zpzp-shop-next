@@ -26,7 +26,7 @@ export default function SettingsPage() {
     const helper = useMemo(() => {
         return {
             nickname:
-                "다이클로(또는 운영 채팅방)과 동일한 닉네임으로 입력해 주세요. 하단 버튼에서 확인할 수 있습니다.",
+                "(또는 운영 채팅방)과 동일한 닉네임으로 입력해 주세요. 하단 버튼에서 확인할 수 있습니다.",
             phone: "픽업 알림톡 발송 시 필요합니다.",
         };
     }, []);
@@ -59,7 +59,7 @@ export default function SettingsPage() {
                         setNickname(p.nickname || "");
                         setPhone(p.phone || "");
                     }
-                } catch {}
+                } catch { }
 
                 setChecking(false);
             } catch {

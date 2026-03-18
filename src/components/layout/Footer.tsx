@@ -32,17 +32,17 @@ export default function Footer() {
                     <div className="mb-6">
                         <div className="mb-4">
                             <div className="inline-flex items-center rounded-md bg-black px-2 py-[2px] text-[12px] font-bold tracking-[0.08em] text-white">
-                                DAICLO
+                                다스카운트 올데이
                             </div>
                         </div>
                     </div>
 
                     <div className="space-y-2 text-[12px] leading-[1.8] text-[#5f6470]">
                         <p className="font-semibold text-[#4b4f58]">주식회사 클로버브릿지</p>
-                        <p>대표자: 원종만</p>
-                        <p>사업자 등록번호: 321-87-03394</p>
-                        <p>연락처: 010-7531-8380</p>
-                        <p>사업자주소: 서울시 용산구 한강대로 66, 용산한화오벨리스크 410호</p>
+                        <p>대표자: 김재철</p>
+                        <p>사업자 등록번호: 230-88-03533</p>
+                        <p>email: discountallday0@gmail.com</p>
+                        <p>사업자주소: 서울시 송파구 양재대로62길 8, 618호(가락동)</p>
                     </div>
 
                     <div className="mt-6 flex items-center gap-4 text-[12px] text-[#4b4f58]">
