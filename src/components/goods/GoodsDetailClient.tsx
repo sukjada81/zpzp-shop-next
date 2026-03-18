@@ -140,10 +140,10 @@ function buildPickupPeriodText(start?: string | null, end?: string | null) {
 }
 
 function SuccessToast({
-                          open,
-                          message,
-                          onClose,
-                      }: {
+    open,
+    message,
+    onClose,
+}: {
     open: boolean;
     message: string;
     onClose: () => void;
@@ -229,7 +229,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     const SHIPPING_FEE = 4000;
     const shipping = canOrder ? SHIPPING_FEE : 0;
-    const grandTotal = subtotal + shipping;
+    // const grandTotal = subtotal + shipping;
+    const grandTotal = subtotal;
 
     const imgLabel = safeImages?.[imgIdx]?.label?.trim();
     const [sheetOpen, setSheetOpen] = useState(false);
@@ -637,7 +638,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                     type="button"
                                     className="grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-white text-xl"
                                     aria-label="찜"
-                                    onClick={() => {}}
+                                    onClick={() => { }}
                                 >
                                     ♡
                                 </button>
@@ -771,7 +772,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                         </div>
 
                                         <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] font-semibold text-slate-700">
-                                            상품금액 {subtotal.toLocaleString()}원 + 배송비 {shipping.toLocaleString()}원
+                                            {/* 상품금액 {subtotal.toLocaleString()}원 + 배송비 {shipping.toLocaleString()}원 */}
+                                            상품금액 {subtotal.toLocaleString()}원
                                         </div>
 
                                         <div className="mt-3 flex items-center justify-between px-1">
