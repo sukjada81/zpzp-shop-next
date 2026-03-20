@@ -117,8 +117,8 @@ function categoryBadgeColor(label?: string) {
 }
 
 export default async function HomePage({
-                                           params,
-                                       }: {
+    params,
+}: {
     params: { tenant: string } | Promise<{ tenant: string }>;
 }) {
     const resolved = await Promise.resolve(params);
@@ -207,10 +207,10 @@ export default async function HomePage({
 }
 
 function SectionTitle({
-                          title,
-                          href,
-                          description,
-                      }: {
+    title,
+    href,
+    description,
+}: {
     title: string;
     href: string;
     description?: string;
@@ -239,10 +239,10 @@ function SectionTitle({
 }
 
 function Grid2({
-                   tenant,
-                   items,
-                   emptyText,
-               }: {
+    tenant,
+    items,
+    emptyText,
+}: {
     tenant: string;
     items: CardItem[];
     emptyText: string;
@@ -343,20 +343,31 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
             desc: "신세계상품권 최대 30만원 + 다이클로 5만 포인트",
             image:
                 "https://images.unsplash.com/photo-1584515933487-779824d29309?q=80&w=1200&auto=format&fit=crop",
+            href: "https://m.nsmall.com/store/exhibition/31139",
         },
         {
             id: "svc-2",
             title: "제품 1개 가격! 데일리 기초 3종!",
-            desc: "막커 66도포 할인가 46,000원!!",
+            desc: "파격! 66프로 할인 => 46,000원!!",
             image:
                 "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?q=80&w=1200&auto=format&fit=crop",
+            href: "https://m.site.naver.com/22bq0",
         },
         {
             id: "svc-3",
             title: "SKY 합격생 추천 집중력 영양제",
-            desc: "살짝 특가! 60% OFF!",
+            desc: "신학기 특가!! 71% OFF!!",
             image:
                 "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?q=80&w=1200&auto=format&fit=crop",
+            href: "https://focusin.kr/surl/P/32",
+        },
+        {
+            id: "svc-4",
+            title: "KIA 인기모델 6종 한정수량!!!",
+            desc: "✔ K5/K7/K8/K9/카니발/타스만 최저가!",
+            image:
+                "https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1200&auto=format&fit=crop",
+            href: "https://forms.gle/3FfQV1C3f6PjaUiP6",
         },
     ];
 
@@ -364,32 +375,46 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
         {
             id: "ad-1",
             badge: "AD",
-            brand: "신혼드리 꽃다발",
-            title: "화이트데이 로맨틱한 꽃다발 & 꽃바구니",
-            desc: "전국 최저가 수준 53,000원 / 당일주문 4시간 내 배송!",
+            brand: "집들이선물 & 개업화분",
+            title: "감도높은 플랜테리어 식물을 가성비있게",
+            desc: "11,900원~",
             cta: "구매하기",
             image:
                 "https://images.unsplash.com/photo-1563241527-3004b7be0ffd?q=80&w=1200&auto=format&fit=crop",
+            href: "https://smartstore.naver.com/sinhotree/products/13233908416",
         },
         {
             id: "ad-2",
             badge: "AD",
             brand: "렌트리 정수기",
             title: "인기 정수기 반값할인 모음전",
-            desc: "브랜드별 가격! 지금은 비교부터 설치까지 한 번에!",
+            desc: "브랜드별 가격·지원금 비교부터 설치까지 한 번에!",
             cta: "자세히 보기",
             image:
                 "https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?q=80&w=1200&auto=format&fit=crop",
+            href: "https://rentre.kr/affiliate/bridge/daiclo/watpu?utm_source=daiclo",
         },
         {
             id: "ad-3",
             badge: "AD",
             brand: "렌트리 인터넷",
-            title: "지원금 업체 최대로 받고 인터넷 가입",
+            title: "지원금 업계 최대로 받고 인터넷 가입",
             desc: "더 높은 타사 혜택을 찾으시면 무조건 +2만원 더!",
             cta: "자세히 보기",
             image:
                 "https://images.unsplash.com/photo-1544724569-5f546fd6f2b5?q=80&w=1200&auto=format&fit=crop",
+            href: "https://rentre.kr/affiliate/bridge/daiclo/internet?utm_source=daiclo",
+        },
+        {
+            id: "ad-4",
+            badge: "AD",
+            brand: "신호트리 꽃다발",
+            title: "로맨틱한 파스텔 꽃다발 & 꽃바구니",
+            desc: "전국 최저가 수준 53,000원 / 당일주문 4시간 내 배송",
+            cta: "구매하기",
+            image:
+                "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop",
+            href: "https://smartstore.naver.com/sinhotree/category/c7456945666d4966bef7e152846ddf23?cp=1",
         },
     ];
 
@@ -398,7 +423,7 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
             <Divider />
 
             <Link
-                href={`/${tenant}/benefits`}
+                href=""
                 className="mt-4 flex items-center justify-between rounded-2xl border bg-[#f7fafc] px-4 py-4"
                 style={{ borderColor: "#d7e3f0" }}
             >
@@ -408,7 +433,7 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
                     </div>
                     <div>
                         <div className="text-[16px] font-bold text-neutral-900">
-                            다이클로 추천서비스 전체보기
+                            추천서비스 전체보기
                         </div>
                         <div className="mt-0.5 text-[13px] text-neutral-500">
                             여행특가, 추천서비스, 할인 모아보기
@@ -420,11 +445,15 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
             </Link>
 
             <div className="mt-4 overflow-hidden rounded-[22px] bg-white">
-                <Link href={`/${tenant}/benefits/club`} className="block">
+                <a
+                    href="https://discountallday.co.kr/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
                     <div className="relative h-[212px] overflow-hidden rounded-[22px]">
                         <img
                             src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1600&auto=format&fit=crop"
-                            alt="다이클로 클로버 모집"
+                            alt="클로버 모집"
                             className="h-full w-full object-cover"
                         />
 
@@ -436,17 +465,17 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
 
                         <div className="absolute bottom-5 left-4 right-4 text-white">
                             <div className="text-[18px] font-extrabold tracking-[-0.02em]">
-                                다이클로 클로버 모집
+                                클로버 모집
                             </div>
                             <div className="mt-2 text-[14px] font-semibold">
                                 “픽업 은 김에, 집에 가는 길에”
                             </div>
                             <div className="mt-1 text-[13px] text-white/90">
-                                다이클로와 함께할 딜리버리 크루를 모집합니다.
+                                함께할 딜리버리 크루를 모집합니다.
                             </div>
                         </div>
                     </div>
-                </Link>
+                </a>
 
                 <div className="flex items-center justify-center gap-1.5 py-3">
                     <span className="h-2 w-5 rounded-full bg-neutral-800" />
@@ -458,15 +487,17 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
 
             <section className="mt-5">
                 <div className="text-[18px] font-extrabold tracking-[-0.02em] text-neutral-900">
-                    다이클로 추천서비스
+                    추천서비스
                 </div>
 
                 <div className="mt-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     <div className="flex gap-3">
                         {serviceCards.map((card) => (
-                            <Link
+                            <a
                                 key={card.id}
-                                href={`/${tenant}/benefits/${card.id}`}
+                                href={card.href}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="relative block h-[238px] w-[156px] flex-shrink-0 overflow-hidden rounded-2xl bg-white"
                             >
                                 <img
@@ -484,7 +515,7 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
                                         {card.desc}
                                     </div>
                                 </div>
-                            </Link>
+                            </a>
                         ))}
                     </div>
                 </div>
@@ -499,9 +530,11 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
 
                 <div className="mt-4 space-y-3">
                     {suggestList.map((item) => (
-                        <Link
+                        <a
                             key={item.id}
-                            href={`/${tenant}/benefits/${item.id}`}
+                            href={item.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="flex items-center gap-3 rounded-2xl border bg-white p-3"
                             style={{ borderColor: "#e8e8e8" }}
                         >
@@ -536,7 +569,7 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
                                     <ChevronRight size={14} />
                                 </div>
                             </div>
-                        </Link>
+                        </a>
                     ))}
                 </div>
             </section>
