@@ -5,7 +5,7 @@ type Category = { key: string; label: string; emoji: string };
 
 export default function CategoryRow({ categories }: { categories: Category[] }) {
     const handlePreparing = (label: string) => {
-        window.alert(`${label} 서비스는 현재 준비중입니다.`);
+        window.alert(`준비중입니다.`);
     };
 
     return (

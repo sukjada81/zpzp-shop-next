@@ -40,7 +40,7 @@ const HIDE_AUTH_BUTTON = false;
 
 function resolveAuthOrigin() {
     if (typeof window === "undefined") {
-        return process.env.NEXT_PUBLIC_AUTH_ORIGIN || "http://auth.discountallday.kr:3000";
+        return process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
     }
 
     const envOrigin = process.env.NEXT_PUBLIC_AUTH_ORIGIN;

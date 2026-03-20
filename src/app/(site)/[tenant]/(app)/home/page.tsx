@@ -420,108 +420,110 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
 
     return (
         <section className="mt-6">
-            <Divider />
+            <div className="hidden">
+                <Divider />
 
-            <Link
-                href=""
-                className="mt-4 flex items-center justify-between rounded-2xl border bg-[#f7fafc] px-4 py-4"
-                style={{ borderColor: "#d7e3f0" }}
-            >
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e9edff] text-[#7c8cff]">
-                        <Gift size={18} strokeWidth={2.2} />
-                    </div>
-                    <div>
-                        <div className="text-[16px] font-bold text-neutral-900">
-                            추천서비스 전체보기
-                        </div>
-                        <div className="mt-0.5 text-[13px] text-neutral-500">
-                            여행특가, 추천서비스, 할인 모아보기
-                        </div>
-                    </div>
-                </div>
-
-                <ChevronRight size={18} className="text-neutral-400" />
-            </Link>
-
-            <div className="mt-4 overflow-hidden rounded-[22px] bg-white">
-                <a
-                    href="https://discountallday.co.kr/"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <Link
+                    href=""
+                    className="mt-4 flex items-center justify-between rounded-2xl border bg-[#f7fafc] px-4 py-4"
+                    style={{ borderColor: "#d7e3f0" }}
                 >
-                    <div className="relative h-[212px] overflow-hidden rounded-[22px]">
-                        <img
-                            src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1600&auto=format&fit=crop"
-                            alt="클로버 모집"
-                            className="h-full w-full object-cover"
-                        />
-
-                        <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/20 to-transparent" />
-
-                        <div className="absolute right-4 top-4 rounded-full bg-black/35 px-2 py-1 text-[11px] font-medium text-white">
-                            1 / 2
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e9edff] text-[#7c8cff]">
+                            <Gift size={18} strokeWidth={2.2} />
                         </div>
-
-                        <div className="absolute bottom-5 left-4 right-4 text-white">
-                            <div className="text-[18px] font-extrabold tracking-[-0.02em]">
-                                클로버 모집
+                        <div>
+                            <div className="text-[16px] font-bold text-neutral-900">
+                                추천서비스 전체보기
                             </div>
-                            <div className="mt-2 text-[14px] font-semibold">
-                                “픽업 은 김에, 집에 가는 길에”
-                            </div>
-                            <div className="mt-1 text-[13px] text-white/90">
-                                함께할 딜리버리 크루를 모집합니다.
+                            <div className="mt-0.5 text-[13px] text-neutral-500">
+                                여행특가, 추천서비스, 할인 모아보기
                             </div>
                         </div>
                     </div>
-                </a>
 
-                <div className="flex items-center justify-center gap-1.5 py-3">
-                    <span className="h-2 w-5 rounded-full bg-neutral-800" />
-                    <span className="h-2 w-2 rounded-full bg-neutral-300" />
-                </div>
-            </div>
+                    <ChevronRight size={18} className="text-neutral-400" />
+                </Link>
 
-            <Divider className="mt-5" />
+                <div className="mt-4 overflow-hidden rounded-[22px] bg-white">
+                    <a
+                        href="https://discountallday.co.kr/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <div className="relative h-[212px] overflow-hidden rounded-[22px]">
+                            <img
+                                src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1600&auto=format&fit=crop"
+                                alt="클로버 모집"
+                                className="h-full w-full object-cover"
+                            />
 
-            <section className="mt-5">
-                <div className="text-[18px] font-extrabold tracking-[-0.02em] text-neutral-900">
-                    추천서비스
-                </div>
+                            <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/20 to-transparent" />
 
-                <div className="mt-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                    <div className="flex gap-3">
-                        {serviceCards.map((card) => (
-                            <a
-                                key={card.id}
-                                href={card.href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="relative block h-[238px] w-[156px] flex-shrink-0 overflow-hidden rounded-2xl bg-white"
-                            >
-                                <img
-                                    src={card.image}
-                                    alt={card.title}
-                                    className="h-full w-full object-cover"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
+                            <div className="absolute right-4 top-4 rounded-full bg-black/35 px-2 py-1 text-[11px] font-medium text-white">
+                                1 / 2
+                            </div>
 
-                                <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
-                                    <div className="line-clamp-2 text-[14px] font-bold leading-[1.35]">
-                                        {card.title}
-                                    </div>
-                                    <div className="mt-1 line-clamp-2 text-[11px] leading-[1.4] text-white/90">
-                                        {card.desc}
-                                    </div>
+                            <div className="absolute bottom-5 left-4 right-4 text-white">
+                                <div className="text-[18px] font-extrabold tracking-[-0.02em]">
+                                    클로버 모집
                                 </div>
-                            </a>
-                        ))}
+                                <div className="mt-2 text-[14px] font-semibold">
+                                    “픽업 은 김에, 집에 가는 길에”
+                                </div>
+                                <div className="mt-1 text-[13px] text-white/90">
+                                    함께할 딜리버리 크루를 모집합니다.
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+
+                    <div className="flex items-center justify-center gap-1.5 py-3">
+                        <span className="h-2 w-5 rounded-full bg-neutral-800" />
+                        <span className="h-2 w-2 rounded-full bg-neutral-300" />
                     </div>
                 </div>
-            </section>
 
-            <Divider className="mt-6" />
+                <Divider className="mt-5" />
+
+                <section className="mt-5">
+                    <div className="text-[18px] font-extrabold tracking-[-0.02em] text-neutral-900">
+                        추천서비스
+                    </div>
+
+                    <div className="mt-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="flex gap-3">
+                            {serviceCards.map((card) => (
+                                <a
+                                    key={card.id}
+                                    href={card.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="relative block h-[238px] w-[156px] flex-shrink-0 overflow-hidden rounded-2xl bg-white"
+                                >
+                                    <img
+                                        src={card.image}
+                                        alt={card.title}
+                                        className="h-full w-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
+
+                                    <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
+                                        <div className="line-clamp-2 text-[14px] font-bold leading-[1.35]">
+                                            {card.title}
+                                        </div>
+                                        <div className="mt-1 line-clamp-2 text-[11px] leading-[1.4] text-white/90">
+                                            {card.desc}
+                                        </div>
+                                    </div>
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <Divider className="mt-6" />
+            </div>
 
             <section className="mt-6">
                 <div className="text-[18px] font-extrabold tracking-[-0.02em] text-neutral-900">
@@ -548,12 +550,12 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
 
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="rounded bg-[#f2f2f7] px-1.5 py-0.5 text-[10px] font-semibold text-neutral-500">
-                                        {item.badge}
-                                    </span>
+                            <span className="rounded bg-[#f2f2f7] px-1.5 py-0.5 text-[10px] font-semibold text-neutral-500">
+                                {item.badge}
+                            </span>
                                     <span className="truncate text-[12px] text-neutral-500">
-                                        {item.brand}
-                                    </span>
+                                {item.brand}
+                            </span>
                                 </div>
 
                                 <div className="mt-1 line-clamp-2 text-[18px] font-bold leading-[1.35] tracking-[-0.02em] text-neutral-900">

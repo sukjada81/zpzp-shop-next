@@ -221,7 +221,7 @@ function ProductThumbStrip({
                 {list.map((img, idx) => (
                     <div
                         key={`${img.key}_${idx}`}
-                        className="relative aspect-[3/4] w-32 flex-shrink-0 overflow-hidden rounded-lg border bg-neutral-100 sm:w-36"
+                        className="relative h-44 w-44 flex-shrink-0 overflow-hidden rounded-lg border bg-neutral-100"
                         style={{ borderColor: "#e5e7eb" }}
                     >
                         {img.key ? (
