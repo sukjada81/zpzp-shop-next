@@ -1,5 +1,4 @@
 // src/lib/api/endpoints.ts
-
 function apiProxy(path: string) {
     const p = path.replace(/^\//, "");
     return `/api/proxy/${p}`;

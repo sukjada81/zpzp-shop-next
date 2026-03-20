@@ -1,5 +1,7 @@
+// src/components/layout/Footer.tsx
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 export default function Footer() {
@@ -31,14 +33,21 @@ export default function Footer() {
                 <div className="mx-auto w-full max-w-[520px] px-6 py-8">
                     <div className="mb-6">
                         <div className="mb-4">
-                            <div className="inline-flex items-center rounded-md bg-black px-2 py-[2px] text-[12px] font-bold tracking-[0.08em] text-white">
-                                DAICLO
+                            <div className="relative h-8 w-[150px]">
+                                <Image
+                                    src="/logo.png"
+                                    alt="디스카운트 데일리"
+                                    fill
+                                    sizes="150px"
+                                    className="object-contain object-left"
+                                    priority
+                                />
                             </div>
                         </div>
                     </div>
 
                     <div className="space-y-2 text-[12px] leading-[1.8] text-[#5f6470]">
-                        <p className="font-semibold text-[#4b4f58]">주식회사 클로버브릿지</p>
+                        <p className="font-semibold text-[#4b4f58]">주식회사 디스카운트올데이</p>
                         <p>대표자: 원종만</p>
                         <p>사업자 등록번호: 321-87-03394</p>
                         <p>연락처: 010-7531-8380</p>
@@ -56,7 +65,7 @@ export default function Footer() {
                     </div>
 
                     <div className="mt-8 border-t border-[#d9d9d9] pt-4 text-[12px] text-[#9aa0ad]">
-                        © 2025 Cloverbridge Inc. All rights reserved.
+                        © 2025 Discount All Day Inc. All rights reserved.
                     </div>
                 </div>
             </footer>
@@ -65,10 +74,11 @@ export default function Footer() {
                 type="button"
                 onClick={handleScrollTop}
                 aria-label="맨 위로 이동"
-                className={`fixed bottom-24 right-5 z-[999] flex h-11 w-11 items-center justify-center rounded-full border border-[#d8d8dd] bg-white shadow-md transition-all duration-300 ${showTopButton
-                    ? "pointer-events-auto translate-y-0 opacity-100"
-                    : "pointer-events-none translate-y-2 opacity-0"
-                    }`}
+                className={`fixed bottom-24 right-5 z-[999] flex h-11 w-11 items-center justify-center rounded-full border border-[#d8d8dd] bg-white shadow-md transition-all duration-300 ${
+                    showTopButton
+                        ? "pointer-events-auto translate-y-0 opacity-100"
+                        : "pointer-events-none translate-y-2 opacity-0"
+                }`}
             >
                 <svg
                     xmlns="http://www.w3.org/2000/svg"

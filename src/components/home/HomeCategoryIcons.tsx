@@ -1,7 +1,6 @@
 // src/components/home/HomeCategoryIcons.tsx
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -18,22 +17,21 @@ type IconItem = {
     key: string;
     label: string;
     icon: LucideIcon;
-    href: string;
 };
 
 export default function HomeCategoryIcons({ tenant }: { tenant: string }) {
     const items: IconItem[] = [
-        { key: "flower", label: "꽃다발", icon: Flower2, href: `/${tenant}/goods?cat=flower` },
-        { key: "water", label: "정수기", icon: Droplets, href: `/${tenant}/goods?cat=water` },
-        { key: "internet", label: "인터넷", icon: Wifi, href: `/${tenant}/goods?cat=internet` },
-        { key: "wreath", label: "화환", icon: CircleDot, href: `/${tenant}/goods?cat=wreath` },
-        { key: "move", label: "이사", icon: Truck, href: `/${tenant}/goods?cat=move` },
-        { key: "phone", label: "핸드폰", icon: Smartphone, href: `/${tenant}/goods?cat=phone` },
-        { key: "travel", label: "여행", icon: Luggage, href: `/${tenant}/goods?cat=travel` },
+        { key: "flower", label: "꽃다발", icon: Flower2 },
+        { key: "water", label: "정수기", icon: Droplets },
+        { key: "internet", label: "인터넷", icon: Wifi },
+        { key: "wreath", label: "화환", icon: CircleDot },
+        { key: "move", label: "이사", icon: Truck },
+        { key: "phone", label: "핸드폰", icon: Smartphone },
+        { key: "travel", label: "여행", icon: Luggage },
     ];
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
-    const moveRef = useRef<HTMLAnchorElement | null>(null);
+    const moveRef = useRef<HTMLButtonElement | null>(null);
 
     useEffect(() => {
         const centerMoveItem = () => {
@@ -46,7 +44,7 @@ export default function HomeCategoryIcons({ tenant }: { tenant: string }) {
             const targetLeft = target.offsetLeft;
             const targetWidth = target.clientWidth;
 
-            const nextScrollLeft = targetLeft - (containerWidth / 2) + (targetWidth / 2);
+            const nextScrollLeft = targetLeft - containerWidth / 2 + targetWidth / 2;
 
             container.scrollTo({
                 left: Math.max(0, nextScrollLeft),
@@ -63,9 +61,13 @@ export default function HomeCategoryIcons({ tenant }: { tenant: string }) {
         };
     }, []);
 
+    const handlePreparing = (label: string) => {
+        window.alert(`${label} 서비스는 현재 준비중입니다.`);
+    };
+
     return (
         <div className="mt-3">
-            <div className="px-4 py-3 bg-white">
+            <div className="bg-white px-4 py-3">
                 <div
                     ref={scrollRef}
                     className="hide-scrollbar overflow-x-auto overflow-y-hidden overscroll-x-contain bg-white"
@@ -76,10 +78,11 @@ export default function HomeCategoryIcons({ tenant }: { tenant: string }) {
                             const isMove = it.key === "move";
 
                             return (
-                                <Link
+                                <button
                                     key={it.key}
                                     ref={isMove ? moveRef : undefined}
-                                    href={it.href}
+                                    type="button"
+                                    onClick={() => handlePreparing(it.label)}
                                     className="flex w-[64px] shrink-0 flex-col items-center"
                                 >
                                     <div
@@ -89,17 +92,13 @@ export default function HomeCategoryIcons({ tenant }: { tenant: string }) {
                                             border: "2px solid #ecebe9",
                                         }}
                                     >
-                                        <Icon
-                                            size={30}
-                                            strokeWidth={2.3}
-                                            color="#F08A2A"
-                                        />
+                                        <Icon size={30} strokeWidth={2.3} color="#F08A2A" />
                                     </div>
 
                                     <div className="mt-1 text-center text-[13px] font-semibold leading-tight text-[color:var(--muted)]">
                                         {it.label}
                                     </div>
-                                </Link>
+                                </button>
                             );
                         })}
                     </div>

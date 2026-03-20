@@ -3,9 +3,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ShoppingBag, Clock3, Truck } from "lucide-react";
 import { endpoints } from "@/lib/api/endpoints";
 import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
+import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
 
 type NoticeItem = {
     id: string;
@@ -39,17 +41,14 @@ export type OngoingGroupBuyItem = {
     isMockPreview?: boolean;
 };
 
-type QuickOrderProfile = {
-    nickname: string;
-    phone: string;
-};
-
 type CreateOrderResponse = {
     ok: boolean;
     orderNum?: string;
     status?: number;
     statusLabel?: string;
     message?: string;
+    error?: string;
+    detail?: string;
 };
 
 function formatAgo(minutesAgo: number) {
@@ -69,27 +68,6 @@ function formatPickupText(pickup?: string) {
     return pickup?.trim() || "픽업일 정보 없음";
 }
 
-function onlyDigits(v: string) {
-    return String(v ?? "").replace(/[^\d]/g, "");
-}
-
-function readQuickOrderProfile(tenant: string): QuickOrderProfile | null {
-    try {
-        const raw = window.localStorage.getItem(`profile:${tenant || "default"}`);
-        if (!raw) return null;
-
-        const parsed = JSON.parse(raw) as { nickname?: string; phone?: string };
-        const nickname = String(parsed?.nickname ?? "").trim();
-        const phone = onlyDigits(String(parsed?.phone ?? ""));
-
-        if (!nickname || phone.length < 10) return null;
-
-        return { nickname, phone };
-    } catch {
-        return null;
-    }
-}
-
 function toNumberOrZero(v: unknown) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
@@ -100,10 +78,10 @@ function buildOptionKey(productId: string | number, optionId: string | number) {
 }
 
 function SuccessToast({
-    open,
-    message,
-    onClose,
-}: {
+                          open,
+                          message,
+                          onClose,
+                      }: {
     open: boolean;
     message: string;
     onClose: () => void;
@@ -142,8 +120,8 @@ function SuccessToast({
 }
 
 function CompactNoticeBar({
-    notice,
-}: {
+                              notice,
+                          }: {
     notice?: NoticeItem;
 }) {
     if (!notice) return null;
@@ -180,11 +158,11 @@ function CompactNoticeBar({
 }
 
 function QtyControl({
-    value,
-    onMinus,
-    onPlus,
-    disabled,
-}: {
+                        value,
+                        onMinus,
+                        onPlus,
+                        disabled,
+                    }: {
     value: number;
     onMinus: () => void;
     onPlus: () => void;
@@ -228,9 +206,11 @@ function QtyControl({
     );
 }
 
+// src/components/home/OngoingGroupBuySection.tsx
+
 function ProductThumbStrip({
-    images,
-}: {
+                               images,
+                           }: {
     images: { key: string; label?: string }[];
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
@@ -241,7 +221,7 @@ function ProductThumbStrip({
                 {list.map((img, idx) => (
                     <div
                         key={`${img.key}_${idx}`}
-                        className="relative h-44 w-44 flex-shrink-0 overflow-hidden rounded-lg border bg-neutral-100"
+                        className="relative aspect-[3/4] w-32 flex-shrink-0 overflow-hidden rounded-lg border bg-neutral-100 sm:w-36"
                         style={{ borderColor: "#e5e7eb" }}
                     >
                         {img.key ? (
@@ -261,11 +241,11 @@ function ProductThumbStrip({
 }
 
 function GroupBuyItemBlock({
-    item,
-    qtyMap,
-    onMinus,
-    onPlus,
-}: {
+                               item,
+                               qtyMap,
+                               onMinus,
+                               onPlus,
+                           }: {
     item: OngoingGroupBuyItem;
     qtyMap: Record<string, number>;
     onMinus: (optionKey: string) => void;
@@ -346,10 +326,10 @@ function GroupBuyItemBlock({
                     return (
                         <div
                             key={optionKey}
-                            className={`flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow shadow-sm`}
+                            className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow shadow-sm"
                             style={{
                                 borderColor: "#e5e7eb",
-                                opacity: soldout ? 0.60 : 1,
+                                opacity: soldout ? 0.6 : 1,
                             }}
                         >
                             <div className="min-w-0 flex-1">
@@ -390,14 +370,15 @@ function GroupBuyItemBlock({
 }
 
 export default function OngoingGroupBuySection({
-    title = "🔥 진행 중인 공구",
-    items,
-    showOrderBar = true,
-}: {
+                                                   title = "🔥 진행 중인 공구",
+                                                   items,
+                                                   showOrderBar = true,
+                                               }: {
     title?: string;
     items: OngoingGroupBuyItem[];
     showOrderBar?: boolean;
 }) {
+    const router = useRouter();
     const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
     const [submitting, setSubmitting] = useState(false);
     const [toastOpen, setToastOpen] = useState(false);
@@ -522,7 +503,8 @@ export default function OngoingGroupBuySection({
 
         const profile = readQuickOrderProfile(firstTenant);
         if (!profile) {
-            alert("빠른 주문을 하려면 설정에서 닉네임/전화번호를 먼저 저장해 주세요.");
+            alert("주문을 하려면 설정에서 닉네임을 먼저 저장해 주세요.");
+            router.push(`/${firstTenant}/settings`);
             return;
         }
 
@@ -533,7 +515,7 @@ export default function OngoingGroupBuySection({
 
                 return {
                     productId: Number(meta.productId),
-                    optionId: meta.rawOptionId,
+                    optionId: meta.rawOptionId || undefined,
                     optionName: meta.optionName,
                     qty: Number(qty),
                 };
@@ -558,9 +540,9 @@ export default function OngoingGroupBuySection({
                 cache: "no-store",
                 body: JSON.stringify({
                     buyerName: profile.nickname,
-                    buyerPhone: profile.phone,
+                    buyerPhone: profile.phone || "",
                     receiverName: profile.nickname,
-                    receiverPhone: profile.phone,
+                    receiverPhone: profile.phone || "",
                     pickupAt: null,
                     message: "",
                     memo: "홈페이지 빠른주문",
@@ -572,18 +554,21 @@ export default function OngoingGroupBuySection({
             const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
 
             if (!res.ok || json?.ok === false || !json?.orderNum) {
-                throw new Error(json?.message || `주문 생성 실패 (HTTP ${res.status})`);
+                throw new Error(
+                    json?.message ||
+                    json?.error ||
+                    json?.detail ||
+                    `주문 생성 실패 (HTTP ${res.status})`
+                );
             }
 
-            console.log("quick-order success", json.orderNum, profile.phone);
             saveGuestOrderRef({
                 tenant: firstTenant,
                 orderNum: json.orderNum,
-                phone: profile.phone,
+                phone: profile.phone || "",
                 buyerName: profile.nickname,
                 createdAt: new Date().toISOString(),
             });
-            console.log("guest refs after save", localStorage.getItem("dad_guest_orders_v1"));
 
             setQtyMap({});
             setToastOpen(true);
@@ -617,7 +602,10 @@ export default function OngoingGroupBuySection({
                                 />
 
                                 {index !== displayItems.length - 1 && (
-                                    <div className="w-full border-t" style={{ borderColor: "#d9d9d9" }} />
+                                    <div
+                                        className="w-full border-t"
+                                        style={{ borderColor: "#d9d9d9" }}
+                                    />
                                 )}
                             </div>
                         ))}
@@ -625,13 +613,13 @@ export default function OngoingGroupBuySection({
                 )}
 
                 {showOrderBar && displayItems.length ? (
-                    <div className="fixed bottom-0 inset-x-0 z-30 px-3">
+                    <div className="fixed inset-x-0 bottom-0 z-30 px-3">
                         <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
                             <button
                                 type="button"
                                 onClick={submitQuickOrder}
                                 disabled={!isActive || submitting}
-                                className="relative h-12 w-full rounded-[12px] text-white font-bold transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
+                                className="relative h-12 w-full rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
                                 style={{
                                     background: isActive
                                         ? "linear-gradient(180deg, #f6a45d 0%, #f07f22 0%)"
@@ -649,7 +637,7 @@ export default function OngoingGroupBuySection({
                                     </span>
 
                                     {isActive ? (
-                                        <span className="absolute right-4 inset-y-0 flex flex-col items-end justify-center text-right">
+                                        <span className="absolute inset-y-0 right-4 flex flex-col items-end justify-center text-right">
                                             <span className="text-[13px] opacity-90">총 {totalQty}개</span>
                                             <span className="text-[13px] opacity-90">
                                                 {totalPrice.toLocaleString()}원

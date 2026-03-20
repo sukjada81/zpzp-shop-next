@@ -3,8 +3,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { endpoints } from "@/lib/api/endpoints";
+import { loadGuestOrderRefs } from "@/lib/orders/guestOrderRefs";
 
 type OrderDetailItem = {
     id: string;
@@ -88,20 +89,28 @@ function toneByStatus(statusLabel: string) {
     return "bg-slate-50 border-slate-200 text-slate-700";
 }
 
+function findGuestPhone(orderNum: string, tenant: string) {
+    if (typeof window === "undefined") return "";
+
+    const refs = loadGuestOrderRefs();
+    const found = refs.find((row) => row.orderNum === orderNum && row.tenant === tenant);
+
+    return String(found?.phone ?? "").replace(/[^\d]/g, "");
+}
+
 export default function OrderDetailPage() {
     const params = useParams<{ tenant: string; id: string }>();
-    const searchParams = useSearchParams();
     const router = useRouter();
 
     const tenant = String(params?.tenant ?? "").trim();
     const id = String(params?.id ?? "").trim();
-    const phone = String(searchParams.get("phone") ?? "").replace(/[^\d]/g, "");
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [order, setOrder] = useState<OrderDetailResponse["order"] | null>(null);
     const [canceling, setCanceling] = useState(false);
     const [isGuestMode, setIsGuestMode] = useState(false);
+    const [guestPhone, setGuestPhone] = useState("");
 
     useEffect(() => {
         let cancelled = false;
@@ -117,6 +126,11 @@ export default function OrderDetailPage() {
                 setLoading(true);
                 setError("");
 
+                const localGuestPhone = findGuestPhone(id, tenant);
+                if (!cancelled) {
+                    setGuestPhone(localGuestPhone);
+                }
+
                 let res = await fetch(endpoints.myOrderDetail(tenant, id), {
                     method: "GET",
                     credentials: "include",
@@ -126,9 +140,9 @@ export default function OrderDetailPage() {
                     },
                 });
 
-                if (res.status === 401 && phone) {
+                if (res.status === 401 && localGuestPhone) {
                     setIsGuestMode(true);
-                    res = await fetch(endpoints.guestOrderDetail(tenant, id, phone), {
+                    res = await fetch(endpoints.guestOrderDetail(tenant, id, localGuestPhone), {
                         method: "GET",
                         credentials: "include",
                         cache: "no-store",
@@ -167,7 +181,7 @@ export default function OrderDetailPage() {
         return () => {
             cancelled = true;
         };
-    }, [tenant, id, phone]);
+    }, [tenant, id]);
 
     async function handleCancel() {
         if (!order?.orderNum || canceling) return;
@@ -189,7 +203,7 @@ export default function OrderDetailPage() {
                         "Content-Type": "application/json",
                         Accept: "application/json",
                     },
-                    body: JSON.stringify({ phone }),
+                    body: JSON.stringify({ phone: guestPhone }),
                 });
             } else {
                 res = await fetch(endpoints.cancelOrder(tenant, order.orderNum), {

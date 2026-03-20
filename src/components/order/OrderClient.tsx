@@ -1,11 +1,12 @@
 // src/components/order/OrderClient.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints } from "@/lib/api/endpoints";
 import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
+import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
 
 export type OrderItem = {
     id: string;
@@ -48,15 +49,21 @@ function toApiDateTime(value: string) {
     return d.toISOString();
 }
 
+function buildLoginHref(tenant: string, returnTo: string) {
+    return `/${tenant}/login?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 export default function OrderClient(props: {
     tenant: string;
-    initialItems: OrderItem[];
+    initialItems?: OrderItem[];
 }) {
     const { tenant } = props;
     const router = useRouter();
+    const pathname = usePathname();
     const cart = useCart();
 
-    const [items, setItems] = useState<OrderItem[]>(props.initialItems);
+    const initialItems = props.initialItems ?? [];
+
     const [submitting, setSubmitting] = useState(false);
 
     const [buyerName, setBuyerName] = useState("");
@@ -74,49 +81,63 @@ export default function OrderClient(props: {
     const [message, setMessage] = useState("");
     const [memo, setMemo] = useState("");
 
+    const items = useMemo<OrderItem[]>(() => {
+        if (initialItems.length > 0) {
+            return initialItems;
+        }
+
+        if (cart.items && cart.items.length > 0) {
+            return cart.items.map((item) => ({
+                id: String(item.productId),
+                title: item.name,
+                price: Number(item.price ?? 0),
+                qty: Number(item.quantity ?? 0),
+                optionId: item.optionId,
+                optionName: item.optionName,
+            }));
+        }
+
+        return [];
+    }, [initialItems, cart.items]);
+
     const subtotal = useMemo(
         () => items.reduce((sum, it) => sum + Number(it.price ?? 0) * Number(it.qty ?? 0), 0),
         [items]
     );
 
     const canSubmit = items.length > 0 && !submitting;
+    const isDirectOrder = initialItems.length > 0;
 
-    useEffect(() => {
-        if (!receiverSame) return;
-        setReceiverName(buyerName);
-        setReceiverPhoneA(buyerPhoneA);
-        setReceiverPhoneB(buyerPhoneB);
-        setReceiverPhoneC(buyerPhoneC);
-    }, [receiverSame, buyerName, buyerPhoneA, buyerPhoneB, buyerPhoneC]);
+    function redirectToLogin() {
+        const returnTo = pathname || `/${tenant}/order`;
+        alert("로그인 해야 주문이 가능합니다.");
+        router.push(buildLoginHref(tenant, returnTo));
+    }
 
-    useEffect(() => {
-        if (props.initialItems.length > 0) {
-            setItems(props.initialItems);
-            return;
-        }
+    function updateQty(index: number, next: number) {
+        const target = items[index];
+        if (!target) return;
+        if (isDirectOrder) return;
 
-        if (cart.items.length > 0) {
-            setItems(
-                cart.items.map((item) => ({
-                    id: String(item.productId),
-                    title: item.name,
-                    price: Number(item.price ?? 0),
-                    qty: Number(item.quantity ?? 0),
-                }))
-            );
-        }
-    }, [props.initialItems, cart.items]);
+        const safeQty = Math.max(0, next);
+        const optionKey =
+            target.optionId != null && String(target.optionId).trim() !== ""
+                ? `id:${String(target.optionId)}`
+                : target.optionName
+                    ? `name:${target.optionName}`
+                    : "default";
 
-    function updateQty(id: string, next: number) {
-        setItems((prev) =>
-            prev
-                .map((it) => (it.id === id ? { ...it, qty: Math.max(0, next) } : it))
-                .filter((it) => it.qty > 0)
-        );
+        cart.updateQuantity(String(target.id), safeQty, optionKey);
     }
 
     async function submitOrder() {
         if (!canSubmit) return;
+
+        const profile = readQuickOrderProfile(tenant);
+        if (!profile) {
+            redirectToLogin();
+            return;
+        }
 
         const normalizedBuyerName = buyerName.trim();
         const normalizedBuyerPhone = joinPhone(buyerPhoneA, buyerPhoneB, buyerPhoneC);
@@ -131,7 +152,7 @@ export default function OrderClient(props: {
             return;
         }
 
-        if (normalizedBuyerPhone.length < 10) {
+        if (!normalizedBuyerPhone || normalizedBuyerPhone.length < 10) {
             alert("주문자 연락처를 정확히 입력해 주세요.");
             return;
         }
@@ -141,7 +162,7 @@ export default function OrderClient(props: {
             return;
         }
 
-        if (normalizedReceiverPhone.length < 10) {
+        if (!normalizedReceiverPhone || normalizedReceiverPhone.length < 10) {
             alert("수령인 연락처를 정확히 입력해 주세요.");
             return;
         }
@@ -170,10 +191,13 @@ export default function OrderClient(props: {
                     pickupAt: toApiDateTime(pickupAt),
                     message: message.trim(),
                     memo: memo.trim(),
-                    direct: 0,
+                    direct: isDirectOrder ? 1 : 0,
                     items: items.map((it) => ({
                         productId: Number(it.id),
-                        optionId: it.optionId ? Number(it.optionId) : 0,
+                        optionId:
+                            it.optionId != null && String(it.optionId).trim() !== ""
+                                ? Number(it.optionId)
+                                : undefined,
                         optionName: it.optionName ?? "",
                         qty: Number(it.qty ?? 0),
                     })),
@@ -182,20 +206,30 @@ export default function OrderClient(props: {
 
             const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
 
+            if (res.status === 401) {
+                redirectToLogin();
+                return;
+            }
+
             if (!res.ok || json?.ok === false || !json?.orderNum) {
                 throw new Error(json?.message || `주문 생성 실패 (HTTP ${res.status})`);
             }
 
+            const orderNum = json.orderNum;
+
             saveGuestOrderRef({
                 tenant,
-                orderNum: json.orderNum,
+                orderNum,
                 phone: normalizedBuyerPhone,
                 buyerName: normalizedBuyerName,
                 createdAt: new Date().toISOString(),
             });
 
-            cart.clear();
-            router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(json.orderNum)}`);
+            if (!isDirectOrder) {
+                cart.clear();
+            }
+
+            router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(orderNum)}`);
         } catch (e: any) {
             alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
         } finally {
@@ -224,8 +258,11 @@ export default function OrderClient(props: {
                     </div>
                 ) : (
                     <div className="mt-3 space-y-3">
-                        {items.map((it) => (
-                            <div key={it.id} className="rounded-2xl border border-slate-200 p-3">
+                        {items.map((it, index) => (
+                            <div
+                                key={`${it.id}:${String(it.optionId ?? "")}:${String(it.optionName ?? "")}:${index}`}
+                                className="rounded-2xl border border-slate-200 p-3"
+                            >
                                 <div className="line-clamp-2 text-[14px] font-extrabold text-slate-900">
                                     {it.title}
                                 </div>
@@ -244,8 +281,9 @@ export default function OrderClient(props: {
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => updateQty(it.id, it.qty - 1)}
-                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700"
+                                            onClick={() => updateQty(index, it.qty - 1)}
+                                            disabled={isDirectOrder}
+                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
                                         >
                                             -
                                         </button>
@@ -254,8 +292,9 @@ export default function OrderClient(props: {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => updateQty(it.id, it.qty + 1)}
-                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700"
+                                            onClick={() => updateQty(index, it.qty + 1)}
+                                            disabled={isDirectOrder}
+                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
                                         >
                                             +
                                         </button>
@@ -424,7 +463,7 @@ export default function OrderClient(props: {
                         type="button"
                         onClick={submitOrder}
                         disabled={!canSubmit}
-                        className="flex h-14 w-full items-center justify-center rounded-2xl bg-[color:var(--brand,#0f172a)] text-[15px] font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex h-14 w-full items-center justify-center rounded-2xl bg-[color:var(--accent)] text-[15px] font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         {submitting ? "주문 처리 중..." : `${subtotal.toLocaleString()}원 주문하기`}
                     </button>

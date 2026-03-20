@@ -66,9 +66,13 @@ export type OrderSummary = {
     pickupAt?: string | null;
     badgeText?: string | null;
     footerText?: string | null;
-    lineText?: string;
     canCancel?: boolean;
     guestPhone?: string;
+    lines: Array<{
+        id: string;
+        text: string;
+        amount: number;
+    }>;
 };
 
 function readQuickOrderProfilePhone(tenant: string): string {
@@ -104,26 +108,49 @@ function formatMoney(v: number) {
 
 function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSummary {
     const goods = Array.isArray(order.items) ? order.items : [];
-    const first = goods[0];
 
-    const qtyText = first ? `${first.title} ${first.qty}개` : "주문 상품";
+    const lines = goods.map((item) => {
+        const label = item.optionName?.trim()
+            ? item.optionName.trim()
+            : item.title;
+        return {
+            id: item.id,
+            text: `${label} ${item.qty}개`,
+            amount: Number(item.price ?? 0) * Number(item.qty ?? 0),
+        };
+    });
+
+    const title =
+        goods.length === 0
+            ? order.orderNum
+            : goods.length === 1
+                ? goods[0]?.title ?? order.orderNum
+                : `[${goods.length}건] ${goods[0]?.title ?? "주문 상품"}`;
 
     return {
         orderNo: order.orderNum,
         status: order.displayStatus || order.statusLabel || "주문접수",
-        title:
-            goods.length <= 1
-                ? first?.title ?? order.orderNum
-                : `[${goods.length}건] ${first?.title ?? "주문 상품"}`,
+        title,
         totalPrice: Number(order.totalAmount ?? 0),
         createdAt: order.createdAt,
         pickupAt: order.pickupAt ?? null,
         badgeText: order.badgeText ?? null,
         footerText: order.footerText ?? null,
-        lineText: qtyText,
         canCancel: Boolean(order.canCancel),
         guestPhone,
+        lines,
     };
+}
+
+function dedupeOrders(items: OrderSummary[]) {
+    const map = new Map<string, OrderSummary>();
+    for (const item of items) {
+        if (!item?.orderNo) continue;
+        if (!map.has(item.orderNo)) {
+            map.set(item.orderNo, item);
+        }
+    }
+    return Array.from(map.values());
 }
 
 function getFooterVariant(text: string) {
@@ -165,7 +192,7 @@ function getFooterIcon(variant: string) {
 
 function getBadgeClass(text: string) {
     if (text.includes("픽업 기간")) {
-        return "border-[#d6d6db] bg-[#efeff3] text-[#5f6470]";
+        return "border-[#cfd8ff] bg-[#eef2ff] text-[#6477d7]";
     }
     if (text.includes("픽업 예정")) {
         return "border-[#d6d6db] bg-[#efeff3] text-[#5f6470]";
@@ -192,16 +219,19 @@ export default function OrdersClient(props: {
     }, []);
 
     const fetchGuestOrders = useCallback(async () => {
-        const refs = loadGuestOrderRefs();
+        const refs = loadGuestOrderRefs().filter((ref) => ref.tenant === tenant);
         const merged: OrderSummary[] = [];
 
         if (refs.length > 0) {
             const groupedPhoneMap = new Map<string, string[]>();
 
             for (const ref of refs) {
-                const list = groupedPhoneMap.get(ref.phone) ?? [];
+                const phone = String(ref.phone ?? "").replace(/[^\d]/g, "");
+                if (!phone) continue;
+
+                const list = groupedPhoneMap.get(phone) ?? [];
                 list.push(ref.orderNum);
-                groupedPhoneMap.set(ref.phone, Array.from(new Set(list)));
+                groupedPhoneMap.set(phone, Array.from(new Set(list)));
             }
 
             for (const [phone, orderNums] of groupedPhoneMap.entries()) {
@@ -257,13 +287,13 @@ export default function OrdersClient(props: {
             }
         }
 
-        merged.sort((a, b) => {
+        const sorted = dedupeOrders(merged).sort((a, b) => {
             const at = new Date(a.createdAt || 0).getTime();
             const bt = new Date(b.createdAt || 0).getTime();
             return bt - at;
         });
 
-        setOrders(merged);
+        setOrders(sorted);
         setError("");
     }, [tenant]);
 
@@ -288,13 +318,22 @@ export default function OrdersClient(props: {
                     throw new Error(json.message || "주문내역 조회 실패");
                 }
 
-                setOrders((json.items ?? []).map((item) => mapApiOrderToSummary(item)));
-                return;
+                const mine = (json.items ?? []).map((item) => mapApiOrderToSummary(item));
+
+                if (mine.length > 0) {
+                    setOrders(dedupeOrders(mine));
+                    setError("");
+                    return;
+                }
             }
 
             await fetchGuestOrders();
         } catch (e: any) {
-            setError(e?.message || "주문내역을 불러오지 못했습니다.");
+            try {
+                await fetchGuestOrders();
+            } catch {
+                setError(e?.message || "주문내역을 불러오지 못했습니다.");
+            }
         } finally {
             setLoading(false);
         }
@@ -382,10 +421,7 @@ export default function OrdersClient(props: {
             ) : (
                 orders.map((order) => {
                     const isHighlighted = highlightOrderNo === order.orderNo;
-                    const href = order.guestPhone
-                        ? `/${tenant}/orders/${encodeURIComponent(order.orderNo)}?phone=${encodeURIComponent(order.guestPhone)}`
-                        : `/${tenant}/orders/${encodeURIComponent(order.orderNo)}`;
-
+                    const href = `/${tenant}/orders/${encodeURIComponent(order.orderNo)}`;
                     const footerText = order.footerText || order.status;
                     const footerVariant = getFooterVariant(footerText);
                     const footerClass = getFooterClass(footerVariant);
@@ -440,14 +476,21 @@ export default function OrdersClient(props: {
                                     {order.title}
                                 </div>
 
-                                {order.lineText ? (
-                                    <div className="mt-3 flex items-start justify-between gap-3">
-                                        <div className="min-w-0 flex-1 text-[14px] font-medium text-[#566072]">
-                                            {order.lineText}
-                                        </div>
-                                        <div className="shrink-0 text-[14px] font-semibold text-[#1f2940]">
-                                            {formatMoney(order.totalPrice)}
-                                        </div>
+                                {order.lines.length > 0 ? (
+                                    <div className="mt-3 space-y-2">
+                                        {order.lines.map((line) => (
+                                            <div
+                                                key={line.id}
+                                                className="flex items-start justify-between gap-3 text-[14px]"
+                                            >
+                                                <div className="min-w-0 flex-1 text-[#566072]">
+                                                    {line.text}
+                                                </div>
+                                                <div className="shrink-0 font-semibold text-[#1f2940]">
+                                                    {formatMoney(line.amount)}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 ) : null}
 

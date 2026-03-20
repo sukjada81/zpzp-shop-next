@@ -1,42 +1,26 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
-/* ===============================
-   🎨 Global Theme (Discount All Day)
-   - Navy / Orange / Cream palette
-================================ */
-
 :root {
-  /* Base */
   --bg: #f7f2e8;
-  /* 크림 배경 */
   --surface: #ffffff;
-  /* 카드/패널 */
   --fg: #0f172a;
-  /* 기본 텍스트(다크) */
   --muted: #64748b;
 
-  /* Brand */
   --brand: #173b45;
-  /* 네이비블루(메인) */
   --brand-strong: #0f2a31;
-  /* 더 진한 네이비 */
   --brand-soft: #e7eef0;
-  /* 네이비 라이트 배경 */
 
   --accent: #f08a2a;
-  /* 오렌지(포인트) */
   --accent-strong: #d87314;
   --accent-soft: #fff1e6;
 
-  /* UI */
   --border: #e7e2d8;
   --ring: rgba(240, 138, 42, 0.35);
 
-  /* Kakao */
   --kakao: #fee500;
 }
 
-/* 기본 구조 */
 html,
 body {
   height: 100%;
@@ -49,20 +33,17 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* 링크 */
 a {
   color: inherit;
   text-decoration: none;
 }
 
-/* 공통 카드 */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
 }
 
-/* 버튼 기본 (Primary = Navy) */
 .btn-primary {
   background: var(--brand);
   color: white;
@@ -75,7 +56,6 @@ a {
   background: var(--brand-strong);
 }
 
-/* 포인트 버튼 (Accent = Orange) */
 .btn-accent {
   background: var(--accent);
   color: white;
@@ -88,14 +68,12 @@ a {
   background: var(--accent-strong);
 }
 
-/* 인풋/버튼 포커스 링 */
 :where(button, a, input, textarea, select):focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px var(--ring);
   border-radius: 14px;
 }
 
-/* 헤더/서피스 유리효과에서 border 자연스럽게 */
 .glass {
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(10px);
@@ -103,14 +81,10 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
-/* 모바일 터치 개선 */
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-
-
-/* ===== Admin Theme (DISCOUNT ALL DAY tone) ===== */
 :root {
   --dad-ink: #28252A;
   --dad-orange: #F08148;
@@ -188,23 +162,34 @@ a {
   background: transparent !important;
 }
 
-.hide-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+.goods-page,
+.goods-detail-page {
+  width: 100%;
 }
 
-.hide-scrollbar::-webkit-scrollbar {
-  display: none;
-  width: 0 !important;
-  height: 0 !important;
-  background: transparent !important;
+@media (min-width: 768px) {
+  .goods-page {
+    padding-top: 8px;
+  }
+
+  .goods-detail-page {
+    padding-top: 24px;
+  }
 }
 
-.hide-scrollbar::-webkit-scrollbar-thumb {
-  background: transparent !important;
+.dad-detail-html img {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
-.hide-scrollbar::-webkit-scrollbar-track {
-  background: transparent !important;
+.dad-detail-html table {
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+.dad-detail-html * {
+  max-width: 100%;
+  box-sizing: border-box;
 }

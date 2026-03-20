@@ -5,13 +5,24 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType } from "react";
+import {
+    Home,
+    Receipt,
+    ShoppingCart,
+    Coins,
+    Settings,
+    Store,
+    X,
+} from "lucide-react";
+import { useCart } from "@/lib/cart/CartProvider";
 
 type DrawerItemDef = {
     href: string;
     label: string;
     Icon: ComponentType<{ className?: string }>;
     disabled?: boolean;
+    badgeCount?: number;
 };
 
 type AuthSession = {
@@ -65,6 +76,12 @@ export default function SideDrawer({
 }) {
     const pathname = usePathname();
     const [session, setSession] = useState<AuthSession | null>(null);
+    const { items } = useCart();
+
+    const cartCount = useMemo(
+        () => items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0),
+        [items]
+    );
 
     useEffect(() => {
         let cancelled = false;
@@ -89,18 +106,25 @@ export default function SideDrawer({
 
     const isLoggedIn = !!session?.loggedIn;
 
-    const items: DrawerItemDef[] = useMemo(() => {
+    const itemsMenu: DrawerItemDef[] = useMemo(() => {
         const base: DrawerItemDef[] = [
-            { href: `/${tenant}/home`, label: "홈", Icon: IconToday },
-            { href: `/${tenant}/orders`, label: "주문내역", Icon: IconReceipt },
-            { href: `/${tenant}/settings`, label: "설정", Icon: IconSettings, disabled: false },
+            { href: `/${tenant}/home`, label: "홈", Icon: Home },
+            { href: `/${tenant}/orders`, label: "주문내역", Icon: Receipt },
+            {
+                href: `/${tenant}/cart`,
+                label: "장바구니",
+                Icon: ShoppingCart,
+                disabled: false,
+                badgeCount: cartCount,
+            },
+            { href: `/${tenant}/settings`, label: "설정", Icon: Settings, disabled: false },
         ];
 
         if (!HIDE_POINTS_MENU) {
-            base.splice(2, 0, {
+            base.splice(3, 0, {
                 href: `/${tenant}/points`,
                 label: "내 포인트",
-                Icon: IconCoin,
+                Icon: Coins,
                 disabled: false,
             });
         }
@@ -109,13 +133,13 @@ export default function SideDrawer({
             base.push({
                 href: `/select-tenant`,
                 label: "지점 변경",
-                Icon: IconStore,
+                Icon: Store,
                 disabled: false,
             });
         }
 
         return base;
-    }, [tenant]);
+    }, [tenant, cartCount]);
 
     function goLogin() {
         onCloseAction();
@@ -156,25 +180,22 @@ export default function SideDrawer({
             <div
                 className={[
                     "fixed inset-0 z-40 transition-all",
-                    open ? "opacity-100" : "pointer-events-none opacity-0",
-                    "bg-black/35 backdrop-blur-[2px]",
+                    open
+                        ? "pointer-events-auto bg-black/40 opacity-100"
+                        : "pointer-events-none bg-black/0 opacity-0",
                 ].join(" ")}
                 onClick={onCloseAction}
-                aria-hidden="true"
             />
 
             <aside
                 className={[
-                    "fixed left-0 top-0 z-50 h-dvh w-[300px]",
-                    "bg-[color:var(--surface)] text-[color:var(--fg)] shadow-2xl",
-                    "transition-transform duration-200 ease-out",
+                    "fixed left-0 top-0 z-50 flex h-full w-[86%] max-w-[340px] flex-col bg-white shadow-2xl transition-transform duration-300",
                     open ? "translate-x-0" : "-translate-x-full",
-                    "flex flex-col",
                 ].join(" ")}
                 role="dialog"
                 aria-modal="true"
             >
-                <div className="px-5 pt-5 pb-4 border-b border-[color:var(--border)]">
+                <div className="border-b border-[color:var(--border)] px-5 pb-4 pt-5">
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                             <div className="flex items-center gap-3">
@@ -222,17 +243,17 @@ export default function SideDrawer({
                             aria-label="닫기"
                             className="grid h-10 w-10 place-items-center rounded-xl border border-[color:var(--border)] bg-white hover:bg-[color:var(--accent-soft)] active:scale-[0.98]"
                         >
-                            <IconX className="h-5 w-5 text-[color:var(--brand)]" />
+                            <X className="h-5 w-5 text-[color:var(--brand)]" />
                         </button>
                     </div>
                 </div>
 
-                <nav className="px-3 py-3 flex-1 overflow-auto">
+                <nav className="flex-1 overflow-auto px-3 py-3">
                     <div className="space-y-1">
-                        {items.map((it, idx) => {
+                        {itemsMenu.map((it, idx) => {
                             const active =
                                 pathname === it.href || (pathname?.startsWith(it.href + "/") ?? false);
-                            const needDivider = idx === 1;
+                            const needDivider = idx === 2;
 
                             return (
                                 <div key={it.href}>
@@ -242,9 +263,12 @@ export default function SideDrawer({
                                         Icon={it.Icon}
                                         active={active}
                                         disabled={!!it.disabled}
+                                        badgeCount={it.badgeCount}
                                         onClickAction={onCloseAction}
                                     />
-                                    {needDivider ? <div className="my-2 h-px bg-[color:var(--border)]" /> : null}
+                                    {needDivider ? (
+                                        <div className="my-2 h-px bg-[color:var(--border)]" />
+                                    ) : null}
                                 </div>
                             );
                         })}
@@ -254,7 +278,7 @@ export default function SideDrawer({
                 </nav>
 
                 {!HIDE_AUTH_BUTTON ? (
-                    <div className="p-4 border-t border-[color:var(--border)]">
+                    <div className="border-t border-[color:var(--border)] p-4">
                         {isLoggedIn ? (
                             <button
                                 type="button"
@@ -281,13 +305,13 @@ export default function SideDrawer({
     );
 }
 
-
 function DrawerItem({
                         href,
                         label,
                         Icon,
                         active,
                         disabled,
+                        badgeCount,
                         onClickAction,
                     }: {
     href: string;
@@ -295,6 +319,7 @@ function DrawerItem({
     Icon: ComponentType<{ className?: string }>;
     active?: boolean;
     disabled?: boolean;
+    badgeCount?: number;
     onClickAction: () => void;
 }) {
     const base =
@@ -313,7 +338,7 @@ function DrawerItem({
                     <Icon className="h-[18px] w-[18px]" />
                 </span>
                 <span className="flex-1">{label}</span>
-                <span className="text-[11px] rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-[color:var(--brand)]">
+                <span className="rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-[11px] text-[color:var(--brand)]">
                     준비중
                 </span>
             </div>
@@ -340,86 +365,12 @@ function DrawerItem({
                 />
             </span>
             <span className="flex-1">{label}</span>
-            <span className="text-[color:var(--muted)]/50">›</span>
+
+            {badgeCount && badgeCount > 0 ? (
+                <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-extrabold leading-none text-white">
+                    {badgeCount > 99 ? "99+" : badgeCount}
+                </span>
+            ) : null}
         </Link>
-    );
-}
-
-function Svg({ className, children }: { className?: string; children: ReactNode }) {
-    return (
-        <svg
-            className={className ?? "h-5 w-5"}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-        >
-            {children}
-        </svg>
-    );
-}
-
-function IconX({ className }: { className?: string }) {
-    return (
-        <Svg className={className}>
-            <path d="M18 6L6 18" />
-            <path d="M6 6l12 12" />
-        </Svg>
-    );
-}
-
-function IconToday({ className }: { className?: string }) {
-    return (
-        <Svg className={className}>
-            <path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6" />
-            <path d="M4 12V6a2 2 0 0 1 2-2h3" />
-            <path d="M20 12V6a2 2 0 0 0-2-2h-3" />
-            <path d="M9 4v4" />
-            <path d="M15 4v4" />
-            <path d="M7 12h10" />
-        </Svg>
-    );
-}
-
-function IconReceipt({ className }: { className?: string }) {
-    return (
-        <Svg className={className}>
-            <path d="M6 2h12v20l-2-1-2 1-2-1-2 1-2-1-2 1V2Z" />
-            <path d="M8 7h8" />
-            <path d="M8 11h8" />
-            <path d="M8 15h6" />
-        </Svg>
-    );
-}
-
-function IconCoin({ className }: { className?: string }) {
-    return (
-        <Svg className={className}>
-            <ellipse cx="12" cy="7" rx="7" ry="3" />
-            <path d="M5 7v5c0 1.66 3.13 3 7 3s7-1.34 7-3V7" />
-            <path d="M5 12v5c0 1.66 3.13 3 7 3s7-1.34 7-3v-5" />
-        </Svg>
-    );
-}
-
-function IconSettings({ className }: { className?: string }) {
-    return (
-        <Svg className={className}>
-            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-            <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.5-2-3.5-2.4.7a7.6 7.6 0 0 0-1.7-1l-.4-2.5H11l-.4 2.5c-.6.2-1.2.6-1.7 1L6.5 8 4.5 11.5l2 1.5a7.9 7.9 0 0 0 .1 2l-2 1.5 2 3.5 2.4-.7c.5.4 1.1.7 1.7 1l.4 2.5h4l.4-2.5c.6-.2 1.2-.6 1.7-1l2.4.7 2-3.5-2-1.5Z" />
-        </Svg>
-    );
-}
-
-function IconStore({ className }: { className?: string }) {
-    return (
-        <Svg className={className}>
-            <path d="M3 9l1-5h16l1 5" />
-            <path d="M5 9v11h14V9" />
-            <path d="M9 20v-6h6v6" />
-        </Svg>
     );
 }

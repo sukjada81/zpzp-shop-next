@@ -1,6 +1,13 @@
+// src/components/home/CategoryRow.tsx
+"use client";
+
 type Category = { key: string; label: string; emoji: string };
 
 export default function CategoryRow({ categories }: { categories: Category[] }) {
+    const handlePreparing = (label: string) => {
+        window.alert(`${label} 서비스는 현재 준비중입니다.`);
+    };
+
     return (
         <div className="mt-4">
             <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -8,6 +15,7 @@ export default function CategoryRow({ categories }: { categories: Category[] }) 
                     <button
                         key={c.key}
                         type="button"
+                        onClick={() => handlePreparing(c.label)}
                         className="flex w-[74px] shrink-0 flex-col items-center gap-2 rounded-2xl bg-white px-2 py-3 shadow-sm ring-1 ring-gray-100 active:scale-[0.99]"
                     >
                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-xl">

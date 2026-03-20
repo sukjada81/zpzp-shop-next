@@ -101,30 +101,30 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
     }
 
     return (
-        <main className="mx-auto max-w-[520px] px-4 pb-24">
-            <section className="pt-3">
+        <main className="goods-page mx-auto w-full max-w-[1200px] px-4 pb-24 md:px-6 lg:px-8">
+            <section className="pt-4 md:pt-6">
                 <div className="flex items-start gap-3">
                     <button
                         type="button"
                         onClick={() => router.back()}
                         aria-label="뒤로가기"
-                        className="mt-1 grid h-9 w-9 place-items-center rounded-xl border border-[color:var(--border)] bg-white active:scale-[0.98]"
+                        className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[color:var(--border)] bg-white active:scale-[0.98]"
                     >
                         <span className="text-[18px] font-black text-[color:var(--brand)]">←</span>
                     </button>
 
                     <div className="min-w-0">
-                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)]">
+                        <div className="text-[22px] font-extrabold tracking-tight text-[color:var(--fg)] md:text-[30px]">
                             {headerTitle}
                         </div>
-                        <div className="mt-1 text-[13px] font-semibold text-[color:var(--muted)] leading-snug">
+                        <div className="mt-1 text-[13px] font-semibold leading-snug text-[color:var(--muted)] md:text-[15px]">
                             {headerDesc}
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section className="mt-4">
+            <section className="mt-4 md:mt-6">
                 <div className="flex gap-2 overflow-x-auto pb-1">
                     {TABS.map((t) => {
                         const active = t.key === tab;
@@ -134,10 +134,10 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
                                 type="button"
                                 onClick={() => onChangeTab(t.key)}
                                 className={[
-                                    "shrink-0 rounded-full px-3 py-2 text-xs font-extrabold border",
+                                    "shrink-0 rounded-full px-4 py-2 text-sm font-extrabold transition",
                                     active
-                                        ? "bg-[color:var(--brand)] text-white border-[color:var(--brand)]"
-                                        : "bg-white text-[color:var(--muted)] border-[color:var(--border)]",
+                                        ? "bg-[color:var(--brand)] text-white"
+                                        : "border border-[color:var(--border)] bg-white text-[color:var(--muted)]",
                                 ].join(" ")}
                             >
                                 {t.label}
@@ -148,20 +148,20 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
             </section>
 
             <section className="mt-4">
-                <div className="rounded-2xl border border-[color:var(--border)] bg-white px-3 py-2 shadow-sm">
+                <div className="rounded-2xl border border-[color:var(--border)] bg-white p-3 shadow-sm md:p-4">
                     <div className="flex items-center gap-2">
-                        <span className="text-[color:var(--muted)]">🔎</span>
                         <input
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
-                            placeholder="검색어를 입력해 주세요"
-                            className="w-full bg-transparent text-sm outline-none placeholder:text-[color:var(--muted)]"
+                            placeholder="상품명을 검색해보세요"
+                            className="h-11 flex-1 rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] px-4 text-sm outline-none"
                         />
+
                         {q ? (
                             <button
                                 type="button"
                                 onClick={() => setQ("")}
-                                className="rounded-lg px-2 py-1 text-xs font-semibold text-[color:var(--muted)] hover:bg-[color:var(--accent-soft)]"
+                                className="rounded-lg px-3 py-2 text-xs font-semibold text-[color:var(--muted)] hover:bg-[color:var(--accent-soft)]"
                             >
                                 지우기
                             </button>
@@ -170,14 +170,16 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
                 </div>
             </section>
 
-            <section className="mt-5">
+            <section className="mt-5 md:mt-7">
                 {filtered.length === 0 ? (
                     <div className="rounded-2xl border border-[color:var(--border)] bg-white p-6 text-center shadow-sm">
                         <div className="text-[15px] font-extrabold text-[color:var(--fg)]">상품이 없습니다</div>
-                        <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">조건에 맞는 상품이 없어요.</div>
+                        <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">
+                            조건에 맞는 상품이 없어요.
+                        </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-5">
                         {filtered.map((it) => (
                             <GoodsCard key={it.id} tenant={tenant} item={it} />
                         ))}
@@ -195,50 +197,50 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
     return (
         <Link
             href={`/${tenant}/goods/${item.id}`}
-            className="group block rounded-2xl border border-[color:var(--border)] bg-white shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+            className="group block overflow-hidden rounded-[20px] border border-[color:var(--border)] bg-white shadow-sm transition duration-200 hover:-translate-y-[1px] hover:shadow-md"
         >
-            <div className="p-3">
-                <div className="relative overflow-hidden rounded-xl bg-[color:var(--brand-soft)]">
-                    <div className="aspect-[4/3]" />
+            <div className="relative overflow-hidden bg-[color:var(--brand-soft)]">
+                <div className="aspect-[3/4]" />
 
-                    {thumb ? (
-                        <img
-                            src={thumb}
-                            alt={item.title}
-                            className="absolute inset-0 h-full w-full object-cover"
-                            loading="lazy"
-                        />
+                {thumb ? (
+                    <img
+                        src={thumb}
+                        alt={item.title}
+                        className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                        loading="lazy"
+                    />
+                ) : null}
+
+                <div className="absolute left-3 top-3 flex gap-2">
+                    {item.categoryLabel ? (
+                        <span
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-extrabold md:text-[12px] ${categoryBadgeColor(
+                                item.categoryLabel
+                            )}`}
+                        >
+                            {item.categoryLabel}
+                        </span>
                     ) : null}
-
-                    <div className="absolute left-2 top-2 flex gap-2">
-                        {item.categoryLabel ? (
-                            <span
-                                className={`rounded-full px-2 py-1 text-[11px] font-extrabold ${categoryBadgeColor(
-                                    item.categoryLabel
-                                )}`}
-                            >
-                                {item.categoryLabel}
-                            </span>
-                        ) : null}
-                    </div>
                 </div>
+            </div>
 
-                <div className="mt-3 line-clamp-2 text-sm font-bold text-[color:var(--fg)]">
+            <div className="p-3 md:p-4">
+                <div className="line-clamp-2 min-h-[40px] text-[14px] font-bold leading-[1.45] text-[color:var(--fg)] md:min-h-[48px] md:text-[16px]">
                     {item.title}
                 </div>
 
-                <div className="mt-2 text-lg font-extrabold text-[color:var(--fg)]">
+                <div className="mt-2 text-[18px] font-extrabold text-[color:var(--fg)] md:text-[22px]">
                     {Number(item.price ?? 0).toLocaleString()}원
                 </div>
 
                 {(item.metaLeft || item.metaRight) && (
-                    <div className="mt-2 flex flex-col gap-1 text-[11px] font-semibold text-[color:var(--muted)]">
+                    <div className="mt-2 flex flex-col gap-1 text-[11px] font-semibold leading-[1.4] text-[color:var(--muted)] md:text-[12px]">
                         {item.metaLeft ? <span>{item.metaLeft}</span> : null}
                         {item.metaRight ? <span>{item.metaRight}</span> : null}
                     </div>
                 )}
 
-                <div className="mt-3 rounded-xl border border-[color:var(--border)] bg-white px-3 py-2 text-center text-xs font-bold text-[color:var(--brand)] group-hover:bg-[color:var(--accent-soft)]">
+                <div className="mt-3 rounded-xl border border-[color:var(--border)] bg-white px-3 py-2 text-center text-xs font-bold text-[color:var(--brand)] transition group-hover:bg-[color:var(--accent-soft)] md:py-3 md:text-sm">
                     자세히 보기 →
                 </div>
             </div>

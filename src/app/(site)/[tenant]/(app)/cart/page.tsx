@@ -1,13 +1,12 @@
 // src/app/(site)/[tenant]/(app)/cart/page.tsx
 import CartPageClient from "@/components/cart/CartPageClient";
 
-export default function CartPage({
-                                     params,
-                                 }: {
-    params: { tenant: string };
+export default async function CartPage({
+                                           params,
+                                       }: {
+    params: Promise<{ tenant: string }>;
 }) {
-    // ✅ Server Component에서는 params 동기 접근 OK
-    const { tenant } = params;
+    const { tenant } = await params;
 
     return <CartPageClient tenant={tenant} />;
 }

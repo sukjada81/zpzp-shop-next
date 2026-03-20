@@ -1,15 +1,114 @@
 // src/components/cart/CartPageClient.tsx
 "use client";
 
-import { useCart } from "@/lib/cart/CartProvider";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useCart } from "@/lib/cart/CartProvider";
+import { endpoints } from "@/lib/api/endpoints";
+import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
+import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
+
+type CreateOrderResponse = {
+    ok: boolean;
+    orderNum?: string;
+    status?: number;
+    statusLabel?: string;
+    message?: string;
+    error?: string;
+    detail?: string;
+};
+
+function getOptionKey(item: { optionId?: number | string; optionName?: string }) {
+    if (item.optionId != null && String(item.optionId).trim() !== "") {
+        return `id:${String(item.optionId)}`;
+    }
+    if (item.optionName != null && String(item.optionName).trim() !== "") {
+        return `name:${String(item.optionName).trim()}`;
+    }
+    return "default";
+}
 
 export default function CartPageClient({ tenant }: { tenant: string }) {
-    const { items, totalPrice } = useCart();
+    const router = useRouter();
+    const { items, totalPrice, updateQuantity, removeItem, clear } = useCart();
+    const [submitting, setSubmitting] = useState(false);
+
+    async function handleDirectOrder() {
+        if (!items.length || submitting) return;
+
+        const profile = readQuickOrderProfile(tenant);
+        if (!profile) {
+            alert("주문을 하려면 설정에서 닉네임을 먼저 저장해 주세요.");
+            router.push(`/${tenant}/settings`);
+            return;
+        }
+
+        try {
+            setSubmitting(true);
+
+            const res = await fetch(endpoints.createOrder(tenant), {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({
+                    buyerName: profile.nickname,
+                    buyerPhone: profile.phone || "",
+                    receiverName: profile.nickname,
+                    receiverPhone: profile.phone || "",
+                    pickupAt: null,
+                    message: "",
+                    memo: "장바구니 바로주문",
+                    direct: 1,
+                    items: items.map((it) => ({
+                        productId: Number(it.productId),
+                        optionId:
+                            it.optionId != null && String(it.optionId).trim() !== ""
+                                ? Number(it.optionId)
+                                : undefined,
+                        optionName: it.optionName ?? "",
+                        qty: Number(it.quantity ?? 0),
+                    })),
+                }),
+            });
+
+            const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
+
+            if (!res.ok || json?.ok === false || !json?.orderNum) {
+                throw new Error(
+                    json?.message ||
+                    json?.error ||
+                    json?.detail ||
+                    `주문 생성 실패 (HTTP ${res.status})`
+                );
+            }
+
+            const orderNum = json.orderNum;
+
+            saveGuestOrderRef({
+                tenant,
+                orderNum,
+                phone: profile.phone || "",
+                buyerName: profile.nickname,
+                createdAt: new Date().toISOString(),
+            });
+
+            clear();
+            router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(orderNum)}`);
+        } catch (e: any) {
+            alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
+        } finally {
+            setSubmitting(false);
+        }
+    }
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24 pt-3">
-            <div className="text-base font-extrabold text-slate-900 mb-3">장바구니</div>
+            <div className="mb-3 text-base font-extrabold text-slate-900">장바구니</div>
 
             {items.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
@@ -19,7 +118,7 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
 
                     <Link
                         href={`/${tenant}/goods`}
-                        className="mt-4 inline-flex rounded-2xl bg-[color:var(--brand)] px-4 py-3 text-sm font-extrabold text-white hover:opacity-90"
+                        className="mt-4 inline-flex rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white hover:opacity-90"
                     >
                         상품 보러가기
                     </Link>
@@ -27,19 +126,78 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
             ) : (
                 <>
                     <section className="space-y-3">
-                        {items.map((item) => (
-                            <div
-                                key={item.productId}
-                                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                            >
-                                <div className="text-sm font-extrabold text-slate-900">{item.name}</div>
+                        {items.map((item) => {
+                            const optionKey = getOptionKey(item);
 
-                                <div className="mt-2 flex justify-between text-sm text-slate-600">
-                                    <span>{item.quantity}개</span>
-                                    <span>{(item.price * item.quantity).toLocaleString()}원</span>
+                            return (
+                                <div
+                                    key={`${item.productId}:${optionKey}`}
+                                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                                >
+                                    <div className="text-sm font-extrabold text-slate-900">
+                                        {item.name}
+                                    </div>
+
+                                    {item.optionName ? (
+                                        <div className="mt-1 text-xs font-semibold text-slate-500">
+                                            옵션: {item.optionName}
+                                        </div>
+                                    ) : null}
+
+                                    <div className="mt-3 flex items-center justify-between gap-3">
+                                        <div className="text-sm font-extrabold text-slate-900">
+                                            {(
+                                                Number(item.price ?? 0) * Number(item.quantity ?? 0)
+                                            ).toLocaleString()}
+                                            원
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    updateQuantity(
+                                                        item.productId,
+                                                        Number(item.quantity ?? 0) - 1,
+                                                        optionKey
+                                                    )
+                                                }
+                                                disabled={submitting}
+                                                className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
+                                            >
+                                                -
+                                            </button>
+                                            <div className="min-w-[28px] text-center text-sm font-extrabold text-slate-900">
+                                                {item.quantity}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    updateQuantity(
+                                                        item.productId,
+                                                        Number(item.quantity ?? 0) + 1,
+                                                        optionKey
+                                                    )
+                                                }
+                                                disabled={submitting}
+                                                className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => removeItem(item.productId, optionKey)}
+                                        disabled={submitting}
+                                        className="mt-3 text-xs font-bold text-rose-600 disabled:opacity-40"
+                                    >
+                                        삭제
+                                    </button>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </section>
 
                     <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -49,12 +207,14 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                         </div>
                     </div>
 
-                    <Link
-                        href={`/${tenant}/order`}
-                        className="mt-6 block w-full rounded-2xl bg-[color:var(--brand)] py-4 text-center text-base font-extrabold text-white hover:opacity-90"
+                    <button
+                        type="button"
+                        onClick={handleDirectOrder}
+                        disabled={submitting}
+                        className="mt-6 block w-full rounded-2xl bg-[color:var(--accent)] py-4 text-center text-base font-extrabold text-white hover:opacity-90 disabled:opacity-50"
                     >
-                        주문하기
-                    </Link>
+                        {submitting ? "주문 처리 중..." : "주문하기"}
+                    </button>
                 </>
             )}
         </main>
