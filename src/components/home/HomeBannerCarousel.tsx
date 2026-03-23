@@ -1,27 +1,70 @@
 // src/components/home/HomeBannerCarousel.tsx
 "use client";
 
+import Image from "next/image";
+import { useEffect, useState } from "react";
+
+const banners = [
+    {
+        id: 1,
+        image: "/banners/banner_0.jpg",
+    },
+    {
+        id: 2,
+        image: "/banners/banner_1.jpg",
+    },
+    {
+        id: 3,
+        image: "/banners/banner_2.jpg",
+    },
+];
+
 export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
+    const [current, setCurrent] = useState(0);
+
+    // 자동 슬라이드
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrent((prev) => (prev + 1) % banners.length);
+        }, 4000);
+
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div className="mb-2">
             <div className="relative w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
-                <div className="relative flex w-full aspect-[4/1] items-center justify-center overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-5">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.12),transparent_28%)]" />
 
-                    <div className="relative z-10 flex w-full items-center justify-between gap-4 text-white">
-                        <div className="min-w-0">
-                            <div className="mt-2 text-[20px] font-extrabold tracking-[-0.03em] md:text-[30px]">
-                                배너 준비중
-                            </div>
-                            <div className="mt-1 text-[12px] font-medium text-white/80 md:text-[14px]">
-                                곧 프로모션 배너가 노출될 예정입니다.
-                            </div>
+                {/* 슬라이드 영역 */}
+                <div className="relative w-full aspect-[4/1] overflow-hidden">
+                    {banners.map((banner, index) => (
+                        <div
+                            key={banner.id}
+                            className={`absolute inset-0 transition-opacity duration-700 ${
+                                current === index ? "opacity-100 z-10" : "opacity-0 z-0"
+                            }`}
+                        >
+                            <Image
+                                src={banner.image}
+                                alt={`banner-${index}`}
+                                fill
+                                className="object-cover"
+                                priority={index === 0}
+                            />
                         </div>
+                    ))}
+                </div>
 
-                        <div className="shrink-0 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[12px] font-bold text-white/90 backdrop-blur md:px-5 md:py-2.5 md:text-[13px]">
-                            Coming Soon
-                        </div>
-                    </div>
+                {/* 인디케이터 */}
+                <div className="absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 gap-1">
+                    {banners.map((_, index) => (
+                        <div
+                            key={index}
+                            className={`h-2 w-2 rounded-full ${
+                                current === index ? "bg-white" : "bg-white/40"
+                            }`}
+                        />
+                    ))}
                 </div>
             </div>
         </div>
