@@ -1,5 +1,23 @@
 // src/lib/types/goods.ts
 
+export type PublicProductOption = {
+    id: string;
+    name: string;
+    price: number | null;
+    addPrice?: number;
+    qty?: number;
+    qtyType?: number;
+    soldout?: boolean;
+    stockNote?: string;
+    rawOptionId?: number | string;
+    code?: string;
+};
+
+export type PublicProductImage = {
+    key: string;
+    label?: string;
+};
+
 export type PublicProductListItem = {
     id: string;
     title: string;
@@ -7,6 +25,8 @@ export type PublicProductListItem = {
     metaLeft?: string;
     metaRight?: string;
     thumbnailUrl?: string;
+    images?: PublicProductImage[];
+    options?: PublicProductOption[];
     sourceTenantId?: string | null;
     cate?: string | null;
     categoryLabel?: string;
@@ -45,15 +65,8 @@ export type PublicProductDetailResponse = {
             pickupEndAt?: string | null;
             pickupNote?: string | null;
         };
-        images: { key: string; label?: string }[];
-        options: Array<{
-            id: string;
-            name: string;
-            price: number | null;
-            soldout?: boolean;
-            stockNote?: string;
-            rawOptionId?: number | string;
-        }>;
+        images: PublicProductImage[];
+        options: PublicProductOption[];
         sourceTenantId?: string | null;
         saleStartAt?: string | null;
         saleEndAt?: string | null;

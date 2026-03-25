@@ -29,6 +29,13 @@ function getOptionKey(item: { optionId?: number | string; optionName?: string })
     return "default";
 }
 
+function getMaxSelectableQty(item?: { qtyType?: number; stockQty?: number }) {
+    if (!item) return Number.POSITIVE_INFINITY;
+    if (Number(item.qtyType ?? 1) === 1) return Number.POSITIVE_INFINITY;
+    const qty = Number(item.stockQty ?? 0);
+    return qty > 0 ? qty : 0;
+}
+
 export default function CartPageClient({ tenant }: { tenant: string }) {
     const router = useRouter();
     const { items, totalPrice, updateQuantity, removeItem, clear } = useCart();
@@ -128,6 +135,10 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                     <section className="space-y-3">
                         {items.map((item) => {
                             const optionKey = getOptionKey(item);
+                            const maxQty = getMaxSelectableQty(item);
+                            const isMaxReached =
+                                maxQty !== Number.POSITIVE_INFINITY &&
+                                Number(item.quantity ?? 0) >= maxQty;
 
                             return (
                                 <div
@@ -141,6 +152,12 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                                     {item.optionName ? (
                                         <div className="mt-1 text-xs font-semibold text-slate-500">
                                             옵션: {item.optionName}
+                                        </div>
+                                    ) : null}
+
+                                    {item.stockNote ? (
+                                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
+                                            {item.stockNote}
                                         </div>
                                     ) : null}
 
@@ -179,7 +196,7 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                                                         optionKey
                                                     )
                                                 }
-                                                disabled={submitting}
+                                                disabled={submitting || !!item.soldout || isMaxReached}
                                                 className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
                                             >
                                                 +
@@ -210,8 +227,8 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                     <button
                         type="button"
                         onClick={handleDirectOrder}
-                        disabled={submitting}
-                        className="mt-6 block w-full rounded-2xl bg-[color:var(--accent)] py-4 text-center text-base font-extrabold text-white hover:opacity-90 disabled:opacity-50"
+                        disabled={submitting || items.length === 0}
+                        className="mt-4 w-full rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white disabled:opacity-50"
                     >
                         {submitting ? "주문 처리 중..." : "주문하기"}
                     </button>

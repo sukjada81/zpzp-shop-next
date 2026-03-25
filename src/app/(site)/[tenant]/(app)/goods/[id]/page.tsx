@@ -44,8 +44,19 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                                 id: String(o.id),
                                 name: String(o.name ?? ""),
                                 price: o.price === null || o.price === undefined ? null : Number(o.price),
+                                addPrice:
+                                    o.addPrice === null || o.addPrice === undefined
+                                        ? undefined
+                                        : Number(o.addPrice),
+                                qty: o.qty === null || o.qty === undefined ? undefined : Number(o.qty),
+                                qtyType:
+                                    o.qtyType === null || o.qtyType === undefined
+                                        ? undefined
+                                        : Number(o.qtyType),
                                 soldout: !!o.soldout,
                                 stockNote: o.stockNote,
+                                rawOptionId: o.rawOptionId,
+                                code: o.code,
                             }))
                             : [
                                 {
@@ -53,6 +64,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                                     name: "기본 옵션",
                                     price: null,
                                     soldout: false,
+                                    rawOptionId: 0,
                                 },
                             ],
                     notices: Array.isArray((p as any).notices) ? (p as any).notices : [],
@@ -98,6 +110,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                     name: "기본 옵션",
                     price: null,
                     soldout: false,
+                    rawOptionId: 0,
                 },
             ],
             notices: [],

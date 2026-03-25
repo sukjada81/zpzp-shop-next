@@ -20,9 +20,13 @@ type OptionItem = {
     id: string;
     name: string;
     price: number | null;
+    addPrice?: number;
+    qty?: number;
+    qtyType?: number;
     soldout?: boolean;
     stockNote?: string;
     rawOptionId?: number | string;
+    code?: string;
 };
 
 export type OngoingGroupBuyItem = {
@@ -77,6 +81,19 @@ function buildOptionKey(productId: string | number, optionId: string | number) {
     return `${String(productId)}__${String(optionId)}`;
 }
 
+function getMaxSelectableQty(option?: OptionItem) {
+    if (!option) return Number.POSITIVE_INFINITY;
+    if (Number(option.qtyType ?? 1) === 1) return Number.POSITIVE_INFINITY;
+    const qty = Number(option.qty ?? 0);
+    return qty > 0 ? qty : 0;
+}
+
+function formatAddPrice(addPrice?: number) {
+    const value = Number(addPrice ?? 0);
+    if (!value) return "";
+    return value > 0 ? `+${value.toLocaleString()}원` : `${value.toLocaleString()}원`;
+}
+
 function SuccessToast({
                           open,
                           message,
@@ -119,11 +136,7 @@ function SuccessToast({
     );
 }
 
-function CompactNoticeBar({
-                              notice,
-                          }: {
-    notice?: NoticeItem;
-}) {
+function CompactNoticeBar({ notice }: { notice?: NoticeItem }) {
     if (!notice) return null;
 
     return (
@@ -143,13 +156,9 @@ function CompactNoticeBar({
                 />
 
                 <span className="leading-none">
-                    <strong style={{ color: "#f07f22", fontWeight: 600 }}>
-                        {notice.maskedName}
-                    </strong>
+                    <strong style={{ color: "#f07f22", fontWeight: 600 }}>{notice.maskedName}</strong>
                     <span> 님이 {formatAgo(notice.minutesAgo)} </span>
-                    <span style={{ color: "#f07f22", fontWeight: 700 }}>
-                        {notice.qty}개
-                    </span>
+                    <span style={{ color: "#f07f22", fontWeight: 700 }}>{notice.qty}개</span>
                     <span>를 주문했어요</span>
                 </span>
             </div>
@@ -185,9 +194,7 @@ function QtyControl({
                 −
             </button>
 
-            <div className="min-w-10 text-center text-base font-semibold text-neutral-800">
-                {value}
-            </div>
+            <div className="min-w-10 text-center text-base font-semibold text-neutral-800">{value}</div>
 
             <button
                 onClick={onPlus}
@@ -205,8 +212,6 @@ function QtyControl({
         </div>
     );
 }
-
-// src/components/home/OngoingGroupBuySection.tsx
 
 function ProductThumbStrip({
                                images,
@@ -321,7 +326,9 @@ function GroupBuyItemBlock({
                     const qty = qtyMap[optionKey] ?? 0;
                     const price = Number(option.price ?? item.price ?? 0);
                     const soldout = !!option.soldout;
-                    const stockText = option.stockNote?.trim() || "🔥 5개 남았습니다!";
+                    const stockText = option.stockNote?.trim() || "옵션 선택 가능";
+                    const maxQty = getMaxSelectableQty(option);
+                    const isMaxReached = maxQty !== Number.POSITIVE_INFINITY && qty >= maxQty;
 
                     return (
                         <div
@@ -333,15 +340,17 @@ function GroupBuyItemBlock({
                             }}
                         >
                             <div className="min-w-0 flex-1">
-                                <span
-                                    className="inline-flex items-center gap-1 text-xs"
-                                    style={{ color: "#ff6b6b" }}
-                                >
+                                <span className="inline-flex items-center gap-1 text-xs" style={{ color: "#ff6b6b" }}>
                                     <span>{stockText}</span>
                                 </span>
 
                                 <div className="mt-1 font-medium text-neutral-900">
                                     {option.name}
+                                    {option.addPrice ? (
+                                        <span className="ml-1 text-xs font-bold text-rose-600">
+                                            ({formatAddPrice(option.addPrice)})
+                                        </span>
+                                    ) : null}
                                 </div>
 
                                 <div className="mt-1 text-sm text-neutral-600">
@@ -356,7 +365,7 @@ function GroupBuyItemBlock({
                             ) : (
                                 <QtyControl
                                     value={qty}
-                                    disabled={!!item.isMockPreview}
+                                    disabled={!!item.isMockPreview || isMaxReached}
                                     onMinus={() => onMinus(optionKey)}
                                     onPlus={() => onPlus(optionKey)}
                                 />
@@ -406,6 +415,9 @@ export default function OngoingGroupBuySection({
                 optionId: string;
                 rawOptionId: number;
                 optionName: string;
+                qty?: number;
+                qtyType?: number;
+                soldout?: boolean;
             }
         >();
 
@@ -432,6 +444,9 @@ export default function OngoingGroupBuySection({
                     optionId: String(option.id),
                     rawOptionId,
                     optionName: option.name,
+                    qty: option.qty,
+                    qtyType: option.qtyType,
+                    soldout: option.soldout,
                 });
             }
         }
@@ -486,10 +501,21 @@ export default function OngoingGroupBuySection({
     }
 
     function plus(optionKey: string) {
-        setQtyMap((prev) => ({
-            ...prev,
-            [optionKey]: (prev[optionKey] ?? 0) + 1,
-        }));
+        const meta = optionMetaMap.get(optionKey);
+        if (!meta || meta.soldout) return;
+
+        const maxQty =
+            Number(meta.qtyType ?? 1) === 1
+                ? Number.POSITIVE_INFINITY
+                : Math.max(0, Number(meta.qty ?? 0));
+
+        setQtyMap((prev) => {
+            const next = (prev[optionKey] ?? 0) + 1;
+            return {
+                ...prev,
+                [optionKey]: maxQty === Number.POSITIVE_INFINITY ? next : Math.min(next, maxQty),
+            };
+        });
     }
 
     async function submitQuickOrder() {
@@ -602,10 +628,7 @@ export default function OngoingGroupBuySection({
                                 />
 
                                 {index !== displayItems.length - 1 && (
-                                    <div
-                                        className="w-full border-t"
-                                        style={{ borderColor: "#d9d9d9" }}
-                                    />
+                                    <div className="w-full border-t" style={{ borderColor: "#d9d9d9" }} />
                                 )}
                             </div>
                         ))}

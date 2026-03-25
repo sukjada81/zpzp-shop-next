@@ -16,6 +16,10 @@ export type OrderItem = {
     metaRight?: string;
     optionId?: number | string;
     optionName?: string;
+    qtyType?: number;
+    stockQty?: number;
+    soldout?: boolean;
+    stockNote?: string;
 };
 
 type CreateOrderResponse = {
@@ -51,6 +55,13 @@ function toApiDateTime(value: string) {
 
 function buildLoginHref(tenant: string, returnTo: string) {
     return `/${tenant}/login?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+function getMaxSelectableQty(item?: { qtyType?: number; stockQty?: number }) {
+    if (!item) return Number.POSITIVE_INFINITY;
+    if (Number(item.qtyType ?? 1) === 1) return Number.POSITIVE_INFINITY;
+    const qty = Number(item.stockQty ?? 0);
+    return qty > 0 ? qty : 0;
 }
 
 export default function OrderClient(props: {
@@ -94,6 +105,10 @@ export default function OrderClient(props: {
                 qty: Number(item.quantity ?? 0),
                 optionId: item.optionId,
                 optionName: item.optionName,
+                qtyType: item.qtyType,
+                stockQty: item.stockQty,
+                soldout: item.soldout,
+                stockNote: item.stockNote,
             }));
         }
 
@@ -258,90 +273,104 @@ export default function OrderClient(props: {
                     </div>
                 ) : (
                     <div className="mt-3 space-y-3">
-                        {items.map((it, index) => (
-                            <div
-                                key={`${it.id}:${String(it.optionId ?? "")}:${String(it.optionName ?? "")}:${index}`}
-                                className="rounded-2xl border border-slate-200 p-3"
-                            >
-                                <div className="line-clamp-2 text-[14px] font-extrabold text-slate-900">
-                                    {it.title}
-                                </div>
+                        {items.map((it, index) => {
+                            const maxQty = getMaxSelectableQty(it);
+                            const isMaxReached =
+                                maxQty !== Number.POSITIVE_INFINITY && Number(it.qty ?? 0) >= maxQty;
 
-                                {it.optionName ? (
-                                    <div className="mt-1 text-[12px] font-semibold text-slate-500">
-                                        옵션: {it.optionName}
-                                    </div>
-                                ) : null}
-
-                                <div className="mt-3 flex items-center justify-between gap-3">
-                                    <div className="text-[14px] font-extrabold text-slate-900">
-                                        {(it.price * it.qty).toLocaleString()}원
+                            return (
+                                <div
+                                    key={`${it.id}:${String(it.optionId ?? "")}:${String(it.optionName ?? "")}:${index}`}
+                                    className="rounded-2xl border border-slate-200 p-3"
+                                >
+                                    <div className="line-clamp-2 text-[14px] font-extrabold text-slate-900">
+                                        {it.title}
                                     </div>
 
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => updateQty(index, it.qty - 1)}
-                                            disabled={isDirectOrder}
-                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
-                                        >
-                                            -
-                                        </button>
-                                        <div className="min-w-[28px] text-center text-sm font-extrabold text-slate-900">
-                                            {it.qty}
+                                    {it.optionName ? (
+                                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
+                                            옵션: {it.optionName}
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => updateQty(index, it.qty + 1)}
-                                            disabled={isDirectOrder}
-                                            className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
-                                        >
-                                            +
-                                        </button>
+                                    ) : null}
+
+                                    {it.stockNote ? (
+                                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
+                                            {it.stockNote}
+                                        </div>
+                                    ) : null}
+
+                                    <div className="mt-3 flex items-center justify-between gap-3">
+                                        <div className="text-[14px] font-extrabold text-slate-900">
+                                            {(Number(it.price ?? 0) * Number(it.qty ?? 0)).toLocaleString()}원
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => updateQty(index, Number(it.qty ?? 0) - 1)}
+                                                disabled={submitting || isDirectOrder}
+                                                className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
+                                            >
+                                                -
+                                            </button>
+                                            <div className="min-w-[28px] text-center text-sm font-extrabold text-slate-900">
+                                                {it.qty}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => updateQty(index, Number(it.qty ?? 0) + 1)}
+                                                disabled={submitting || isDirectOrder || !!it.soldout || isMaxReached}
+                                                className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
+                                            >
+                                                +
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
+
+                <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                    <div className="flex items-center justify-between text-[14px] font-bold text-slate-700">
+                        <span>총 결제 금액</span>
+                        <span className="text-[18px] font-extrabold text-slate-900">
+                            {subtotal.toLocaleString()}원
+                        </span>
+                    </div>
+                </div>
             </section>
 
             <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-[16px] font-extrabold text-slate-900">주문자 정보</div>
 
                 <div className="mt-3 space-y-3">
-                    <label className="block">
-                        <div className="mb-1 text-[13px] font-bold text-slate-800">이름</div>
+                    <input
+                        value={buyerName}
+                        onChange={(e) => setBuyerName(e.target.value)}
+                        placeholder="주문자 이름"
+                        className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
+                    />
+                    <div className="grid grid-cols-3 gap-2">
                         <input
-                            value={buyerName}
-                            onChange={(e) => setBuyerName(e.target.value)}
-                            className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none ring-0 placeholder:text-slate-400"
-                            placeholder="주문자 이름"
+                            value={buyerPhoneA}
+                            onChange={(e) => setBuyerPhoneA(onlyDigits(e.target.value).slice(0, 3))}
+                            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none"
                         />
-                    </label>
-
-                    <div>
-                        <div className="mb-1 text-[13px] font-bold text-slate-800">연락처</div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <input
-                                value={buyerPhoneA}
-                                onChange={(e) => setBuyerPhoneA(onlyDigits(e.target.value).slice(0, 3))}
-                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none"
-                                inputMode="numeric"
-                            />
-                            <input
-                                value={buyerPhoneB}
-                                onChange={(e) => setBuyerPhoneB(onlyDigits(e.target.value).slice(0, 4))}
-                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none"
-                                inputMode="numeric"
-                            />
-                            <input
-                                value={buyerPhoneC}
-                                onChange={(e) => setBuyerPhoneC(onlyDigits(e.target.value).slice(0, 4))}
-                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none"
-                                inputMode="numeric"
-                            />
-                        </div>
+                        <input
+                            value={buyerPhoneB}
+                            onChange={(e) => setBuyerPhoneB(onlyDigits(e.target.value).slice(0, 4))}
+                            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none"
+                        />
+                        <input
+                            value={buyerPhoneC}
+                            onChange={(e) => setBuyerPhoneC(onlyDigits(e.target.value).slice(0, 4))}
+                            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none"
+                        />
+                    </div>
+                    <div className="text-[12px] font-semibold text-slate-500">
+                        입력 연락처: {buyerPhonePreview || "-"}
                     </div>
                 </div>
             </section>
@@ -349,7 +378,7 @@ export default function OrderClient(props: {
             <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between">
                     <div className="text-[16px] font-extrabold text-slate-900">수령인 정보</div>
-                    <label className="flex items-center gap-2 text-[12px] font-bold text-slate-700">
+                    <label className="flex items-center gap-2 text-[13px] font-semibold text-slate-600">
                         <input
                             type="checkbox"
                             checked={receiverSame}
@@ -360,48 +389,35 @@ export default function OrderClient(props: {
                 </div>
 
                 <div className="mt-3 space-y-3">
-                    <label className="block">
-                        <div className="mb-1 text-[13px] font-bold text-slate-800">이름</div>
+                    <input
+                        value={receiverSame ? buyerName : receiverName}
+                        onChange={(e) => setReceiverName(e.target.value)}
+                        placeholder="수령인 이름"
+                        disabled={receiverSame}
+                        className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none disabled:bg-slate-50"
+                    />
+                    <div className="grid grid-cols-3 gap-2">
                         <input
-                            value={receiverSame ? buyerName : receiverName}
-                            onChange={(e) => setReceiverName(e.target.value)}
+                            value={receiverSame ? buyerPhoneA : receiverPhoneA}
+                            onChange={(e) => setReceiverPhoneA(onlyDigits(e.target.value).slice(0, 3))}
                             disabled={receiverSame}
-                            className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none disabled:bg-slate-50"
-                            placeholder="수령인 이름"
+                            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none disabled:bg-slate-50"
                         />
-                    </label>
-
-                    <div>
-                        <div className="mb-1 text-[13px] font-bold text-slate-800">연락처</div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <input
-                                value={receiverSame ? buyerPhoneA : receiverPhoneA}
-                                onChange={(e) =>
-                                    setReceiverPhoneA(onlyDigits(e.target.value).slice(0, 3))
-                                }
-                                disabled={receiverSame}
-                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none disabled:bg-slate-50"
-                                inputMode="numeric"
-                            />
-                            <input
-                                value={receiverSame ? buyerPhoneB : receiverPhoneB}
-                                onChange={(e) =>
-                                    setReceiverPhoneB(onlyDigits(e.target.value).slice(0, 4))
-                                }
-                                disabled={receiverSame}
-                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none disabled:bg-slate-50"
-                                inputMode="numeric"
-                            />
-                            <input
-                                value={receiverSame ? buyerPhoneC : receiverPhoneC}
-                                onChange={(e) =>
-                                    setReceiverPhoneC(onlyDigits(e.target.value).slice(0, 4))
-                                }
-                                disabled={receiverSame}
-                                className="h-12 rounded-2xl border border-slate-200 px-3 text-center text-sm outline-none disabled:bg-slate-50"
-                                inputMode="numeric"
-                            />
-                        </div>
+                        <input
+                            value={receiverSame ? buyerPhoneB : receiverPhoneB}
+                            onChange={(e) => setReceiverPhoneB(onlyDigits(e.target.value).slice(0, 4))}
+                            disabled={receiverSame}
+                            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none disabled:bg-slate-50"
+                        />
+                        <input
+                            value={receiverSame ? buyerPhoneC : receiverPhoneC}
+                            onChange={(e) => setReceiverPhoneC(onlyDigits(e.target.value).slice(0, 4))}
+                            disabled={receiverSame}
+                            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none disabled:bg-slate-50"
+                        />
+                    </div>
+                    <div className="text-[12px] font-semibold text-slate-500">
+                        입력 연락처: {receiverPhonePreview || "-"}
                     </div>
                 </div>
             </section>
@@ -410,65 +426,37 @@ export default function OrderClient(props: {
                 <div className="text-[16px] font-extrabold text-slate-900">픽업/요청사항</div>
 
                 <div className="mt-3 space-y-3">
-                    <label className="block">
-                        <div className="mb-1 text-[13px] font-bold text-slate-800">픽업 예정일시</div>
-                        <input
-                            type="datetime-local"
-                            value={pickupAt}
-                            onChange={(e) => setPickupAt(e.target.value)}
-                            className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
-                        />
-                    </label>
-
-                    <label className="block">
-                        <div className="mb-1 text-[13px] font-bold text-slate-800">요청사항</div>
-                        <textarea
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            className="min-h-[92px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
-                            placeholder="매장 전달 요청사항"
-                        />
-                    </label>
-
-                    <label className="block">
-                        <div className="mb-1 text-[13px] font-bold text-slate-800">내부 메모</div>
-                        <textarea
-                            value={memo}
-                            onChange={(e) => setMemo(e.target.value)}
-                            className="min-h-[92px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
-                            placeholder="추가 메모"
-                        />
-                    </label>
+                    <input
+                        type="datetime-local"
+                        value={pickupAt}
+                        onChange={(e) => setPickupAt(e.target.value)}
+                        className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
+                    />
+                    <textarea
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        placeholder="요청사항"
+                        rows={3}
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
+                    />
+                    <textarea
+                        value={memo}
+                        onChange={(e) => setMemo(e.target.value)}
+                        placeholder="관리자 메모"
+                        rows={3}
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
+                    />
                 </div>
             </section>
 
-            <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                    <span className="text-[14px] font-bold text-slate-700">총 주문금액</span>
-                    <strong className="text-[24px] font-extrabold text-slate-900">
-                        {subtotal.toLocaleString()}원
-                    </strong>
-                </div>
-
-                <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-[12px] font-semibold text-slate-600">
-                    주문자 연락처: {buyerPhonePreview || "-"}
-                    <br />
-                    수령인 연락처: {receiverPhonePreview || "-"}
-                </div>
-            </section>
-
-            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-                <div className="mx-auto max-w-[520px]">
-                    <button
-                        type="button"
-                        onClick={submitOrder}
-                        disabled={!canSubmit}
-                        className="flex h-14 w-full items-center justify-center rounded-2xl bg-[color:var(--accent)] text-[15px] font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        {submitting ? "주문 처리 중..." : `${subtotal.toLocaleString()}원 주문하기`}
-                    </button>
-                </div>
-            </div>
+            <button
+                type="button"
+                onClick={submitOrder}
+                disabled={!canSubmit}
+                className="mt-5 w-full rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white disabled:opacity-50"
+            >
+                {submitting ? "주문 처리 중..." : "주문하기"}
+            </button>
         </main>
     );
 }

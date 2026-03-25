@@ -6,6 +6,19 @@ import { requireTenant } from "../../common/guard.js";
 
 type ImageItem = { key: string; label?: string };
 
+type PublicOptionItem = {
+    id: string;
+    name: string;
+    price: number | null;
+    addPrice?: number;
+    qty?: number;
+    qtyType?: number;
+    soldout?: boolean;
+    stockNote?: string;
+    rawOptionId?: number;
+    code?: string;
+};
+
 const HQ_TENANT_ID = BigInt(0);
 const CATE_DAILY_DEAL = BigInt(100000);
 const CATE_PICKUP_READY = BigInt(100001);
@@ -15,7 +28,7 @@ function toId(v: bigint | number | string): string {
     return String(v);
 }
 
-function toNumber(v: any, fallback = 0): number {
+function toNumber(v: unknown, fallback = 0): number {
     if (v == null) return fallback;
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
@@ -80,19 +93,31 @@ function normalizeImages(row: {
     return uniq.length ? uniq : [{ key: "", label: "이미지 없음" }];
 }
 
-function formatStockNote(soldout: boolean) {
-    if (soldout) return "🔥 한정수량 마감! 🔥";
-    return "🔥 5개 남았습니다!";
+function formatStockNote(input: {
+    soldout: boolean;
+    qtyType?: number;
+    qty?: number | null;
+}) {
+    if (input.soldout) return "🔥 한정수량 마감! 🔥";
+
+    const qtyType = Number(input.qtyType ?? 1);
+    const qty = input.qty == null ? null : Number(input.qty);
+
+    if (qtyType === 1) return "수량 제한 없음";
+    if (qty == null || !Number.isFinite(qty)) return "재고 확인 필요";
+
+    if (qty <= 10) return "⏰ 한정수량 마감 임박!";
+    return `🔥 ${qty}개 남았습니다!`;
 }
 
-function parseOptions(row: {
+function parseOptionsFromOptionInfo(row: {
     option_use?: number;
     option_soldout?: number;
     option_info?: string;
     price?: number | null;
     qty_type?: number;
     qty?: number | null;
-}) {
+}): PublicOptionItem[] {
     const optionUse = Number(row?.option_use ?? 0);
     if (!optionUse) return [];
 
@@ -107,14 +132,7 @@ function parseOptions(row: {
         .map((g) => g.trim())
         .filter(Boolean);
 
-    const out: Array<{
-        id: string;
-        name: string;
-        price: number | null;
-        soldout?: boolean;
-        stockNote?: string;
-        rawOptionId?: number;
-    }> = [];
+    const out: PublicOptionItem[] = [];
 
     const basePrice = Number(row?.price ?? 0) || 0;
     const goodsQtyType = Number(row?.qty_type ?? 1);
@@ -126,7 +144,6 @@ function parseOptions(row: {
         const parts = group.split("|");
         if (parts.length < 2) continue;
 
-        const groupName = String(parts[0] ?? "").trim();
         const itemsRaw = String(parts.slice(1).join("|") ?? "").trim();
         const items = itemsRaw.split(",").map((x) => x.trim()).filter(Boolean);
 
@@ -150,10 +167,17 @@ function parseOptions(row: {
 
             out.push({
                 id: `opt_${seq}`,
-                name: groupName ? valueName : valueName,
+                name: valueName,
                 price: basePrice + addPrice,
+                addPrice,
+                qty: stockQty !== null && Number.isFinite(stockQty) ? stockQty : undefined,
+                qtyType: stockQty !== null && Number.isFinite(stockQty) ? 0 : goodsQtyType,
                 soldout,
-                stockNote: formatStockNote(soldout),
+                stockNote: formatStockNote({
+                    soldout,
+                    qtyType: stockQty !== null && Number.isFinite(stockQty) ? 0 : goodsQtyType,
+                    qty: stockQty !== null && Number.isFinite(stockQty) ? stockQty : goodsQty,
+                }),
                 rawOptionId: seq + 1,
             });
 
@@ -162,6 +186,58 @@ function parseOptions(row: {
     }
 
     return out;
+}
+
+function buildOptionsFromTable(
+    rows: Array<{
+        uid: number;
+        value: string;
+        price: number;
+        qty_type: number;
+        qty: number;
+        used: number;
+        code: string;
+        sequence: number;
+    }>,
+    goods: {
+        option_use?: number;
+        option_soldout?: number;
+        price?: number | null;
+    }
+): PublicOptionItem[] {
+    const optionUse = Number(goods?.option_use ?? 0);
+    if (!optionUse) return [];
+
+    const allSoldout = Number(goods?.option_soldout ?? 0) === 2;
+    const basePrice = Number(goods?.price ?? 0) || 0;
+
+    return rows
+        .filter((r) => Number(r.used ?? 0) === 1)
+        .sort((a, b) => {
+            const seqDiff = Number(a.sequence ?? 0) - Number(b.sequence ?? 0);
+            if (seqDiff !== 0) return seqDiff;
+            return Number(a.uid ?? 0) - Number(b.uid ?? 0);
+        })
+        .map((r) => {
+            const qtyType = Number(r.qty_type ?? 1);
+            const qty = Number(r.qty ?? 0);
+            const soldout = allSoldout || (qtyType === 0 && qty <= 0);
+            const addPrice = Number(r.price ?? 0) || 0;
+
+            return {
+                id: `opt_${r.uid}`,
+                name: String(r.value ?? "").trim(),
+                price: basePrice + addPrice,
+                addPrice,
+                qty,
+                qtyType,
+                soldout,
+                stockNote: formatStockNote({ soldout, qtyType, qty }),
+                rawOptionId: Number(r.uid),
+                code: String(r.code ?? "").trim() || undefined,
+            };
+        })
+        .filter((item) => !!item.name);
 }
 
 function formatKoreanShortDate(value?: Date | null) {
@@ -425,8 +501,32 @@ export async function publicProductRoutes(app: FastifyInstance) {
             return;
         }
 
+        const optionRows =
+            Number(row.option_use ?? 0) === 1
+                ? await app.prisma.mallRN_goods_option.findMany({
+                    where: {
+                        guid: uid,
+                        used: 1,
+                    },
+                    select: {
+                        uid: true,
+                        value: true,
+                        price: true,
+                        qty_type: true,
+                        qty: true,
+                        used: true,
+                        code: true,
+                        sequence: true,
+                    },
+                    orderBy: [{ sequence: "asc" }, { uid: "asc" }],
+                })
+                : [];
+
         const images = normalizeImages(row);
-        const options = parseOptions(row);
+        const options =
+            optionRows.length > 0
+                ? buildOptionsFromTable(optionRows, row)
+                : parseOptionsFromOptionInfo(row);
 
         const desc =
             String(row.explains ?? "").trim() ||

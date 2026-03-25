@@ -8,6 +8,19 @@ import { endpoints } from "@/lib/api/endpoints";
 import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
 import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
 
+type GoodsOption = {
+    id: string;
+    name: string;
+    price: number | null;
+    addPrice?: number;
+    qty?: number;
+    qtyType?: number;
+    soldout?: boolean;
+    stockNote?: string;
+    rawOptionId?: number | string;
+    code?: string;
+};
+
 export type GoodsDetailData = {
     id: string;
     title: string;
@@ -22,14 +35,7 @@ export type GoodsDetailData = {
         pickupNote?: string | null;
     };
     images: { key: string; label?: string }[];
-    options: {
-        id: string;
-        name: string;
-        price: number | null;
-        soldout?: boolean;
-        stockNote?: string;
-        rawOptionId?: number | string;
-    }[];
+    options: GoodsOption[];
     notices?: { icon?: string; text: string }[];
 };
 
@@ -41,6 +47,10 @@ type SelectedLine = {
     quantity: number;
     lineTotal: number;
     soldout: boolean;
+    qty?: number;
+    qtyType?: number;
+    stockNote?: string;
+    code?: string;
 };
 
 type CreateOrderResponse = {
@@ -100,11 +110,6 @@ function toOptionalNumberId(value?: string | number) {
     return Number.isFinite(n) ? n : undefined;
 }
 
-function toStableIdText(value?: string | number) {
-    if (value == null) return "";
-    return String(value);
-}
-
 function formatDateTime(value?: string | null) {
     if (!value) return "";
     const d = new Date(value);
@@ -128,6 +133,19 @@ function buildPickupPeriodText(start?: string | null, end?: string | null) {
     if (s) return `${s}부터`;
     if (e) return `${e}까지`;
     return "";
+}
+
+function formatAddPrice(addPrice?: number) {
+    const value = Number(addPrice ?? 0);
+    if (!value) return "";
+    return value > 0 ? `(+${value.toLocaleString()}원)` : `(${value.toLocaleString()}원)`;
+}
+
+function getMaxSelectableQty(option?: GoodsOption) {
+    if (!option) return Number.POSITIVE_INFINITY;
+    if (Number(option.qtyType ?? 1) === 1) return Number.POSITIVE_INFINITY;
+    const qty = Number(option.qty ?? 0);
+    return qty > 0 ? qty : 0;
 }
 
 function SuccessToast({
@@ -209,6 +227,10 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     quantity: q,
                     lineTotal: unit * q,
                     soldout: !!o.soldout,
+                    qty: o.qty,
+                    qtyType: o.qtyType,
+                    stockNote: o.stockNote,
+                    code: o.code,
                 };
             })
             .filter(Boolean) as SelectedLine[];
@@ -224,7 +246,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         [selectedLines]
     );
 
-    const [sheetOpen, setSheetOpen] = useState(false);
     const [toastOpen, setToastOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState("장바구니에 넣었어요.");
     const [submitting, setSubmitting] = useState(false);
@@ -255,11 +276,18 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     function adjustQty(optionId: string, delta: number) {
         const opt = optionById.get(optionId);
-        if (delta > 0 && opt?.soldout) return;
+        if (!opt) return;
+        if (delta > 0 && opt.soldout) return;
 
         setQty((prev) => {
             const cur = prev[optionId] ?? 0;
+            const maxQty = getMaxSelectableQty(opt);
             const next = Math.max(0, cur + delta);
+
+            if (maxQty !== Number.POSITIVE_INFINITY && next > maxQty) {
+                return { ...prev, [optionId]: maxQty };
+            }
+
             return { ...prev, [optionId]: next };
         });
     }
@@ -280,6 +308,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 optionName: line.optionName,
                 thumbnailUrl: mainImg || undefined,
                 tenant,
+                rawOptionId: line.rawOptionId,
+                qtyType: line.qtyType,
+                stockQty: line.qty,
+                soldout: line.soldout,
+                stockNote: line.stockNote,
+                optionCode: line.code,
             }))
         );
 
@@ -351,7 +385,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 createdAt: new Date().toISOString(),
             });
 
-            setSheetOpen(false);
             setToastMessage("주문이 완료되었어요.");
             setToastOpen(true);
             setQty((prev) => {
@@ -486,208 +519,171 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                 </div>
                             </div>
 
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                                {data.meta?.timeLeft ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[12px] font-extrabold text-rose-700">
-                                        ⏰ {data.meta.timeLeft}
-                                    </span>
-                                ) : null}
-                                {data.meta?.pickup ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-extrabold text-slate-700">
-                                        🚚 {data.meta.pickup}
-                                    </span>
-                                ) : null}
-                            </div>
-
-                            {pickupPeriodText || data.meta?.pickupNote ? (
-                                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                    <div className="text-[13px] font-extrabold text-slate-900">픽업 안내</div>
-                                    {pickupPeriodText ? (
-                                        <div className="mt-2 text-[13px] font-semibold text-slate-700">
-                                            픽업 가능 기간: {pickupPeriodText}
+                            {(data.meta?.timeLeft || pickupPeriodText || data.meta?.pickupNote) ? (
+                                <div className="mt-4 space-y-2">
+                                    {data.meta?.timeLeft ? (
+                                        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-[13px] font-semibold text-slate-700">
+                                            마감 정보: {data.meta.timeLeft}
                                         </div>
                                     ) : null}
+
+                                    {pickupPeriodText ? (
+                                        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-[13px] font-semibold text-slate-700">
+                                            픽업 기간: {pickupPeriodText}
+                                        </div>
+                                    ) : null}
+
                                     {data.meta?.pickupNote ? (
-                                        <div className="mt-2 whitespace-pre-wrap break-words text-[13px] font-medium leading-relaxed text-slate-600">
-                                            {data.meta.pickupNote}
+                                        <div className="rounded-2xl bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-800">
+                                            픽업 안내: {data.meta.pickupNote}
                                         </div>
                                     ) : null}
                                 </div>
                             ) : null}
 
-                            <div className="mt-5 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
-                                <div className="text-[13px] font-extrabold text-slate-900">옵션 선택</div>
+                            <div className="mt-5 space-y-3">
+                                {data.options.map((option) => {
+                                    const optionQty = qty[option.id] ?? 0;
+                                    const maxQty = getMaxSelectableQty(option);
+                                    const isMaxReached =
+                                        maxQty !== Number.POSITIVE_INFINITY && optionQty >= maxQty;
 
-                                <div className="mt-3 space-y-3">
-                                    {data.options.map((opt) => {
-                                        const unitPrice = opt.price ?? data.price;
-                                        const count = qty[opt.id] ?? 0;
-
-                                        return (
-                                            <div
-                                                key={opt.id}
-                                                className="rounded-2xl border border-[color:var(--border)] bg-white p-3"
-                                            >
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <div className="text-[14px] font-bold text-slate-900">
-                                                            {opt.name}
-                                                        </div>
-                                                        <div className="mt-1 text-[13px] font-semibold text-slate-500">
-                                                            {unitPrice.toLocaleString()}원
-                                                        </div>
-                                                        {opt.stockNote ? (
-                                                            <div className="mt-1 text-[12px] text-slate-400">
-                                                                {opt.stockNote}
-                                                            </div>
-                                                        ) : null}
-                                                        {opt.soldout ? (
-                                                            <div className="mt-1 text-[12px] font-bold text-rose-600">
-                                                                품절
-                                                            </div>
+                                    return (
+                                        <div
+                                            key={option.id}
+                                            className="rounded-2xl border border-slate-200 p-3"
+                                            style={{ opacity: option.soldout ? 0.6 : 1 }}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="text-[14px] font-extrabold text-slate-900">
+                                                        {option.name}
+                                                        {option.addPrice ? (
+                                                            <span className="ml-1 text-[12px] font-bold text-rose-600">
+                                                                {formatAddPrice(option.addPrice)}
+                                                            </span>
                                                         ) : null}
                                                     </div>
 
+                                                    <div className="mt-1 text-[13px] font-semibold text-slate-600">
+                                                        {(option.price ?? data.price).toLocaleString()}원
+                                                    </div>
+
+                                                    {option.stockNote ? (
+                                                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
+                                                            {option.stockNote}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+
+                                                {option.soldout ? (
+                                                    <div className="rounded-xl bg-slate-100 px-3 py-2 text-[12px] font-extrabold text-slate-500">
+                                                        품절
+                                                    </div>
+                                                ) : (
                                                     <div className="flex items-center gap-2">
                                                         <button
                                                             type="button"
-                                                            onClick={() => adjustQty(opt.id, -1)}
-                                                            className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--border)] bg-white text-base font-black"
+                                                            onClick={() => adjustQty(option.id, -1)}
+                                                            className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-slate-700"
                                                         >
-                                                            -
+                                                            −
                                                         </button>
-                                                        <div className="min-w-[20px] text-center text-sm font-extrabold">
-                                                            {count}
+                                                        <div className="min-w-[24px] text-center text-[14px] font-extrabold text-slate-900">
+                                                            {optionQty}
                                                         </div>
                                                         <button
                                                             type="button"
-                                                            onClick={() => adjustQty(opt.id, 1)}
-                                                            disabled={!!opt.soldout}
-                                                            className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--border)] bg-white text-base font-black disabled:opacity-40"
+                                                            onClick={() => adjustQty(option.id, 1)}
+                                                            disabled={isMaxReached}
+                                                            className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-slate-700 disabled:opacity-40"
                                                         >
                                                             +
                                                         </button>
                                                     </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {selectedLines.length > 0 ? (
+                                <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                                    <div className="space-y-2">
+                                        {selectedLines.map((line) => (
+                                            <div
+                                                key={`${line.optionId}:${String(line.rawOptionId ?? "")}`}
+                                                className="flex items-center justify-between gap-3 text-[13px] font-semibold text-slate-700"
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="truncate">{line.optionName}</div>
+                                                    <div className="text-[12px] text-slate-500">
+                                                        {line.unitPrice.toLocaleString()}원 × {line.quantity}
+                                                    </div>
+                                                </div>
+                                                <div className="shrink-0 font-extrabold text-slate-900">
+                                                    {line.lineTotal.toLocaleString()}원
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">
-                                    <div className="flex items-center justify-between text-[13px] font-semibold text-slate-600">
-                                        <span>선택 수량</span>
-                                        <span>{totalCount}개</span>
+                                        ))}
                                     </div>
-                                    <div className="mt-2 flex items-center justify-between text-[15px] font-extrabold text-slate-900">
-                                        <span>총 상품금액</span>
-                                        <span>{subtotal.toLocaleString()}원</span>
+
+                                    <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
+                                        <div className="text-[14px] font-bold text-slate-700">
+                                            총 수량 {totalCount}개
+                                        </div>
+                                        <div className="text-[18px] font-extrabold text-slate-900">
+                                            {subtotal.toLocaleString()}원
+                                        </div>
                                     </div>
                                 </div>
+                            ) : null}
 
-                                <div className="mt-4 grid grid-cols-2 gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={handleAddCart}
-                                        className="rounded-2xl border border-[color:var(--border)] bg-white px-4 py-3 text-sm font-extrabold text-[color:var(--brand)]"
-                                    >
-                                        장바구니
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setSheetOpen(true)}
-                                        className="rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white"
-                                    >
-                                        바로 구매
-                                    </button>
-                                </div>
+                            <div className="mt-5 grid grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleAddCart}
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[14px] font-extrabold text-slate-900"
+                                >
+                                    장바구니
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleQuickOrder}
+                                    disabled={submitting}
+                                    className="rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-[14px] font-extrabold text-white disabled:opacity-50"
+                                >
+                                    {submitting ? "주문 처리 중..." : "바로 주문"}
+                                </button>
                             </div>
                         </div>
                     </section>
                 </div>
 
-                {descRaw ? (
-                    <section className="px-4 md:px-0">
-                        <div className="mt-4 rounded-[24px] border border-[color:var(--border)] bg-white p-4 shadow-sm md:mt-8 md:p-6">
-                            <div className="text-[16px] font-extrabold text-slate-900 md:text-[20px]">
-                                상품 상세정보
-                            </div>
+                <section className="mt-6 px-4 md:px-0">
+                    <div className="rounded-[24px] border border-[color:var(--border)] bg-white p-4 shadow-sm md:p-5">
+                        <div className="mb-3 text-[16px] font-extrabold text-slate-900">상품 상세</div>
 
-                            {descIsHtml ? (
+                        {descRaw ? (
+                            descIsHtml ? (
                                 <div
-                                    className="dad-detail-html mt-4 overflow-hidden break-words text-[14px] leading-[1.7] text-slate-700"
+                                    className="prose prose-sm max-w-none"
                                     dangerouslySetInnerHTML={{ __html: descHtml }}
                                 />
                             ) : (
-                                <div className="mt-4 whitespace-pre-wrap break-words text-[14px] leading-[1.7] text-slate-700">
+                                <div className="whitespace-pre-wrap text-[14px] leading-7 text-slate-700">
                                     {descRaw}
                                 </div>
-                            )}
-                        </div>
-                    </section>
-                ) : null}
-            </main>
-
-            {sheetOpen ? (
-                <div className="fixed inset-0 z-[90] bg-black/45 px-4 py-6 md:flex md:items-center md:justify-center">
-                    <div className="mx-auto mt-12 w-full max-w-[520px] rounded-[28px] bg-white p-5 shadow-2xl md:mt-0">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="text-[18px] font-extrabold text-slate-900">바로 구매 확인</div>
-                            <button
-                                type="button"
-                                onClick={() => setSheetOpen(false)}
-                                className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--border)]"
-                            >
-                                ×
-                            </button>
-                        </div>
-
-                        <div className="mt-4 space-y-2">
-                            {selectedLines.map((line) => (
-                                <div
-                                    key={`${line.optionId}:${toStableIdText(line.rawOptionId)}`}
-                                    className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 text-sm"
-                                >
-                                    <div className="min-w-0">
-                                        <div className="truncate font-bold text-slate-900">{line.optionName}</div>
-                                        <div className="mt-1 text-xs text-slate-500">
-                                            {line.unitPrice.toLocaleString()}원 × {line.quantity}
-                                        </div>
-                                    </div>
-                                    <div className="shrink-0 font-extrabold text-slate-900">
-                                        {line.lineTotal.toLocaleString()}원
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="mt-4 rounded-2xl border border-[color:var(--border)] bg-white px-4 py-3">
-                            <div className="flex items-center justify-between text-sm font-extrabold text-slate-900">
-                                <span>총 상품금액</span>
-                                <span>{subtotal.toLocaleString()}원</span>
+                            )
+                        ) : (
+                            <div className="text-[14px] font-semibold text-slate-500">
+                                등록된 상세 설명이 없습니다.
                             </div>
-                        </div>
-
-                        <div className="mt-5 grid grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setSheetOpen(false)}
-                                className="rounded-2xl border border-[color:var(--border)] bg-white px-4 py-3 text-sm font-extrabold text-slate-700"
-                            >
-                                취소
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleQuickOrder}
-                                disabled={submitting}
-                                className="rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white disabled:opacity-60"
-                            >
-                                {submitting ? "처리중..." : "주문하기"}
-                            </button>
-                        </div>
+                        )}
                     </div>
-                </div>
-            ) : null}
+                </section>
+            </main>
 
             <SuccessToast
                 open={toastOpen}

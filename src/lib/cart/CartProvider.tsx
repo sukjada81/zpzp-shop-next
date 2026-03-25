@@ -12,6 +12,12 @@ export type CartItem = {
     thumbnailUrl?: string;
     optionId?: number | string;
     optionName?: string;
+    rawOptionId?: number | string;
+    qtyType?: number;
+    stockQty?: number;
+    soldout?: boolean;
+    stockNote?: string;
+    optionCode?: string;
 };
 
 type CartContextType = {
@@ -25,6 +31,11 @@ type CartContextType = {
 };
 
 const CartContext = createContext<CartContextType | null>(null);
+
+function toFiniteNumber(value: unknown, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
 
 function getOptionKey(item: Pick<CartItem, "optionId" | "optionName">) {
     if (item.optionId != null && String(item.optionId).trim() !== "") {
@@ -40,6 +51,68 @@ function isSameCartItem(a: CartItem, b: CartItem) {
     return a.productId === b.productId && getOptionKey(a) === getOptionKey(b);
 }
 
+function getMaxSelectableQty(item?: Partial<CartItem>) {
+    if (!item) return Number.POSITIVE_INFINITY;
+    if (Number(item.qtyType ?? 1) === 1) return Number.POSITIVE_INFINITY;
+    return Math.max(0, toFiniteNumber(item.stockQty, 0));
+}
+
+function clampQuantityByStock(item: CartItem, nextQty: number) {
+    const safeNext = Math.max(0, toFiniteNumber(nextQty, 0));
+    const maxQty = getMaxSelectableQty(item);
+
+    if (maxQty === Number.POSITIVE_INFINITY) {
+        return safeNext;
+    }
+
+    return Math.min(safeNext, maxQty);
+}
+
+function normalizeCartItem(raw: any): CartItem | null {
+    if (!raw || raw.productId == null) return null;
+
+    const item: CartItem = {
+        productId: String(raw.productId),
+        name: String(raw.name ?? ""),
+        price: toFiniteNumber(raw.price, 0),
+        quantity: Math.max(0, toFiniteNumber(raw.quantity, 0)),
+        tenant: raw.tenant ? String(raw.tenant) : undefined,
+        thumbnailUrl: raw.thumbnailUrl ? String(raw.thumbnailUrl) : undefined,
+        optionId:
+            raw.optionId != null && String(raw.optionId).trim() !== ""
+                ? raw.optionId
+                : undefined,
+        optionName:
+            raw.optionName != null && String(raw.optionName).trim() !== ""
+                ? String(raw.optionName)
+                : undefined,
+        rawOptionId:
+            raw.rawOptionId != null && String(raw.rawOptionId).trim() !== ""
+                ? raw.rawOptionId
+                : undefined,
+        qtyType:
+            raw.qtyType != null && Number.isFinite(Number(raw.qtyType))
+                ? Number(raw.qtyType)
+                : undefined,
+        stockQty:
+            raw.stockQty != null && Number.isFinite(Number(raw.stockQty))
+                ? Number(raw.stockQty)
+                : undefined,
+        soldout: !!raw.soldout,
+        stockNote: raw.stockNote ? String(raw.stockNote) : undefined,
+        optionCode: raw.optionCode ? String(raw.optionCode) : undefined,
+    };
+
+    if (item.soldout) {
+        item.quantity = 0;
+    } else {
+        item.quantity = clampQuantityByStock(item, item.quantity);
+    }
+
+    if (item.quantity <= 0) return null;
+    return item;
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
     const [items, setItems] = useState<CartItem[]>([]);
 
@@ -47,10 +120,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         try {
             const raw = localStorage.getItem("cart");
             if (!raw) return;
+
             const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                setItems(parsed);
+            if (!Array.isArray(parsed)) {
+                setItems([]);
+                return;
             }
+
+            const normalized = parsed
+                .map((item) => normalizeCartItem(item))
+                .filter(Boolean) as CartItem[];
+
+            setItems(normalized);
         } catch {
             setItems([]);
         }
@@ -61,19 +142,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }, [items]);
 
     const addItem = (item: CartItem) => {
+        const normalized = normalizeCartItem(item);
+        if (!normalized || normalized.soldout) return;
+
         setItems((prev) => {
-            const idx = prev.findIndex((p) => isSameCartItem(p, item));
+            const idx = prev.findIndex((p) => isSameCartItem(p, normalized));
             if (idx >= 0) {
-                return prev.map((p, i) =>
-                    i === idx
-                        ? {
+                return prev
+                    .map((p, i) => {
+                        if (i !== idx) return p;
+
+                        const merged: CartItem = {
                             ...p,
-                            quantity: Number(p.quantity ?? 0) + Number(item.quantity ?? 0),
-                        }
-                        : p
-                );
+                            ...normalized,
+                            quantity: clampQuantityByStock(
+                                { ...p, ...normalized },
+                                toFiniteNumber(p.quantity, 0) + toFiniteNumber(normalized.quantity, 0)
+                            ),
+                        };
+
+                        return merged;
+                    })
+                    .filter((item) => Number(item.quantity ?? 0) > 0);
             }
-            return [...prev, item];
+
+            return [...prev, normalized];
         });
     };
 
@@ -81,23 +174,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setItems((prev) => {
             let out = [...prev];
 
-            for (const item of nextItems) {
+            for (const raw of nextItems) {
+                const item = normalizeCartItem(raw);
+                if (!item || item.soldout) continue;
+
                 const idx = out.findIndex((p) => isSameCartItem(p, item));
                 if (idx >= 0) {
-                    out = out.map((p, i) =>
-                        i === idx
-                            ? {
-                                ...p,
-                                quantity: Number(p.quantity ?? 0) + Number(item.quantity ?? 0),
-                            }
-                            : p
-                    );
+                    out = out.map((p, i) => {
+                        if (i !== idx) return p;
+
+                        const merged: CartItem = {
+                            ...p,
+                            ...item,
+                            quantity: clampQuantityByStock(
+                                { ...p, ...item },
+                                toFiniteNumber(p.quantity, 0) + toFiniteNumber(item.quantity, 0)
+                            ),
+                        };
+
+                        return merged;
+                    });
                 } else {
                     out.push(item);
                 }
             }
 
-            return out;
+            return out.filter((item) => Number(item.quantity ?? 0) > 0);
         });
     };
 
@@ -108,7 +210,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                     const currentKey = getOptionKey(item);
                     if (item.productId !== productId) return item;
                     if ((optionKey ?? "default") !== currentKey) return item;
-                    return { ...item, quantity: Math.max(0, quantity) };
+                    return {
+                        ...item,
+                        quantity: clampQuantityByStock(item, quantity),
+                    };
                 })
                 .filter((item) => Number(item.quantity ?? 0) > 0)
         );
@@ -127,7 +232,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const clear = () => setItems([]);
 
     const totalPrice = useMemo(
-        () => items.reduce((sum, i) => sum + Number(i.price ?? 0) * Number(i.quantity ?? 0), 0),
+        () => items.reduce((sum, i) => sum + toFiniteNumber(i.price, 0) * toFiniteNumber(i.quantity, 0), 0),
         [items]
     );
 
