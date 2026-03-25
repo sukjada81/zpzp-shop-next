@@ -48,10 +48,10 @@ export default function Footer() {
 
                     <div className="space-y-2 text-[12px] leading-[1.8] text-[#5f6470]">
                         <p className="font-semibold text-[#4b4f58]">주식회사 디스카운트올데이</p>
-                        <p>대표자: 원종만</p>
-                        <p>사업자 등록번호: 321-87-03394</p>
-                        <p>연락처: 010-7531-8380</p>
-                        <p>사업자주소: 서울시 용산구 한강대로 66, 용산한화오벨리스크 410호</p>
+                        <p>대표자: 김재철</p>
+                        <p>사업자 등록번호: 230-88-03533</p>
+                        <p>연락처: 010-2914-2549</p>
+                        <p>사업자주소: 서울시 송파구 양재대로62길 8, 618호</p>
                     </div>
 
                     <div className="mt-6 flex items-center gap-4 text-[12px] text-[#4b4f58]">
@@ -65,7 +65,7 @@ export default function Footer() {
                     </div>
 
                     <div className="mt-8 border-t border-[#d9d9d9] pt-4 text-[12px] text-[#9aa0ad]">
-                        © 2025 Discount All Day Inc. All rights reserved.
+                        © 2026 Discount All Day Inc. All rights reserved.
                     </div>
                 </div>
             </footer>
