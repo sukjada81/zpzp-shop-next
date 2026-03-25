@@ -56,7 +56,18 @@ function goodsImageUrl(raw: string | null | undefined): string {
     if (/^\/\//.test(s)) return `https:${s}`;
 
     const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
-    const path = s.startsWith("/") ? s : `/${s}`;
+
+    let path = s;
+
+    // 1/1/10821.png 형태로 들어오면 /data/goods/ prefix 보정
+    if (!path.startsWith("/") && !path.startsWith("data/") && !path.startsWith("image/")) {
+        path = `data/goods/${path}`;
+    }
+
+    if (!path.startsWith("/")) {
+        path = `/${path}`;
+    }
+
     return `${base}${path}`;
 }
 
@@ -75,8 +86,11 @@ function normalizeImages(row: {
         out.push({ key: goodsImageUrl(s) });
     };
 
-    const other = String(row?.other_image ?? "").trim();
+    pushUrl(row.image1);
+    pushUrl(row.image2);
+    pushUrl(row.image3);
 
+    const other = String(row?.other_image ?? "").trim();
     if (other) {
         other
             .split(",")
@@ -84,10 +98,6 @@ function normalizeImages(row: {
             .filter(Boolean)
             .forEach(pushUrl);
     }
-
-    pushUrl(row.image1);
-    pushUrl(row.image2);
-    pushUrl(row.image3);
 
     const uniq = Array.from(new Map(out.map((x) => [x.key, x])).values());
     return uniq.length ? uniq : [{ key: "", label: "이미지 없음" }];
