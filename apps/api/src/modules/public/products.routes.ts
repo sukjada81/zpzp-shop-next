@@ -59,9 +59,9 @@ function goodsImageUrl(raw: string | null | undefined): string {
 
     let path = s;
 
-    // 1/1/10821.png 형태로 들어오면 /data/goods/ prefix 보정
-    if (!path.startsWith("/") && !path.startsWith("data/") && !path.startsWith("image/")) {
-        path = `data/goods/${path}`;
+    // DB 값이 1/1/10821.png 형태면 실제 PHP 이미지 경로 규칙으로 보정
+    if (!path.startsWith("/") && !path.startsWith("image/") && !path.startsWith("data/")) {
+        path = `image/goods/img1/${path}`;
     }
 
     if (!path.startsWith("/")) {
