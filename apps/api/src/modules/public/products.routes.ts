@@ -59,8 +59,12 @@ function goodsImageUrl(raw: string | null | undefined): string {
 
     let path = s;
 
-    // DB 값이 1/1/10821.png 형태면 실제 PHP 이미지 경로 규칙으로 보정
-    if (!path.startsWith("/") && !path.startsWith("image/") && !path.startsWith("data/")) {
+    // 이미 /image/... 이면 그대로 사용
+    if (/^\/?image\//i.test(path)) {
+        // keep as-is
+    }
+    // 1/1/10821.png 형태면 실제 PHP 이미지 경로 규칙으로 변환
+    else if (!path.startsWith("/")) {
         path = `image/goods/img1/${path}`;
     }
 
