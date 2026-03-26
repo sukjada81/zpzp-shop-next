@@ -64,8 +64,12 @@ function goodsImageUrl(raw: string | null | undefined): string {
         return `${base}/${path}`;
     }
 
-    // 대표이미지 저장 규칙
-    return `${base}/image/goods/img1/${path}`;
+    // PHP DB 저장 규칙:
+    // image1 = "1/1/10821.png"
+    // image2 = "2/1/10821.png"
+    // image3 = "3/1/10821.png"
+    // 실제 경로는 /image/goods/img + DB값
+    return `${base}/image/goods/img${path}`;
 }
 
 function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | undefined): string {
