@@ -9,10 +9,6 @@ export async function sessionPlugin(app: FastifyInstance) {
         throw new Error("SESSION_SECRET is missing or too short (min 16 chars).");
     }
 
-    // const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
-    // const isProd = process.env.NODE_ENV === "production";
-
-    const isProd = process.env.NODE_ENV === "production";
     const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
 
     await app.register(cookie, {
@@ -26,9 +22,16 @@ export async function sessionPlugin(app: FastifyInstance) {
         cookie: {
             path: "/",
             httpOnly: true,
+
+            // ⭐ 모든 서브도메인 공유
             domain: cookieDomain,
-            sameSite: isProd ? "none" : "lax",
-            secure: "auto",
+
+            // ⭐ 핵심: 무조건 none
+            sameSite: "none",
+
+            // ⭐ 핵심: 무조건 true (HTTPS 환경 필수)
+            secure: true,
+
             maxAge: 60 * 60 * 24 * 7,
         },
         saveUninitialized: false,
@@ -38,8 +41,8 @@ export async function sessionPlugin(app: FastifyInstance) {
         {
             cookieName: "dad_admin_sid",
             cookieDomain,
-            sameSite: isProd ? "none" : "lax",
-            secure: "auto",
+            sameSite: "none",
+            secure: true,
         },
         "session cookie config"
     );
