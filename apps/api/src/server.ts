@@ -20,6 +20,7 @@ import { adminUploadsRoutes } from "./modules/admin/uploads.routes.js";
 import { sellerMembersRoutes } from "./modules/seller/members.routes.js";
 import { sellerOrderRoutes } from "./modules/seller/orders.routes.js";
 import { sellerDashboardRoutes } from "./modules/seller/dashboard.routes.js";
+import { sellerSalesRoutes } from "./modules/seller/sales.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
@@ -60,12 +61,10 @@ await adminProductsRoutes(app);
 await adminUploadsRoutes(app);
 
 await adminRoutes(app);
-
-// public auth를 먼저 등록
 await publicAuthRoutes(app);
 
-// seller routes
 await sellerDashboardRoutes(app);
+await sellerSalesRoutes(app);
 await sellerMembersRoutes(app);
 await sellerOrderRoutes(app);
 

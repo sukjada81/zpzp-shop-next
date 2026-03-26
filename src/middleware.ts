@@ -377,8 +377,8 @@ export async function middleware(req: NextRequest) {
         const internalPath = rest ? `/seller/${tenant}/${rest}` : `/seller/${tenant}`;
 
         const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
-        const mockLogin = bypassAuth ? true : mockLoginCookie;
-        const hasSession = bypassAuth ? true : await hasUserSession(req);
+        const mockLogin = false;
+        const hasSession = await hasUserSession(req);
         const isProtected = needsAuth(internalPath);
 
         const addDebug = (res: NextResponse, action: string) => {
@@ -451,8 +451,8 @@ export async function middleware(req: NextRequest) {
         if (isPublicPath(pathname)) return NextResponse.next();
 
         const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
-        const mockLogin = bypassAuth ? true : mockLoginCookie;
-        const hasSession = bypassAuth ? true : await hasUserSession(req);
+        const mockLogin = false;
+        const hasSession = await hasUserSession(req);
 
         if (!needsAuth(pathname) || mockLogin || hasSession) {
             const segs = pathname.split("/").filter(Boolean);
@@ -511,8 +511,8 @@ export async function middleware(req: NextRequest) {
     if (isPublicPath(pathname)) return setSelectedTenantCookie(NextResponse.next(), req, subdomain);
 
     const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
-    const mockLogin = bypassAuth ? true : mockLoginCookie;
-    const hasSession = bypassAuth ? true : await hasUserSession(req);
+    const mockLogin = false;
+    const hasSession = await hasUserSession(req);
     const isProtected = needsAuth(internalPathname);
 
     const addDebug = (res: NextResponse, action: string) => {

@@ -1,4 +1,4 @@
-// src/app/api/seller/[tenant]/dashboard/route.ts
+// src/app/api/seller/[tenant]/sales/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 function getApiBaseUrl() {
@@ -24,7 +24,12 @@ export async function GET(
     }
 
     const apiBase = getApiBaseUrl();
-    const target = new URL("/v1/seller/dashboard", apiBase);
+    const target = new URL("/v1/seller/sales", apiBase);
+
+    const searchParams = request.nextUrl.searchParams;
+    for (const [key, value] of searchParams.entries()) {
+        target.searchParams.set(key, value);
+    }
 
     try {
         const res = await fetch(target.toString(), {
@@ -43,7 +48,7 @@ export async function GET(
             return NextResponse.json(
                 {
                     ok: false,
-                    message: payload?.message || "failed to fetch seller dashboard",
+                    message: payload?.message || "failed to fetch seller sales",
                 },
                 { status: res.status || 500 }
             );
@@ -52,7 +57,7 @@ export async function GET(
         return NextResponse.json(payload, { status: 200 });
     } catch {
         return NextResponse.json(
-            { ok: false, message: "dashboard fetch failed" },
+            { ok: false, message: "seller sales fetch failed" },
             { status: 500 }
         );
     }
