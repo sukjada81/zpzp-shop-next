@@ -48,7 +48,7 @@ function calcTimeLeftFromEnd(end?: Date | null): string | undefined {
     return `${mins}분 뒤 마감`;
 }
 
-function goodsImageUrl(raw: string | null | undefined): string {
+function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | undefined): string {
     const s = String(raw ?? "").trim();
     if (!s) return "";
 
@@ -56,16 +56,15 @@ function goodsImageUrl(raw: string | null | undefined): string {
     if (/^\/\//.test(s)) return `https:${s}`;
 
     const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+    const n = Number(uid);
+    const imgBlock = Number.isFinite(n) ? Math.max(1, Math.floor(n / 10000)) : 1;
 
     let path = s;
 
-    // 이미 /image/... 이면 그대로 사용
     if (/^\/?image\//i.test(path)) {
         // keep as-is
-    }
-    // 1/1/10821.png 형태면 실제 PHP 이미지 경로 규칙으로 변환
-    else if (!path.startsWith("/")) {
-        path = `image/goods/img1/${path}`;
+    } else {
+        path = `image/goods/upload/${imgBlock}/${uid}/${path.replace(/^\/+/, "")}`;
     }
 
     if (!path.startsWith("/")) {
@@ -76,6 +75,7 @@ function goodsImageUrl(raw: string | null | undefined): string {
 }
 
 function normalizeImages(row: {
+    uid?: bigint | number | string;
     other_image?: string | null;
     image1?: string | null;
     image2?: string | null;
@@ -83,16 +83,16 @@ function normalizeImages(row: {
 }): ImageItem[] {
     const out: ImageItem[] = [];
 
-    const pushUrl = (u: unknown) => {
+    const pushMainUrl = (u: unknown) => {
         if (typeof u !== "string") return;
         const s = u.trim();
         if (!s) return;
         out.push({ key: goodsImageUrl(s) });
     };
 
-    pushUrl(row.image1);
-    pushUrl(row.image2);
-    pushUrl(row.image3);
+    pushMainUrl(row.image1);
+    pushMainUrl(row.image2);
+    pushMainUrl(row.image3);
 
     const other = String(row?.other_image ?? "").trim();
     if (other) {
@@ -100,7 +100,9 @@ function normalizeImages(row: {
             .split(",")
             .map((x) => x.trim())
             .filter(Boolean)
-            .forEach(pushUrl);
+            .forEach((name) => {
+                out.push({ key: goodsOtherImageUrl(row.uid ?? "", name) });
+            });
     }
 
     const uniq = Array.from(new Map(out.map((x) => [x.key, x])).values());
