@@ -48,6 +48,26 @@ function calcTimeLeftFromEnd(end?: Date | null): string | undefined {
     return `${mins}분 뒤 마감`;
 }
 
+function goodsImageUrl(raw: string | null | undefined): string {
+    const s = String(raw ?? "").trim();
+    if (!s) return "";
+
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s)) return `https:${s}`;
+
+    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+
+    let path = s.replace(/^\/+/, "");
+
+    // 이미 /image/... 형태면 그대로 사용
+    if (/^image\//i.test(path)) {
+        return `${base}/${path}`;
+    }
+
+    // 대표이미지 저장 규칙
+    return `${base}/image/goods/img1/${path}`;
+}
+
 function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | undefined): string {
     const s = String(raw ?? "").trim();
     if (!s) return "";
@@ -59,19 +79,15 @@ function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | 
     const n = Number(uid);
     const imgBlock = Number.isFinite(n) ? Math.max(1, Math.floor(n / 10000)) : 1;
 
-    let path = s;
+    let path = s.replace(/^\/+/, "");
 
-    if (/^\/?image\//i.test(path)) {
-        // keep as-is
-    } else {
-        path = `image/goods/upload/${imgBlock}/${uid}/${path.replace(/^\/+/, "")}`;
+    // 이미 절대 경로 성격이면 그대로 사용
+    if (/^image\//i.test(path)) {
+        return `${base}/${path}`;
     }
 
-    if (!path.startsWith("/")) {
-        path = `/${path}`;
-    }
-
-    return `${base}${path}`;
+    // 추가이미지 저장 규칙
+    return `${base}/image/goods/upload/${imgBlock}/${uid}/${path}`;
 }
 
 function normalizeImages(row: {
