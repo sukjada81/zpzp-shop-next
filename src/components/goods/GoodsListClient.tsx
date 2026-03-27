@@ -19,7 +19,7 @@ export type GoodsListItem = {
 };
 
 const TABS = [
-    { key: "today", label: "오늘의 공구" },
+    { key: "today", label: "오늘의 특가상품" },
     { key: "pickup", label: "바로 픽업 가능" },
     { key: "ongoing", label: "진행 중인 공구" },
 ] as const;
@@ -30,8 +30,13 @@ function isTabKey(x: string | null): x is TabKey {
     return !!x && (TABS as readonly { key: string }[]).some((t) => t.key === x);
 }
 
+function displayCategoryLabel(label?: string) {
+    if (label === "오늘의 공구") return "오늘의 특가상품";
+    return label;
+}
+
 function categoryBadgeColor(label?: string) {
-    if (label === "오늘의 공구") {
+    if (label === "오늘의 특가상품") {
         return "bg-amber-500 text-white";
     }
     if (label === "바로 픽업 가능") {
@@ -59,10 +64,10 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
 
         const tabFilter = (it: GoodsListItem) => {
             const cate = String(it.cate ?? "").trim();
-            const categoryLabel = String(it.categoryLabel ?? "").trim();
+            const categoryLabel = String(displayCategoryLabel(it.categoryLabel) ?? "").trim();
 
             if (tab === "today") {
-                return cate === "100000" || categoryLabel === "오늘의 공구";
+                return cate === "100000" || categoryLabel === "오늘의 특가상품";
             }
 
             if (tab === "pickup") {
@@ -83,14 +88,14 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
 
     const headerTitle =
         tab === "today"
-            ? "오늘의 공구"
+            ? "오늘의 특가상품"
             : tab === "pickup"
                 ? "바로 픽업 가능"
                 : "진행 중인 공구";
 
     const headerDesc =
         tab === "today"
-            ? "오늘의 공구 상품만 모아서 볼 수 있어요."
+            ? "오늘의 특가상품만 모아서 볼 수 있어요."
             : tab === "pickup"
                 ? "바로 픽업 가능한 상품만 볼 수 있어요."
                 : "현재 예약 가능한 공동구매 상품입니다.";
@@ -193,6 +198,7 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
 function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
     const { tenant, item } = props;
     const thumb = item.thumbnailUrl?.trim();
+    const categoryLabel = displayCategoryLabel(item.categoryLabel);
 
     return (
         <Link
@@ -212,13 +218,13 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
                 ) : null}
 
                 <div className="absolute left-3 top-3 flex gap-2">
-                    {item.categoryLabel ? (
+                    {categoryLabel ? (
                         <span
                             className={`rounded-full px-2.5 py-1 text-[11px] font-extrabold md:text-[12px] ${categoryBadgeColor(
-                                item.categoryLabel
+                                categoryLabel
                             )}`}
                         >
-                            {item.categoryLabel}
+                            {categoryLabel}
                         </span>
                     ) : null}
                 </div>

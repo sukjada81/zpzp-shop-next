@@ -131,6 +131,7 @@ function isCanceledOrder(row: any) {
 
 function sumGoodsAmount(goods: any[], field: "price" | "orig_price") {
     return goods.reduce((acc, row) => {
+        if (isCanceledOrder(row)) return acc;
         const unit = toInt(row?.[field], 0);
         const qty = toInt(row?.qty, 0);
         return acc + unit * qty;
@@ -138,16 +139,22 @@ function sumGoodsAmount(goods: any[], field: "price" | "orig_price") {
 }
 
 function sumGoodsQty(goods: any[]) {
-    return goods.reduce((acc, row) => acc + toInt(row?.qty, 0), 0);
+    return goods.reduce((acc, row) => {
+        if (isCanceledOrder(row)) return acc;
+        return acc + toInt(row?.qty, 0);
+    }, 0);
 }
 
 function buildOrderSummary(goods: any[]) {
-    if (!goods.length) return "";
-    const first = goods[0];
+    const validGoods = goods.filter((row) => !isCanceledOrder(row));
+    const baseGoods = validGoods.length ? validGoods : goods;
+
+    if (!baseGoods.length) return "";
+    const first = baseGoods[0];
     const firstName = String(first?.g_name ?? "").trim();
     if (!firstName) return "";
 
-    if (goods.length === 1) {
+    if (baseGoods.length === 1) {
         const qty = toInt(first?.qty, 0);
         const optionName = String(first?.option_name ?? "").trim();
         if (optionName && qty > 0) return `${firstName} / ${optionName} × ${qty}`;
@@ -156,7 +163,7 @@ function buildOrderSummary(goods: any[]) {
         return firstName;
     }
 
-    return `${firstName} 외 ${goods.length - 1}건`;
+    return `${firstName} 외 ${baseGoods.length - 1}건`;
 }
 
 function deriveOrderStatus(goods: any[]) {
@@ -383,7 +390,6 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                     where: {
                         tenant_id: tenantId,
                         platform_type: PLATFORM_TYPE,
-                        reals: 1,
                     },
                     select: {
                         uid: true,
@@ -400,7 +406,6 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                     where: {
                         tenant_id: tenantId,
                         platform_type: PLATFORM_TYPE,
-                        reals: 1,
                     },
                     select: {
                         uid: true,
@@ -427,16 +432,16 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
 
             let orders: BuiltOrder[] = orderInfos.map((info: any) => {
                 const goods = orderGoodsMap.get(String(info.order_num ?? "")) ?? [];
-                const activeGoods = goods.filter((row) => !isCanceledOrder(row));
-                const goodsForSummary = activeGoods.length ? activeGoods : goods;
+                const validGoods = goods.filter((row) => !isCanceledOrder(row));
+                const goodsForSummary = validGoods.length ? validGoods : goods;
                 const createdAt = getOrderCreatedAt(info) ?? getOrderCreatedAt(goods[0]);
-                const goodsSalesAmount = sumGoodsAmount(activeGoods, "price");
+                const goodsSalesAmount = sumGoodsAmount(goods, "price");
                 const fallbackNetAmount = Math.max(
                     0,
                     toInt(info.pay_total, 0) - toInt(info.cancel_total, 0) - toInt(info.refund_total, 0)
                 );
                 const amount = goodsSalesAmount > 0 ? goodsSalesAmount : fallbackNetAmount;
-                const supplyAmount = sumGoodsAmount(activeGoods, "orig_price");
+                const supplyAmount = sumGoodsAmount(goods, "orig_price");
                 const profitAmount = Math.max(0, amount - supplyAmount);
                 const status = deriveOrderStatus(goods);
 
@@ -452,13 +457,13 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                     amount,
                     supplyAmount,
                     profitAmount,
-                    qty: sumGoodsQty(activeGoods),
-                    itemCount: activeGoods.length,
+                    qty: sumGoodsQty(goods),
+                    itemCount: validGoods.length || goods.length,
                     itemSummary: buildOrderSummary(goodsForSummary),
                 };
             });
 
-            orders = orders.filter((item) => item.amount > 0);
+            orders = orders.filter((item) => item.status !== 9 && item.amount > 0);
 
             if (query.range) {
                 orders = orders.filter((item) => isInCurrentRange(item.createdAt, query.range));
@@ -521,10 +526,10 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
 
             const allOrderBase = orderInfos.map((info: any) => {
                 const goods = orderGoodsMap.get(String(info.order_num ?? "")) ?? [];
-                const activeGoods = goods.filter((row) => !isCanceledOrder(row));
                 const createdAt = getOrderCreatedAt(info) ?? getOrderCreatedAt(goods[0]);
+                const status = deriveOrderStatus(goods);
                 const amount =
-                    sumGoodsAmount(activeGoods, "price") ||
+                    sumGoodsAmount(goods, "price") ||
                     Math.max(
                         0,
                         toInt(info.pay_total, 0) - toInt(info.cancel_total, 0) - toInt(info.refund_total, 0)
@@ -533,8 +538,9 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 return {
                     createdAt,
                     amount,
+                    status,
                 };
-            });
+            }).filter((row) => row.status !== 9);
 
             const todaySales = allOrderBase
                 .filter((row) => row.createdAt && row.createdAt >= todayStart)
@@ -553,8 +559,7 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 tenant: tenantSlug,
                 summary: {
                     title: "매출 통계",
-                    subtitle: "지점별 실주문 / 주문상품 기준 / 취소상품 제외",
-                    basis: "DAD 지점 주문 / reals=1 / 주문상품 status=9 제외 기준",
+                    subtitle: "기간별 주문 흐름",
                     cards: [
                         {
                             key: "todaySales",
@@ -562,7 +567,7 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                             value: todaySales,
                             unit: "원",
                             text: getMoneyText(todaySales),
-                            hint: "오늘 발생한 매출 합계",
+                            hint: "오늘 발생한 주문 매출",
                             tone: "green",
                         },
                         {
@@ -571,7 +576,7 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                             value: monthSales,
                             unit: "원",
                             text: getMoneyText(monthSales),
-                            hint: "이번달 누적 매출",
+                            hint: "이번달 누적 주문 매출",
                             tone: "blue",
                         },
                         {
@@ -580,7 +585,7 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                             value: yearSales,
                             unit: "원",
                             text: getMoneyText(yearSales),
-                            hint: "연간 누적 매출",
+                            hint: "연간 누적 주문 매출",
                             tone: "orange",
                         },
                         {

@@ -141,7 +141,7 @@ function getGroupBadge(line?: OrderLine) {
     const tab = normalizeText(line.tab).toLowerCase();
     const groupType = normalizeText(line.groupType).toLowerCase();
 
-    if (tab === "today" || groupType === "today") return "오늘의 공구";
+    if (tab === "today" || groupType === "today") return "오늘의 특가상품";
     if (tab === "ongoing" || groupType === "ongoing") return "진행중 공구";
 
     return "";

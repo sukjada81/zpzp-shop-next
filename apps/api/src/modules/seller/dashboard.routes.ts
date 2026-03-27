@@ -147,7 +147,8 @@ function isCanceledOrder(row: any) {
 }
 
 function getProductStatus(row: any) {
-    return String(row?.status ?? "").trim().toLowerCase();
+    const s = String(row?.status ?? "").trim().toLowerCase();
+    return s;
 }
 
 function isActiveProduct(row: any) {
@@ -417,7 +418,6 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                     where: {
                         tenant_id: tenantId,
                         platform_type: PLATFORM_TYPE,
-                        reals: 1,
                     },
                     select: {
                         uid: true,
@@ -434,7 +434,6 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                     where: {
                         tenant_id: tenantId,
                         platform_type: PLATFORM_TYPE,
-                        reals: 1,
                     },
                     orderBy: [{ uid: "asc" }],
                     select: {
@@ -508,17 +507,18 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                 };
             });
 
-            const salesOrders = orders
+            const validOrders = orders.filter((o) => o.status !== 9);
+            const salesOrders = validOrders
                 .filter((o) => o.amount > 0)
                 .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 
-            const todayOrders = orders.filter((o) => isSameDay(o.createdAt)).length;
-            const pendingOrders = orders.filter(isPendingOrder).length;
+            const todayOrders = validOrders.filter((o) => isSameDay(o.createdAt)).length;
+            const pendingOrders = validOrders.filter(isPendingOrder).length;
 
-            const last7Orders = orders.filter((o) => isOnOrAfter(o.createdAt, weekStart));
+            const last7Orders = validOrders.filter((o) => isOnOrAfter(o.createdAt, weekStart));
             const recentOrderCount = last7Orders.length;
             const completedOrderCount = last7Orders.filter(isCompletedOrder).length;
-            const canceledOrderCount = last7Orders.filter(isCanceledOrder).length;
+            const canceledOrderCount = orders.filter((o) => isOnOrAfter(o.createdAt, weekStart) && isCanceledOrder(o)).length;
 
             const todaySalesAmount = salesOrders
                 .filter((o) => isSameDay(o.createdAt, todayStart))
@@ -556,7 +556,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                             label: "오늘 회원가입",
                             value: todaySignups,
                             unit: "명",
-                            hint: "tenant 가입 회원",
+                            hint: "오늘 가입 회원",
                             tone: "green" as Tone,
                         },
                         {
@@ -572,7 +572,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                             label: "오늘 유입수",
                             value: 0,
                             unit: "명",
-                            hint: "추후 유입 로그 연동",
+                            hint: "추후 연동 예정",
                             tone: "orange" as Tone,
                         },
                         {
@@ -590,7 +590,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                             label: "오늘 주문",
                             value: todayOrders,
                             unit: "건",
-                            hint: "금일 생성 주문",
+                            hint: "오늘 접수된 주문",
                             tone: "green" as Tone,
                         },
                         {
@@ -646,12 +646,11 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                                 tone: "red" as Tone,
                             },
                         ],
-                        note: "※ 퍼센트 바는 최근 7일 주문 수 대비 비율입니다.",
+                        note: "최근 7일 기준입니다.",
                     },
                     sales: {
                         title: "매출 통계",
-                        subtitle: "지점별 실주문 / 주문상품 기준 / 취소상품 제외",
-                        basis: "DAD 지점 주문 / reals=1 / 주문상품 status=9 제외 기준",
+                        subtitle: "실시간 주문 흐름",
                         cards: [
                             {
                                 key: "todaySales",
@@ -659,7 +658,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                                 value: todaySalesAmount,
                                 unit: "원",
                                 text: getMoneyText(todaySalesAmount),
-                                hint: "오늘 발생한 매출 합계",
+                                hint: "오늘 발생한 주문 매출",
                                 tone: "green" as Tone,
                             },
                             {
@@ -668,7 +667,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                                 value: monthSalesAmount,
                                 unit: "원",
                                 text: getMoneyText(monthSalesAmount),
-                                hint: "이번달 누적 매출",
+                                hint: "이번달 누적 주문 매출",
                                 tone: "blue" as Tone,
                             },
                             {
@@ -677,7 +676,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                                 value: yearSalesAmount,
                                 unit: "원",
                                 text: getMoneyText(yearSalesAmount),
-                                hint: "연간 누적 매출",
+                                hint: "연간 누적 주문 매출",
                                 tone: "orange" as Tone,
                             },
                             {
@@ -686,7 +685,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                                 value: todaySalesOrderCount,
                                 unit: "건",
                                 text: getCountText(todaySalesOrderCount, "건"),
-                                hint: "매출 반영 주문 수",
+                                hint: "오늘 매출 반영 주문 수",
                                 tone: "blue" as Tone,
                             },
                         ],

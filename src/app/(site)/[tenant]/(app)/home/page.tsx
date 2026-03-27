@@ -1,10 +1,9 @@
 // src/app/(site)/[tenant]/(app)/home/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, Gift } from "lucide-react";
+import { ChevronRight, Gift, Clock3, Sparkles } from "lucide-react";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
-import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/home/OngoingGroupBuySection";
 import { endpoints } from "@/lib/api/endpoints";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse } from "@/lib/types/goods";
@@ -24,29 +23,6 @@ type GridSection = {
     href: string;
     items: CardItem[];
     description?: string;
-};
-
-type ProductDetailResponse = {
-    ok: true;
-    tenant?: string;
-    product: {
-        id: string;
-        title: string;
-        price: number;
-        description?: string | null;
-        categoryLabel?: string;
-        cate?: string | null;
-        meta?: { timeLeft?: string; pickup?: string };
-        images: { key: string; label?: string }[];
-        options: Array<{
-            id: string;
-            name: string;
-            price: number | null;
-            soldout?: boolean;
-            stockNote?: string;
-            rawOptionId?: number | string;
-        }>;
-    };
 };
 
 function getInternalOrigin() {
@@ -74,18 +50,9 @@ async function fetchProducts(
     return data.items ?? [];
 }
 
-async function fetchProductDetail(tenant: string, id: string) {
-    const origin = getInternalOrigin();
-    const path = endpoints.publicProductDetail(tenant, id);
-    const url = new URL(path, origin);
-
-    const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) return null;
-
-    const data = (await res.json().catch(() => null)) as ProductDetailResponse | null;
-    if (!data?.ok) return null;
-
-    return data.product ?? null;
+function displayCategoryLabel(label?: string) {
+    if (label === "오늘의 공구") return "오늘의 특가상품";
+    return label;
 }
 
 function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
@@ -95,30 +62,20 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
         price: Number(p.price ?? 0),
         thumbnailUrl: p.thumbnailUrl,
         cate: p.cate ?? null,
-        categoryLabel: p.categoryLabel,
+        categoryLabel: displayCategoryLabel(p.categoryLabel),
         tags: [...(p.metaLeft ? [p.metaLeft] : []), ...(p.metaRight ? [p.metaRight] : [])].slice(0, 2),
     }));
 }
 
-function getMockRecentOrders() {
-    return [
-        { id: "1", maskedName: "제**5**", minutesAgo: 1, qty: 10 },
-        { id: "2", maskedName: "금****8", minutesAgo: 9, qty: 1 },
-        { id: "3", maskedName: "박**3*", minutesAgo: 14, qty: 3 },
-        { id: "4", maskedName: "김***7", minutesAgo: 22, qty: 2 },
-        { id: "5", maskedName: "이**9*", minutesAgo: 35, qty: 6 },
-    ];
-}
-
 function categoryBadgeColor(label?: string) {
-    if (label === "오늘의 공구") return "bg-amber-500 text-white";
+    if (label === "오늘의 특가상품") return "bg-amber-500 text-white";
     if (label === "바로 픽업 가능") return "bg-sky-500 text-white";
     return "bg-slate-800 text-white";
 }
 
 export default async function HomePage({
-    params,
-}: {
+                                           params,
+                                       }: {
     params: { tenant: string } | Promise<{ tenant: string }>;
 }) {
     const resolved = await Promise.resolve(params);
@@ -126,58 +83,29 @@ export default async function HomePage({
 
     if (!tenant) notFound();
 
-    const [todayProducts, pickupProducts, ongoingProducts] = await Promise.all([
-        fetchProducts(tenant, { take: 8, type: "today" }),
-        fetchProducts(tenant, { take: 8, type: "pickup" }),
-        fetchProducts(tenant, { take: 12, type: "ongoing" }),
-    ]);
+    const todayProducts = await fetchProducts(tenant, { take: 8, type: "today" });
+    const pickupProducts = await fetchProducts(tenant, { take: 8, type: "pickup" });
 
     const todaySection: GridSection = {
-        title: "🛒 오늘의 공구",
+        title: "🛒 오늘의 특가상품",
         href: `/${tenant}/goods?tab=today`,
         items: toCardItems(todayProducts),
     };
 
     const pickupSection: GridSection = {
-        title: "⚡️ 바로 픽업 가능",
+        title: "📦 바로 픽업 가능",
         href: `/${tenant}/goods?tab=pickup`,
         items: toCardItems(pickupProducts),
-        description: "빠르게 픽업 가능한 상품입니다.",
     };
-
-    const mockOrders = getMockRecentOrders();
-
-    const ongoingDetails = await Promise.all(
-        ongoingProducts.map(async (p, index) => {
-            const detail = await fetchProductDetail(tenant, String(p.id));
-
-            const item: OngoingGroupBuyItem = {
-                id: String(p.id),
-                tenant,
-                href: `/${tenant}/goods/${p.id}`,
-                title: String(detail?.title ?? p.title ?? ""),
-                price: Number(detail?.price ?? p.price ?? 0),
-                images: detail?.images?.length
-                    ? detail.images
-                    : p.thumbnailUrl
-                        ? [{ key: p.thumbnailUrl, label: "대표 이미지" }]
-                        : [],
-                options: detail?.options ?? [],
-                meta: detail?.meta ?? {
-                    timeLeft: p.metaLeft,
-                    pickup: p.metaRight,
-                },
-                notice: mockOrders[index % mockOrders.length],
-            };
-
-            return item;
-        })
-    );
 
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 pb-24 pt-3">
             <HomeBannerCarousel tenant={tenant} />
-            <HomeCategoryIcons tenant={tenant} />
+
+            {/* 당분간 미노출 */}
+            <div className="hidden">
+                <HomeCategoryIcons tenant={tenant} />
+            </div>
 
             <SectionTitle
                 title={todaySection.title}
@@ -191,26 +119,75 @@ export default async function HomePage({
                 href={pickupSection.href}
                 description={pickupSection.description}
             />
-            <Grid2 tenant={tenant} items={pickupSection.items} emptyText="픽업 가능한 상품이 없습니다." />
+            <Grid2 tenant={tenant} items={pickupSection.items} emptyText="등록된 상품이 없습니다." />
 
-            <div className="min-h-screen">
-                <OngoingGroupBuySection
-                    title="🔥 진행 중인 공구"
-                    items={ongoingDetails}
-                    showOrderBar={true}
-                />
-            </div>
+            <PreparingSection />
 
             <RecommendedBlock tenant={tenant} />
         </main>
     );
 }
 
+function PreparingSection() {
+    return (
+        <section className="mt-6">
+            <div className="flex items-center justify-between">
+                <div className="text-xl font-bold text-neutral-1">🔥 진행 중인 공구</div>
+            </div>
+
+            <div className="mt-3 overflow-hidden rounded-[24px] border border-[#f2d1a6] bg-white shadow-sm">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#fff7ed] via-[#fffaf4] to-[#ffffff]" />
+                    <div className="relative px-5 py-6">
+                        <div className="flex items-start gap-3">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#ffedd5] text-[#f97316] shadow-sm">
+                                <Clock3 size={22} strokeWidth={2.2} />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                                <div className="inline-flex items-center gap-1 rounded-full border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-1 text-[11px] font-extrabold text-[#ea580c]">
+                                    <Sparkles size={12} strokeWidth={2.2} />
+                                    COMING SOON
+                                </div>
+
+                                <div className="mt-3 text-[20px] font-extrabold tracking-[-0.02em] text-[#1f2937]">
+                                    준비중입니다
+                                </div>
+
+                                <div className="mt-2 text-[14px] leading-[1.6] text-[#6b7280]">
+                                    진행 중인 공구 상품은 현재 준비 중입니다.
+                                    <br />
+                                    더 좋은 구성으로 곧 업데이트될 예정입니다.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                            <div className="rounded-2xl border border-[#fde7cf] bg-white/80 px-3 py-3">
+                                <div className="text-[11px] font-bold text-[#f97316]">상태</div>
+                                <div className="mt-1 text-[14px] font-extrabold text-[#111827]">업데이트 준비중</div>
+                            </div>
+                            <div className="rounded-2xl border border-[#fde7cf] bg-white/80 px-3 py-3">
+                                <div className="text-[11px] font-bold text-[#f97316]">안내</div>
+                                <div className="mt-1 text-[14px] font-extrabold text-[#111827]">곧 오픈 예정</div>
+                            </div>
+                        </div>
+
+                        <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-[#ffedd5]">
+                            <div className="h-full w-[38%] rounded-full bg-gradient-to-r from-[#fb923c] to-[#f97316]" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+}
+
 function SectionTitle({
-    title,
-    href,
-    description,
-}: {
+                          title,
+                          href,
+                          description,
+                      }: {
     title: string;
     href: string;
     description?: string;
@@ -218,9 +195,7 @@ function SectionTitle({
     return (
         <section className="mt-4">
             <div className="flex items-center justify-between">
-                <div className="text-xl font-bold text-neutral-1">
-                    {title}
-                </div>
+                <div className="text-xl font-bold text-neutral-1">{title}</div>
                 <Link
                     href={href}
                     className="text-xs font-bold text-[color:var(--muted)] hover:opacity-80"
@@ -230,19 +205,17 @@ function SectionTitle({
             </div>
 
             {description ? (
-                <div className="mt-1 text-sm font-medium text-[color:var(--muted)]">
-                    {description}
-                </div>
+                <div className="mt-1 text-sm font-medium text-[color:var(--muted)]">{description}</div>
             ) : null}
         </section>
     );
 }
 
 function Grid2({
-    tenant,
-    items,
-    emptyText,
-}: {
+                   tenant,
+                   items,
+                   emptyText,
+               }: {
     tenant: string;
     items: CardItem[];
     emptyText: string;
@@ -550,12 +523,12 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
 
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
-                            <span className="rounded bg-[#f2f2f7] px-1.5 py-0.5 text-[10px] font-semibold text-neutral-500">
-                                {item.badge}
-                            </span>
+                                    <span className="rounded bg-[#f2f2f7] px-1.5 py-0.5 text-[10px] font-semibold text-neutral-500">
+                                        {item.badge}
+                                    </span>
                                     <span className="truncate text-[12px] text-neutral-500">
-                                {item.brand}
-                            </span>
+                                        {item.brand}
+                                    </span>
                                 </div>
 
                                 <div className="mt-1 line-clamp-2 text-[18px] font-bold leading-[1.35] tracking-[-0.02em] text-neutral-900">
