@@ -410,14 +410,16 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             <main className="goods-detail-page mx-auto w-full max-w-[1200px] px-0 pb-24 md:px-6 lg:px-8">
                 <div className="md:grid md:grid-cols-[minmax(0,1fr)_420px] md:items-start md:gap-8 lg:grid-cols-[minmax(0,1fr)_460px]">
                     <section className="overflow-hidden bg-white md:rounded-[28px] md:border md:border-[color:var(--border)] md:shadow-sm">
-                        <div className="relative bg-slate-100">
+                        <div className="relative bg-white">
                             <div className="aspect-[3/4]" />
                             {mainImg ? (
-                                <img
-                                    src={mainImg}
-                                    alt={data.title}
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                />
+                                <div className="absolute inset-0 flex items-center justify-center p-3">
+                                    <img
+                                        src={mainImg}
+                                        alt={data.title}
+                                        className="max-h-full max-w-full object-contain"
+                                    />
+                                </div>
                             ) : null}
 
                             <div className="absolute left-3 top-3 flex gap-2">
@@ -476,18 +478,18 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                             key={`${img.key}_${idx}`}
                                             type="button"
                                             onClick={() => setImgIdx(idx)}
-                                            className="shrink-0 overflow-hidden rounded-xl border"
+                                            className="shrink-0 overflow-hidden rounded-xl border bg-white"
                                             style={{
                                                 borderColor: active ? "var(--brand)" : "var(--border)",
                                                 boxShadow: active ? "0 0 0 2px rgba(23,59,69,0.08)" : "none",
                                             }}
                                         >
-                                            <div className="h-16 w-16 bg-[color:var(--brand-soft)] md:h-20 md:w-20">
+                                            <div className="flex h-16 w-16 items-center justify-center bg-white p-1 md:h-20 md:w-20">
                                                 {thumb ? (
                                                     <img
                                                         src={thumb}
                                                         alt={`${data.title}-${idx + 1}`}
-                                                        className="h-full w-full object-cover"
+                                                        className="max-h-full max-w-full object-contain"
                                                     />
                                                 ) : (
                                                     <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
@@ -668,7 +670,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                         {descRaw ? (
                             descIsHtml ? (
                                 <div
-                                    className="prose prose-sm max-w-none"
+                                    className="prose prose-sm max-w-none [&_img]:mx-auto [&_img]:h-auto [&_img]:max-w-full [&_img]:object-contain"
                                     dangerouslySetInnerHTML={{ __html: descHtml }}
                                 />
                             ) : (

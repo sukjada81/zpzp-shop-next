@@ -13,24 +13,30 @@ export default function GoodsCard(props: { tenant: string; item: GoodsListItem }
             className="group block rounded-2xl border border-[color:var(--border)] bg-white shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
         >
             <div className="p-3">
-                <div className="relative overflow-hidden rounded-xl bg-[color:var(--brand-soft)]">
+                <div className="relative overflow-hidden rounded-xl bg-white">
+                    <div className="aspect-[4/3]" />
+
                     {item.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.thumbnailUrl} alt={item.title} className="h-auto w-full object-cover aspect-[4/3]" />
-                    ) : (
-                        <div className="aspect-[4/3]" />
-                    )}
+                        <div className="absolute inset-0 flex items-center justify-center p-2">
+                            <img
+                                src={item.thumbnailUrl}
+                                alt={item.title}
+                                className="max-h-full max-w-full object-contain"
+                                loading="lazy"
+                            />
+                        </div>
+                    ) : null}
 
                     <div className="absolute left-2 top-2 flex gap-2">
                         {item.badgeLeft ? (
                             <span className="rounded-full bg-[color:var(--brand)] px-2 py-1 text-[11px] font-extrabold text-white">
-                {item.badgeLeft}
-              </span>
+                                {item.badgeLeft}
+                            </span>
                         ) : null}
                         {item.badgeRight ? (
                             <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-[11px] font-extrabold text-white">
-                {item.badgeRight}
-              </span>
+                                {item.badgeRight}
+                            </span>
                         ) : null}
                     </div>
                 </div>

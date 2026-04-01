@@ -102,7 +102,6 @@ export default async function HomePage({
         <main className="mx-auto w-full max-w-[520px] px-4 pb-24 pt-3">
             <HomeBannerCarousel tenant={tenant} />
 
-            {/* 당분간 미노출 */}
             <div className="hidden">
                 <HomeCategoryIcons tenant={tenant} />
             </div>
@@ -242,13 +241,14 @@ function Grid2({
                         className="flex min-w-[260px] max-w-[260px] snap-start flex-col"
                     >
                         <div className="h-full">
-                            <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#ecebe9] bg-[#f8f8f6] cursor-pointer">
-                                <Link href={`/${tenant}/goods/${it.id}`} className="block h-full w-full">
+                            <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-[#ecebe9] bg-white cursor-pointer">
+                                <Link href={`/${tenant}/goods/${it.id}`} className="flex h-full w-full items-center justify-center p-2">
                                     {it.thumbnailUrl ? (
                                         <img
                                             src={it.thumbnailUrl}
                                             alt={it.title}
-                                            className="h-full w-full object-cover"
+                                            className="max-h-full max-w-full object-contain"
+                                            loading="lazy"
                                         />
                                     ) : (
                                         <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />

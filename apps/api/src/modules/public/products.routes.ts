@@ -56,19 +56,12 @@ function goodsImageUrl(raw: string | null | undefined): string {
     if (/^\/\//.test(s)) return `https:${s}`;
 
     const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+    const path = s.replace(/^\/+/, "");
 
-    let path = s.replace(/^\/+/, "");
-
-    // 이미 /image/... 형태면 그대로 사용
     if (/^image\//i.test(path)) {
         return `${base}/${path}`;
     }
 
-    // PHP DB 저장 규칙:
-    // image1 = "1/1/10821.png"
-    // image2 = "2/1/10821.png"
-    // image3 = "3/1/10821.png"
-    // 실제 경로는 /image/goods/img + DB값
     return `${base}/image/goods/img${path}`;
 }
 
@@ -82,15 +75,12 @@ function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | 
     const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
     const n = Number(uid);
     const imgBlock = Number.isFinite(n) ? Math.max(1, Math.floor(n / 10000)) : 1;
+    const path = s.replace(/^\/+/, "");
 
-    let path = s.replace(/^\/+/, "");
-
-    // 이미 절대 경로 성격이면 그대로 사용
     if (/^image\//i.test(path)) {
         return `${base}/${path}`;
     }
 
-    // 추가이미지 저장 규칙
     return `${base}/image/goods/upload/${imgBlock}/${uid}/${path}`;
 }
 
@@ -98,21 +88,13 @@ function normalizeImages(row: {
     uid?: bigint | number | string;
     other_image?: string | null;
     image1?: string | null;
-    image2?: string | null;
-    image3?: string | null;
 }): ImageItem[] {
     const out: ImageItem[] = [];
 
-    const pushMainUrl = (u: unknown) => {
-        if (typeof u !== "string") return;
-        const s = u.trim();
-        if (!s) return;
-        out.push({ key: goodsImageUrl(s) });
-    };
-
-    pushMainUrl(row.image1);
-    pushMainUrl(row.image2);
-    pushMainUrl(row.image3);
+    const main = goodsImageUrl(row.image1);
+    if (main) {
+        out.push({ key: main, label: "대표 이미지" });
+    }
 
     const other = String(row?.other_image ?? "").trim();
     if (other) {
@@ -120,8 +102,11 @@ function normalizeImages(row: {
             .split(",")
             .map((x) => x.trim())
             .filter(Boolean)
-            .forEach((name) => {
-                out.push({ key: goodsOtherImageUrl(row.uid ?? "", name) });
+            .forEach((name, idx) => {
+                out.push({
+                    key: goodsOtherImageUrl(row.uid ?? "", name),
+                    label: `추가 이미지 ${idx + 1}`,
+                });
             });
     }
 
@@ -306,7 +291,7 @@ function buildPickupBadgeText(input: {
 }
 
 function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput {
-    const now = new Date();
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
 
     return {
         tenant_id: { in: [tenantId, HQ_TENANT_ID] },
@@ -318,8 +303,23 @@ function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput 
         cate_hide: 0,
         vendor_hide: 0,
         AND: [
-            { OR: [{ sale_start_at: null }, { sale_start_at: { lte: now } }] },
-            { OR: [{ sale_end_at: null }, { sale_end_at: { gte: now } }] },
+            {
+                OR: [
+                    { sale_start_at: null },
+                    { sale_start_at: { lte: now } },
+                ],
+            },
+            {
+                OR: [
+                    { sale_end_at: null },
+                    { sale_end_at: { gte: now } },
+                    {
+                        sale_end_at: {
+                            equals: null,
+                        },
+                    },
+                ],
+            },
         ],
     };
 }
@@ -442,8 +442,6 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 name: true,
                 price: true,
                 image1: true,
-                image2: true,
-                image3: true,
                 pickup_only: true,
                 option_use: true,
                 icon: true,
@@ -456,7 +454,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
         });
 
         const items = rows.map((r) => {
-            const thumb = goodsImageUrl(r.image1 || r.image2 || r.image3);
+            const thumb = goodsImageUrl(r.image1);
             const timeLeft = calcTimeLeftFromEnd(r.sale_end_at ?? null);
             const pickupBadgeText = buildPickupBadgeText({
                 pickupOnly: !!r.pickup_only,
@@ -515,8 +513,6 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 explains: true,
                 detail: true,
                 image1: true,
-                image2: true,
-                image3: true,
                 other_image: true,
                 option_use: true,
                 option_info: true,
@@ -582,7 +578,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 pickup: hasPickupPeriod
                     ? undefined
                     : row.pickup_only
-                        ? "바로 픽업 가능 · 주문 후 매장에서 바로 수령"
+                        ? "바로 픽업 가능 / 주문 후 매장에서 바로 수령"
                         : undefined,
                 pickupStartAt: row.pickup_start_at ? row.pickup_start_at.toISOString() : null,
                 pickupEndAt: row.pickup_end_at ? row.pickup_end_at.toISOString() : null,

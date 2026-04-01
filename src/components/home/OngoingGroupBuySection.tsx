@@ -226,15 +226,17 @@ function ProductThumbStrip({
                 {list.map((img, idx) => (
                     <div
                         key={`${img.key}_${idx}`}
-                        className="relative h-44 w-44 flex-shrink-0 overflow-hidden rounded-lg border bg-neutral-100"
+                        className="relative h-44 w-44 flex-shrink-0 overflow-hidden rounded-lg border bg-white"
                         style={{ borderColor: "#e5e7eb" }}
                     >
                         {img.key ? (
-                            <img
-                                alt={img.label || `thumb-${idx + 1}`}
-                                src={img.key}
-                                className="h-full w-full object-cover"
-                            />
+                            <div className="flex h-full w-full items-center justify-center p-2">
+                                <img
+                                    alt={img.label || `thumb-${idx + 1}`}
+                                    src={img.key}
+                                    className="max-h-full max-w-full object-contain"
+                                />
+                            </div>
                         ) : (
                             <div className="h-full w-full bg-neutral-200" />
                         )}

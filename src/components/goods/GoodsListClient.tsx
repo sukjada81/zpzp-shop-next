@@ -205,16 +205,18 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
             href={`/${tenant}/goods/${item.id}`}
             className="group block overflow-hidden rounded-[20px] border border-[color:var(--border)] bg-white shadow-sm transition duration-200 hover:-translate-y-[1px] hover:shadow-md"
         >
-            <div className="relative overflow-hidden bg-[color:var(--brand-soft)]">
+            <div className="relative overflow-hidden bg-white">
                 <div className="aspect-[3/4]" />
 
                 {thumb ? (
-                    <img
-                        src={thumb}
-                        alt={item.title}
-                        className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                        loading="lazy"
-                    />
+                    <div className="absolute inset-0 flex items-center justify-center p-2">
+                        <img
+                            src={thumb}
+                            alt={item.title}
+                            className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-[1.02]"
+                            loading="lazy"
+                        />
+                    </div>
                 ) : null}
 
                 <div className="absolute left-3 top-3 flex gap-2">
