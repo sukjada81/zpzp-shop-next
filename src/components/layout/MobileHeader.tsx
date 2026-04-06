@@ -23,9 +23,11 @@ export default function MobileHeader({
     tenant: string;
     onMenuAction: () => void;
     onCartAction: () => void;
-    mode?: "default" | "order";
+    mode?: "default" | "order" | "back";
 }) {
     const isOrder = mode === "order";
+    const isBack = mode === "back";
+    const showBackButton = isOrder || isBack;
 
     return (
         <header className="sticky top-0 z-40 w-full bg-white/92 backdrop-blur supports-[backdrop-filter]:bg-white/75">
@@ -37,11 +39,11 @@ export default function MobileHeader({
                     >
                         <button
                             onClick={onMenuAction}
-                            aria-label={isOrder ? "뒤로가기" : "메뉴 열기"}
+                            aria-label={showBackButton ? "뒤로가기" : "메뉴 열기"}
                             className="grid h-10 w-10 place-items-center rounded-xl text-slate-800 transition active:scale-95"
                             type="button"
                         >
-                            {isOrder ? (
+                            {showBackButton ? (
                                 <span className="text-[24px] font-bold leading-none">←</span>
                             ) : (
                                 <Menu size={24} strokeWidth={2.2} />

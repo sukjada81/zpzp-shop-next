@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { ShoppingBag, ShoppingCart, Clock3, Truck, Info } from "lucide-react";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints } from "@/lib/api/endpoints";
 import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
@@ -46,9 +47,9 @@ type SelectedLine = {
     unitPrice: number;
     quantity: number;
     lineTotal: number;
-    soldout: boolean;
     qty?: number;
     qtyType?: number;
+    soldout?: boolean;
     stockNote?: string;
     code?: string;
 };
@@ -61,6 +62,19 @@ type CreateOrderResponse = {
     message?: string;
     error?: string;
     detail?: string;
+};
+
+type AuthSessionResponse = {
+    ok?: boolean;
+    loggedIn?: boolean;
+    member?: {
+        uid?: string | number;
+        id?: string;
+        name?: string;
+        email?: string;
+        phone?: string;
+        tenantSlug?: string;
+    } | null;
 };
 
 function looksLikeHtml(s?: string | null) {
@@ -88,15 +102,6 @@ function absolutizeHtmlImageSrc(html: string) {
     out = out.replace(re1, (_m, q, p) => `src=${q}${base}/${p}${q}`);
     out = out.replace(re2, (_m, q, p) => `src=${q}${base}${p}${q}`);
     return out;
-}
-
-function toAbsoluteImageUrl(input: string) {
-    const k = String(input ?? "").trim();
-    if (!k) return "";
-    if (/^https?:\/\//i.test(k)) return k;
-
-    const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
-    return base ? `${base}${k.startsWith("/") ? "" : "/"}${k}` : k.startsWith("/") ? k : `/${k}`;
 }
 
 function toOptionalNumberId(value?: string | number) {
@@ -138,7 +143,7 @@ function buildPickupPeriodText(start?: string | null, end?: string | null) {
 function formatAddPrice(addPrice?: number) {
     const value = Number(addPrice ?? 0);
     if (!value) return "";
-    return value > 0 ? `(+${value.toLocaleString()}원)` : `(${value.toLocaleString()}원)`;
+    return value > 0 ? `+${value.toLocaleString()}원` : `${value.toLocaleString()}원`;
 }
 
 function getMaxSelectableQty(option?: GoodsOption) {
@@ -146,6 +151,28 @@ function getMaxSelectableQty(option?: GoodsOption) {
     if (Number(option.qtyType ?? 1) === 1) return Number.POSITIVE_INFINITY;
     const qty = Number(option.qty ?? 0);
     return qty > 0 ? qty : 0;
+}
+
+function buildLoginHref(tenant: string, returnTo: string) {
+    return `/${tenant}/login?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+async function fetchAuthSession(): Promise<AuthSessionResponse | null> {
+    try {
+        const res = await fetch("/auth/session", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+            headers: {
+                Accept: "application/json",
+            },
+        });
+
+        if (!res.ok) return null;
+        return (await res.json().catch(() => null)) as AuthSessionResponse | null;
+    } catch {
+        return null;
+    }
 }
 
 function SuccessToast({
@@ -190,8 +217,82 @@ function SuccessToast({
     );
 }
 
-function buildLoginHref(tenant: string, returnTo: string) {
-    return `/${tenant}/login?returnTo=${encodeURIComponent(returnTo)}`;
+function QtyControl({
+                        value,
+                        onMinus,
+                        onPlus,
+                        disabled,
+                    }: {
+    value: number;
+    onMinus: () => void;
+    onPlus: () => void;
+    disabled?: boolean;
+}) {
+    return (
+        <div className="flex items-center gap-2">
+            <button
+                disabled={disabled || value <= 0}
+                onClick={onMinus}
+                type="button"
+                aria-label="decrease"
+                className="flex h-10 w-10 items-center justify-center rounded-full border text-lg font-medium transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                style={{
+                    borderColor: "var(--border)",
+                    background: "#fff",
+                    color: "var(--muted)",
+                }}
+            >
+                −
+            </button>
+
+            <div className="min-w-10 text-center text-base font-semibold text-[color:var(--fg)]">
+                {value}
+            </div>
+
+            <button
+                onClick={onPlus}
+                disabled={disabled}
+                type="button"
+                aria-label="increase"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-lg font-medium text-white transition-all active:scale-95 disabled:opacity-40"
+                style={{
+                    background: "var(--accent)",
+                    boxShadow: "0 6px 14px color-mix(in srgb, var(--accent) 28%, transparent)",
+                }}
+            >
+                +
+            </button>
+        </div>
+    );
+}
+
+function MetaBadge({
+                       icon,
+                       text,
+                       tone = "default",
+                   }: {
+    icon: React.ReactNode;
+    text: string;
+    tone?: "danger" | "info" | "default";
+}) {
+    const toneClass =
+        tone === "danger"
+            ? "border-rose-200 bg-rose-50 text-rose-500"
+            : tone === "info"
+                ? "border-[color:var(--border)] bg-white text-[color:var(--brand)]"
+                : "border-[color:var(--border)] bg-white text-[color:var(--muted)]";
+
+    return (
+        <span
+            className={[
+                "inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold",
+                toneClass,
+            ].join(" ")}
+        >
+            {icon}
+            <span>{text}</span>
+        </span>
+    );
 }
 
 export default function GoodsDetailClient(props: { tenant: string; data: GoodsDetailData }) {
@@ -200,77 +301,70 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const pathname = usePathname();
     const cart = useCart();
 
-    const safeImages = useMemo(() => {
-        if (Array.isArray(data.images) && data.images.length > 0) return data.images;
-        return [{ key: "", label: "이미지 없음" }];
-    }, [data.images]);
-
-    const [imgIdx, setImgIdx] = useState(0);
-    const canCarousel = safeImages.length > 1;
-
     const [qty, setQty] = useState<Record<string, number>>(
         () => Object.fromEntries(data.options.map((o) => [o.id, 0]))
     );
-    const optionById = useMemo(() => new Map(data.options.map((o) => [o.id, o])), [data.options]);
+    const [submitting, setSubmitting] = useState(false);
+    const [toastOpen, setToastOpen] = useState(false);
+    const [toastMessage, setToastMessage] = useState("주문이 완료되었어요.");
+
+    const optionById = useMemo(() => {
+        return new Map(data.options.map((o) => [o.id, o]));
+    }, [data.options]);
 
     const selectedLines = useMemo(() => {
-        return data.options
-            .map((o) => {
-                const q = qty[o.id] ?? 0;
-                if (!q) return null;
-                const unit = o.price ?? data.price;
-                return {
-                    optionId: o.id,
-                    rawOptionId: o.rawOptionId,
-                    optionName: o.name,
-                    unitPrice: unit,
-                    quantity: q,
-                    lineTotal: unit * q,
-                    soldout: !!o.soldout,
-                    qty: o.qty,
-                    qtyType: o.qtyType,
-                    stockNote: o.stockNote,
-                    code: o.code,
-                };
-            })
-            .filter(Boolean) as SelectedLine[];
+        return data.options.reduce<SelectedLine[]>((acc, o) => {
+            const q = qty[o.id] ?? 0;
+            if (!q) return acc;
+
+            const unit = o.price ?? data.price;
+
+            acc.push({
+                optionId: o.id,
+                rawOptionId: o.rawOptionId,
+                optionName: o.name,
+                unitPrice: unit,
+                quantity: q,
+                lineTotal: unit * q,
+                qty: o.qty,
+                qtyType: o.qtyType,
+                soldout: o.soldout,
+                stockNote: o.stockNote,
+                code: o.code,
+            });
+
+            return acc;
+        }, []);
     }, [qty, data.options, data.price]);
 
-    const subtotal = useMemo(
-        () => selectedLines.reduce((sum, l) => sum + l.lineTotal, 0),
-        [selectedLines]
-    );
+    const totalQty = useMemo(() => {
+        return selectedLines.reduce((sum, line) => sum + Number(line.quantity ?? 0), 0);
+    }, [selectedLines]);
 
-    const totalCount = useMemo(
-        () => selectedLines.reduce((sum, l) => sum + l.quantity, 0),
-        [selectedLines]
-    );
+    const totalPrice = useMemo(() => {
+        return selectedLines.reduce((sum, line) => sum + Number(line.lineTotal ?? 0), 0);
+    }, [selectedLines]);
 
-    const [toastOpen, setToastOpen] = useState(false);
-    const [toastMessage, setToastMessage] = useState("장바구니에 넣었어요.");
-    const [submitting, setSubmitting] = useState(false);
+    const isActive = totalQty > 0;
 
     useEffect(() => {
         if (!toastOpen) return;
-        const t = window.setTimeout(() => setToastOpen(false), 1600);
-        return () => window.clearTimeout(t);
+        const timer = window.setTimeout(() => setToastOpen(false), 1800);
+        return () => window.clearTimeout(timer);
     }, [toastOpen]);
-
-    const mainImage = safeImages[imgIdx];
-    const mainImg = toAbsoluteImageUrl(mainImage?.key || "");
-    const imgLabel = mainImage?.label ?? "";
-    const pickupPeriodText = buildPickupPeriodText(
-        data.meta?.pickupStartAt,
-        data.meta?.pickupEndAt
-    );
 
     const descRaw = String(data.description ?? "").trim();
     const descIsHtml = looksLikeHtml(descRaw);
     const descHtml = descIsHtml ? absolutizeHtmlImageSrc(sanitizeHtml(descRaw)) : "";
 
+    const pickupPeriodText = buildPickupPeriodText(
+        data.meta?.pickupStartAt,
+        data.meta?.pickupEndAt
+    );
+
     function redirectToLogin() {
         const returnTo = pathname || `/${tenant}/goods/${data.id}`;
-        alert("로그인 해야 주문이 가능합니다.");
+        alert("로그인이 필요합니다. 다시 로그인해 주세요.");
         router.push(buildLoginHref(tenant, returnTo));
     }
 
@@ -292,9 +386,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         });
     }
 
-    function handleAddCart() {
-        if (!selectedLines.length) {
-            alert("옵션을 먼저 선택해주세요.");
+    function submitCart() {
+        if (!isActive) {
+            alert("옵션을 선택해주세요.");
             return;
         }
 
@@ -306,7 +400,6 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 quantity: line.quantity,
                 optionId: toOptionalNumberId(line.rawOptionId) ?? line.optionId,
                 optionName: line.optionName,
-                thumbnailUrl: mainImg || undefined,
                 tenant,
                 rawOptionId: line.rawOptionId,
                 qtyType: line.qtyType,
@@ -317,35 +410,49 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             }))
         );
 
-        setToastMessage("장바구니에 넣었어요.");
+        setToastMessage("장바구니에 담았어요.");
         setToastOpen(true);
     }
 
-    async function handleQuickOrder() {
-        if (!selectedLines.length) {
-            alert("옵션을 먼저 선택해주세요.");
-            return;
-        }
-
-        const profile = readQuickOrderProfile(tenant);
-        if (!profile) {
-            redirectToLogin();
-            return;
-        }
+    async function submitQuickOrder() {
+        if (!isActive || submitting) return;
 
         try {
             setSubmitting(true);
 
+            const auth = await fetchAuthSession();
+            if (!auth?.loggedIn || !auth?.member?.uid) {
+                redirectToLogin();
+                return;
+            }
+
+            const profile = readQuickOrderProfile(tenant);
+            const buyerName =
+                String(profile?.nickname ?? "").trim() || String(auth.member?.name ?? "").trim();
+            const buyerPhone =
+                String(profile?.phone ?? "").trim() || String(auth.member?.phone ?? "").trim();
+
+            if (!buyerName) {
+                throw new Error("주문자 이름을 확인할 수 없습니다.");
+            }
+
+            if (!buyerPhone) {
+                throw new Error("주문자 연락처를 확인할 수 없습니다.");
+            }
+
             const res = await fetch(endpoints.createOrder(tenant), {
                 method: "POST",
-                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
                 credentials: "include",
                 cache: "no-store",
                 body: JSON.stringify({
-                    buyerName: profile.nickname,
-                    buyerPhone: profile.phone || "",
-                    receiverName: profile.nickname,
-                    receiverPhone: profile.phone || "",
+                    buyerName,
+                    buyerPhone,
+                    receiverName: buyerName,
+                    receiverPhone: buyerPhone,
                     pickupAt: null,
                     message: "",
                     memo: "상품상세 빠른주문",
@@ -375,18 +482,14 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 );
             }
 
-            const orderNum = json.orderNum;
-
             saveGuestOrderRef({
                 tenant,
-                orderNum,
-                phone: profile.phone || "",
-                buyerName: profile.nickname,
+                orderNum: json.orderNum,
+                phone: buyerPhone,
+                buyerName,
                 createdAt: new Date().toISOString(),
             });
 
-            setToastMessage("주문이 완료되었어요.");
-            setToastOpen(true);
             setQty((prev) => {
                 const next = { ...prev };
                 Object.keys(next).forEach((key) => {
@@ -395,11 +498,15 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 return next;
             });
 
+            setToastMessage("주문이 완료되었어요.");
+            setToastOpen(true);
+
             window.setTimeout(() => {
-                router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(orderNum)}`);
+                router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(json.orderNum ?? "")}`);
             }, 900);
-        } catch (e: any) {
-            alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : "주문 처리 중 오류가 발생했습니다.";
+            alert(message);
         } finally {
             setSubmitting(false);
         }
@@ -407,284 +514,188 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     return (
         <>
-            <main className="goods-detail-page mx-auto w-full max-w-[1200px] px-0 pb-24 md:px-6 lg:px-8">
-                <div className="md:grid md:grid-cols-[minmax(0,1fr)_420px] md:items-start md:gap-8 lg:grid-cols-[minmax(0,1fr)_460px]">
-                    <section className="overflow-hidden bg-white md:rounded-[28px] md:border md:border-[color:var(--border)] md:shadow-sm">
-                        <div className="relative bg-white">
-                            <div className="aspect-[3/4]" />
-                            {mainImg ? (
-                                <div className="absolute inset-0 flex items-center justify-center p-3">
-                                    <img
-                                        src={mainImg}
-                                        alt={data.title}
-                                        className="max-h-full max-w-full object-contain"
-                                    />
-                                </div>
-                            ) : null}
+            <main className="mx-auto w-full max-w-[520px] bg-white pb-28">
+                <section className="bg-white px-4 pb-5 pt-4">
+                    {/*<div className="mb-3 flex items-center justify-between">*/}
+                    {/*    <button*/}
+                    {/*        type="button"*/}
+                    {/*        onClick={() => router.back()}*/}
+                    {/*        aria-label="뒤로가기"*/}
+                    {/*        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[color:var(--border)] bg-white shadow-sm"*/}
+                    {/*    >*/}
+                    {/*        <span className="text-[22px] leading-none text-[color:var(--fg)]">←</span>*/}
+                    {/*    </button>*/}
 
-                            <div className="absolute left-3 top-3 flex gap-2">
-                                {data.badges?.left ? (
-                                    <span className="rounded-full bg-[color:var(--brand)] px-2.5 py-1 text-[11px] font-extrabold text-white">
-                                        {data.badges.left}
-                                    </span>
-                                ) : null}
-                                {data.badges?.right ? (
-                                    <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-extrabold text-white">
-                                        {data.badges.right}
-                                    </span>
-                                ) : null}
-                            </div>
+                    {/*    <div className="w-11 opacity-0 pointer-events-none" aria-hidden="true" />*/}
+                    {/*</div>*/}
 
-                            {imgLabel ? (
-                                <div className="absolute bottom-3 left-3">
-                                    <span className="rounded-md bg-white/90 px-2 py-1 text-[11px] font-extrabold text-slate-900">
-                                        {imgLabel}
-                                    </span>
-                                </div>
-                            ) : null}
+                    <div className="text-[26px] font-extrabold leading-snug tracking-[-0.03em] text-[color:var(--fg)]">
+                        {data.title}
+                    </div>
 
-                            {canCarousel ? (
-                                <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setImgIdx((v) => (v - 1 + safeImages.length) % safeImages.length)
-                                        }
-                                        className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
-                                        aria-label="이전 이미지"
-                                    >
-                                        ‹
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setImgIdx((v) => (v + 1) % safeImages.length)}
-                                        className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
-                                        aria-label="다음 이미지"
-                                    >
-                                        ›
-                                    </button>
-                                </div>
-                            ) : null}
-                        </div>
+                    <div className="mt-3 text-[16px] font-bold text-[color:var(--fg)]">
+                        {Number(data.price ?? 0).toLocaleString()}원
+                    </div>
 
-                        {safeImages.length > 1 ? (
-                            <div className="flex gap-2 overflow-x-auto px-4 py-4 md:px-5">
-                                {safeImages.map((img, idx) => {
-                                    const thumb = toAbsoluteImageUrl(img.key);
-                                    const active = idx === imgIdx;
-
-                                    return (
-                                        <button
-                                            key={`${img.key}_${idx}`}
-                                            type="button"
-                                            onClick={() => setImgIdx(idx)}
-                                            className="shrink-0 overflow-hidden rounded-xl border bg-white"
-                                            style={{
-                                                borderColor: active ? "var(--brand)" : "var(--border)",
-                                                boxShadow: active ? "0 0 0 2px rgba(23,59,69,0.08)" : "none",
-                                            }}
-                                        >
-                                            <div className="flex h-16 w-16 items-center justify-center bg-white p-1 md:h-20 md:w-20">
-                                                {thumb ? (
-                                                    <img
-                                                        src={thumb}
-                                                        alt={`${data.title}-${idx + 1}`}
-                                                        className="max-h-full max-w-full object-contain"
-                                                    />
-                                                ) : (
-                                                    <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
-                                                )}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        ) : null}
-                    </section>
-
-                    <section className="px-4 pb-6 pt-4 md:sticky md:top-24 md:px-0">
-                        <div className="rounded-[24px] border border-[color:var(--border)] bg-white p-4 shadow-sm md:p-5">
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <div className="text-[20px] font-extrabold leading-snug text-slate-900 md:text-[26px]">
-                                        {data.title}
-                                    </div>
-                                </div>
-
-                                <div className="shrink-0 text-right">
-                                    <div className="flex items-center justify-end gap-1">
-                                        <span className="text-[14px] font-extrabold text-rose-600">₩</span>
-                                        <span className="tabular-nums text-[28px] font-extrabold text-slate-900 md:text-[34px]">
-                                            {data.price.toLocaleString()}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {(data.meta?.timeLeft || pickupPeriodText || data.meta?.pickupNote) ? (
-                                <div className="mt-4 space-y-2">
-                                    {data.meta?.timeLeft ? (
-                                        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-[13px] font-semibold text-slate-700">
-                                            마감 정보: {data.meta.timeLeft}
-                                        </div>
-                                    ) : null}
-
-                                    {pickupPeriodText ? (
-                                        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-[13px] font-semibold text-slate-700">
-                                            픽업 기간: {pickupPeriodText}
-                                        </div>
-                                    ) : null}
-
-                                    {data.meta?.pickupNote ? (
-                                        <div className="rounded-2xl bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-800">
-                                            픽업 안내: {data.meta.pickupNote}
-                                        </div>
-                                    ) : null}
-                                </div>
-                            ) : null}
-
-                            <div className="mt-5 space-y-3">
-                                {data.options.map((option) => {
-                                    const optionQty = qty[option.id] ?? 0;
-                                    const maxQty = getMaxSelectableQty(option);
-                                    const isMaxReached =
-                                        maxQty !== Number.POSITIVE_INFINITY && optionQty >= maxQty;
-
-                                    return (
-                                        <div
-                                            key={option.id}
-                                            className="rounded-2xl border border-slate-200 p-3"
-                                            style={{ opacity: option.soldout ? 0.6 : 1 }}
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <div className="text-[14px] font-extrabold text-slate-900">
-                                                        {option.name}
-                                                        {option.addPrice ? (
-                                                            <span className="ml-1 text-[12px] font-bold text-rose-600">
-                                                                {formatAddPrice(option.addPrice)}
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-
-                                                    <div className="mt-1 text-[13px] font-semibold text-slate-600">
-                                                        {(option.price ?? data.price).toLocaleString()}원
-                                                    </div>
-
-                                                    {option.stockNote ? (
-                                                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
-                                                            {option.stockNote}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-
-                                                {option.soldout ? (
-                                                    <div className="rounded-xl bg-slate-100 px-3 py-2 text-[12px] font-extrabold text-slate-500">
-                                                        품절
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => adjustQty(option.id, -1)}
-                                                            className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-slate-700"
-                                                        >
-                                                            −
-                                                        </button>
-                                                        <div className="min-w-[24px] text-center text-[14px] font-extrabold text-slate-900">
-                                                            {optionQty}
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => adjustQty(option.id, 1)}
-                                                            disabled={isMaxReached}
-                                                            className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-slate-700 disabled:opacity-40"
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {selectedLines.length > 0 ? (
-                                <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-                                    <div className="space-y-2">
-                                        {selectedLines.map((line) => (
-                                            <div
-                                                key={`${line.optionId}:${String(line.rawOptionId ?? "")}`}
-                                                className="flex items-center justify-between gap-3 text-[13px] font-semibold text-slate-700"
-                                            >
-                                                <div className="min-w-0">
-                                                    <div className="truncate">{line.optionName}</div>
-                                                    <div className="text-[12px] text-slate-500">
-                                                        {line.unitPrice.toLocaleString()}원 × {line.quantity}
-                                                    </div>
-                                                </div>
-                                                <div className="shrink-0 font-extrabold text-slate-900">
-                                                    {line.lineTotal.toLocaleString()}원
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
-                                        <div className="text-[14px] font-bold text-slate-700">
-                                            총 수량 {totalCount}개
-                                        </div>
-                                        <div className="text-[18px] font-extrabold text-slate-900">
-                                            {subtotal.toLocaleString()}원
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            <div className="mt-5 grid grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    onClick={handleAddCart}
-                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[14px] font-extrabold text-slate-900"
-                                >
-                                    장바구니
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleQuickOrder}
-                                    disabled={submitting}
-                                    className="rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-[14px] font-extrabold text-white disabled:opacity-50"
-                                >
-                                    {submitting ? "주문 처리 중..." : "바로 주문"}
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-
-                <section className="mt-6 px-4 md:px-0">
-                    <div className="rounded-[24px] border border-[color:var(--border)] bg-white p-4 shadow-sm md:p-5">
-                        <div className="mb-3 text-[16px] font-extrabold text-slate-900">상품 상세</div>
-
-                        {descRaw ? (
-                            descIsHtml ? (
-                                <div
-                                    className="prose prose-sm max-w-none [&_img]:mx-auto [&_img]:h-auto [&_img]:max-w-full [&_img]:object-contain"
-                                    dangerouslySetInnerHTML={{ __html: descHtml }}
+                    {(data.meta?.timeLeft || pickupPeriodText || data.meta?.pickupNote) ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {data.meta?.timeLeft ? (
+                                <MetaBadge
+                                    icon={<Clock3 size={14} strokeWidth={2} />}
+                                    text={data.meta.timeLeft}
+                                    tone="danger"
                                 />
-                            ) : (
-                                <div className="whitespace-pre-wrap text-[14px] leading-7 text-slate-700">
-                                    {descRaw}
-                                </div>
-                            )
+                            ) : null}
+
+                            {pickupPeriodText ? (
+                                <MetaBadge
+                                    icon={<Truck size={14} strokeWidth={2} />}
+                                    text={`픽업 기간 ${pickupPeriodText}`}
+                                    tone="info"
+                                />
+                            ) : null}
+
+                            {data.meta?.pickupNote ? (
+                                <MetaBadge
+                                    icon={<Info size={14} strokeWidth={2} />}
+                                    text={data.meta.pickupNote}
+                                    tone="default"
+                                />
+                            ) : null}
+                        </div>
+                    ) : null}
+                </section>
+
+                <section className="border-t border-[color:var(--border)] bg-white px-4 py-5">
+                    {descRaw ? (
+                        descIsHtml ? (
+                            <div
+                                className="prose prose-sm max-w-none [&_img]:mx-auto [&_img]:h-auto [&_img]:max-w-full [&_img]:object-contain"
+                                dangerouslySetInnerHTML={{ __html: descHtml }}
+                            />
                         ) : (
-                            <div className="text-[14px] font-semibold text-slate-500">
-                                등록된 상세 설명이 없습니다.
+                            <div className="whitespace-pre-wrap text-[16px] leading-8 text-[color:var(--fg)]">
+                                {descRaw}
                             </div>
-                        )}
+                        )
+                    ) : (
+                        <div className="text-[14px] font-semibold text-[color:var(--muted)]">
+                            등록된 상세 설명이 없습니다.
+                        </div>
+                    )}
+                </section>
+
+                <section className="border-t border-[color:var(--border)] bg-white px-3 pb-4 pt-4">
+                    <div className="space-y-3">
+                        {data.options.map((option) => {
+                            const optionQty = qty[option.id] ?? 0;
+                            const soldout = !!option.soldout;
+                            const maxQty = getMaxSelectableQty(option);
+                            const isMaxReached =
+                                maxQty !== Number.POSITIVE_INFINITY && optionQty >= maxQty;
+                            const stockText =
+                                option.stockNote?.trim() || "전량 한정! 조기 마감될 수 있습니다.";
+                            const displayPrice = Number(option.price ?? data.price ?? 0);
+
+                            return (
+                                <div
+                                    key={option.id}
+                                    className="flex items-center justify-between gap-3 rounded-[22px] border bg-white p-4 shadow-sm"
+                                    style={{
+                                        borderColor: "var(--border)",
+                                        opacity: soldout ? 0.6 : 1,
+                                    }}
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-[12px] font-semibold text-rose-500">
+                                            {stockText}
+                                        </div>
+
+                                        <div className="mt-1 text-[22px] font-extrabold leading-snug tracking-[-0.02em] text-[color:var(--fg)]">
+                                            {option.name}
+                                        </div>
+
+                                        {option.addPrice ? (
+                                            <div className="mt-1 text-[13px] font-bold text-rose-500">
+                                                ({formatAddPrice(option.addPrice)})
+                                            </div>
+                                        ) : null}
+
+                                        <div className="mt-2 text-[16px] text-[color:var(--muted)]">
+                                            {displayPrice.toLocaleString()}원
+                                        </div>
+                                    </div>
+
+                                    {soldout ? (
+                                        <div className="flex h-10 min-w-[70px] items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-400">
+                                            품절
+                                        </div>
+                                    ) : (
+                                        <QtyControl
+                                            value={optionQty}
+                                            disabled={isMaxReached}
+                                            onMinus={() => adjustQty(option.id, -1)}
+                                            onPlus={() => adjustQty(option.id, 1)}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </section>
+
+                <div className="fixed inset-x-0 bottom-0 z-30 px-3">
+                    <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={submitCart}
+                                disabled={!isActive}
+                                className="h-12 flex-[2.2] rounded-[12px] border bg-white transition-all active:scale-[0.98] disabled:opacity-50"
+                                style={{
+                                    borderColor: "var(--accent)",
+                                    color: "var(--accent)",
+                                }}
+                            >
+                                <span className="flex items-center justify-center">
+                                    <ShoppingCart size={20} />
+                                </span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={submitQuickOrder}
+                                disabled={!isActive || submitting}
+                                className="relative h-12 flex-[7.6] rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
+                                style={{
+                                    background: isActive
+                                        ? "var(--accent)"
+                                        : "color-mix(in srgb, var(--accent) 55%, white)",
+                                    boxShadow: isActive
+                                        ? "0 10px 22px color-mix(in srgb, var(--accent) 30%, transparent)"
+                                        : "none",
+                                    opacity: isActive ? 1 : 0.75,
+                                }}
+                            >
+                                <div className="relative flex w-full items-center justify-center">
+                                    <span className="inline-flex items-center gap-2">
+                                        <ShoppingBag size={18} />
+                                        {submitting ? "주문 처리 중..." : "주문하기"}
+                                    </span>
+
+                                    {isActive ? (
+                                        <span className="absolute inset-y-0 right-4 flex flex-col items-end justify-center text-right">
+                                            <span className="text-[13px] opacity-90">총 {totalQty}개</span>
+                                            <span className="text-[13px] opacity-90">
+                                                {totalPrice.toLocaleString()}원
+                                            </span>
+                                        </span>
+                                    ) : null}
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </main>
 
             <SuccessToast

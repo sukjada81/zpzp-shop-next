@@ -69,6 +69,7 @@ type OrderInfoRow = {
     pickup_at: Date | null;
     status_date: number;
     signdate: number;
+    member_uid?: bigint | number | null;
 };
 
 type OrderGoodsRow = {
@@ -246,12 +247,12 @@ function extractAuthenticatedMemberUid(request: FastifyRequest): bigint | null {
         readNestedValue(root, ["session", "uid"]),
         readNestedValue(root, ["session", "member_uid"]),
         readNestedValue(root, ["session", "memberUid"]),
-        readNestedValue(root, ["session", "user", "uid"]),
-        readNestedValue(root, ["session", "user", "member_uid"]),
-        readNestedValue(root, ["session", "user", "memberUid"]),
         readNestedValue(root, ["session", "member", "uid"]),
         readNestedValue(root, ["session", "member", "member_uid"]),
         readNestedValue(root, ["session", "member", "memberUid"]),
+        readNestedValue(root, ["session", "user", "uid"]),
+        readNestedValue(root, ["session", "user", "member_uid"]),
+        readNestedValue(root, ["session", "user", "memberUid"]),
         readNestedValue(root, ["auth", "uid"]),
         readNestedValue(root, ["auth", "member_uid"]),
         readNestedValue(root, ["auth", "memberUid"]),
@@ -354,6 +355,92 @@ async function serializeOrder(
     };
 }
 
+async function listOrdersByMember(
+    prisma: FastifyInstance["prisma"],
+    tenantId: bigint,
+    memberUid: bigint,
+    take = 50
+) {
+    const list = await prisma.mallRN_order_info.findMany({
+        where: {
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+            member_uid: memberUid,
+        },
+        orderBy: [{ signdate: "desc" }, { uid: "desc" }],
+        take,
+        select: {
+            uid: true,
+            id: true,
+            order_num: true,
+            name: true,
+            cell: true,
+            name2: true,
+            cell2: true,
+            message: true,
+            memo: true,
+            pay_total: true,
+            cancel_total: true,
+            refund_total: true,
+            delivery_total: true,
+            pay_method: true,
+            pickup_at: true,
+            status_date: true,
+            signdate: true,
+            member_uid: true,
+        },
+    });
+
+    return Promise.all(list.map((row: OrderInfoRow) => serializeOrder(prisma, tenantId, row)));
+}
+
+async function findRawOrderByMember(
+    prisma: FastifyInstance["prisma"],
+    tenantId: bigint,
+    memberUid: bigint,
+    orderNum: string
+) {
+    return prisma.mallRN_order_info.findFirst({
+        where: {
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+            member_uid: memberUid,
+            order_num: orderNum,
+        },
+        select: {
+            uid: true,
+            id: true,
+            order_num: true,
+            name: true,
+            cell: true,
+            name2: true,
+            cell2: true,
+            message: true,
+            memo: true,
+            pay_total: true,
+            cancel_total: true,
+            refund_total: true,
+            delivery_total: true,
+            pay_method: true,
+            pickup_at: true,
+            status_date: true,
+            signdate: true,
+            member_uid: true,
+        },
+    });
+}
+
+async function findOrderByMember(
+    prisma: FastifyInstance["prisma"],
+    tenantId: bigint,
+    memberUid: bigint,
+    orderNum: string
+) {
+    const row = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+    if (!row) return null;
+    return serializeOrder(prisma, tenantId, row as OrderInfoRow);
+}
+
 export const publicOrderRoutes = async (fastify: FastifyInstance) => {
     const prisma = fastify.prisma;
 
@@ -362,6 +449,17 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             const body = request.body;
             const { tenantId, tenantSlug } = getTenantContext(request);
             const memberUid = extractAuthenticatedMemberUid(request);
+
+            fastify.log.info(
+                {
+                    tenantId: tenantId ? tenantId.toString() : null,
+                    tenantSlug,
+                    memberUid: memberUid ? memberUid.toString() : null,
+                    sessionMember: (request as any)?.session?.member ?? null,
+                    cookieHeader: request.headers.cookie ?? "",
+                },
+                "PUBLIC_ORDER_CREATE_AUTH_DEBUG"
+            );
 
             if (!tenantId) {
                 return reply.send({
@@ -606,6 +704,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     pickup_at: true,
                     status_date: true,
                     signdate: true,
+                    member_uid: true,
                 },
             });
 
@@ -630,12 +729,54 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
         }
     });
 
-    fastify.get("/v1/orders/me", async (_request: FastifyRequest, reply: FastifyReply) => {
-        return reply.code(401).send({
-            ok: false,
-            error: "not_logged_in",
-            message: "로그인 주문 조회는 아직 연결되지 않았습니다. 비회원 주문 조회로 진행합니다.",
-        });
+    fastify.get("/v1/orders/me", async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const { tenantId, tenantSlug } = getTenantContext(request as FastifyRequest<PublicOrderRoute>);
+            const memberUid = extractAuthenticatedMemberUid(request);
+
+            fastify.log.info(
+                {
+                    tenantId: tenantId ? tenantId.toString() : null,
+                    tenantSlug,
+                    memberUid: memberUid ? memberUid.toString() : null,
+                    sessionMember: (request as any)?.session?.member ?? null,
+                },
+                "PUBLIC_ORDER_ME_DEBUG"
+            );
+
+            if (!tenantId) {
+                return reply.code(400).send({
+                    ok: false,
+                    error: "invalid_tenant",
+                    message: "지점 정보가 올바르지 않습니다.",
+                });
+            }
+
+            if (!memberUid) {
+                return reply.code(401).send({
+                    ok: false,
+                    error: "not_logged_in",
+                    message: "로그인이 필요합니다.",
+                });
+            }
+
+            const items = await listOrdersByMember(prisma, tenantId, memberUid, 50);
+
+            return reply.send({
+                ok: true,
+                items,
+            });
+        } catch (error: unknown) {
+            const detail = getErrorMessage(error, "내 주문 목록 조회 중 오류가 발생했습니다.");
+            fastify.log.error(error, "ORDER_ME_LIST_ERROR");
+
+            return reply.code(500).send({
+                ok: false,
+                error: "order me failed",
+                detail,
+                message: detail,
+            });
+        }
     });
 
     fastify.post(
@@ -687,6 +828,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         pickup_at: true,
                         status_date: true,
                         signdate: true,
+                        member_uid: true,
                     },
                 });
 
@@ -767,6 +909,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         pickup_at: true,
                         status_date: true,
                         signdate: true,
+                        member_uid: true,
                     },
                 });
 
@@ -856,6 +999,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         pickup_at: true,
                         status_date: true,
                         signdate: true,
+                        member_uid: true,
                     },
                 });
 
@@ -946,23 +1090,194 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
 
     fastify.post(
         "/v1/orders/:orderNum/cancel",
-        async (_request: FastifyRequest, reply: FastifyReply) => {
-            return reply.code(401).send({
-                ok: false,
-                error: "not_logged_in",
-                message: "로그인 주문취소는 아직 연결되지 않았습니다.",
-            });
+        async (
+            request: FastifyRequest<{
+                Params: { tenant?: string; orderNum: string };
+            }>,
+            reply: FastifyReply
+        ) => {
+            try {
+                const { tenantId, tenantSlug } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const now = toUnixNow();
+
+                fastify.log.info(
+                    {
+                        tenantId: tenantId ? tenantId.toString() : null,
+                        tenantSlug,
+                        memberUid: memberUid ? memberUid.toString() : null,
+                        orderNum,
+                        sessionMember: (request as any)?.session?.member ?? null,
+                    },
+                    "PUBLIC_ORDER_CANCEL_AUTH_DEBUG"
+                );
+
+                if (!tenantId || !orderNum) {
+                    return reply.code(400).send({
+                        ok: false,
+                        error: "invalid_request",
+                        message: "요청 정보가 올바르지 않습니다.",
+                    });
+                }
+
+                if (!memberUid) {
+                    return reply.code(401).send({
+                        ok: false,
+                        error: "not_logged_in",
+                        message: "로그인이 필요합니다.",
+                    });
+                }
+
+                const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+
+                if (!rawOrder) {
+                    return reply.code(404).send({
+                        ok: false,
+                        error: "not_found",
+                        message: "주문을 찾을 수 없습니다.",
+                    });
+                }
+
+                const goodsRows = await prisma.mallRN_order_goods.findMany({
+                    where: {
+                        tenant_id: tenantId,
+                        platform_type: PLATFORM_TYPE,
+                        order_num: orderNum,
+                    },
+                    select: {
+                        status: true,
+                        status2: true,
+                    },
+                    take: 1,
+                });
+
+                const currentStatus = toInt(goodsRows[0]?.status2 ?? goodsRows[0]?.status, 0);
+
+                if (!canCancel(currentStatus)) {
+                    return reply.code(400).send({
+                        ok: false,
+                        error: "cannot_cancel",
+                        message: "현재 상태에서는 주문취소가 불가능합니다.",
+                    });
+                }
+
+                await prisma.$transaction([
+                    prisma.mallRN_order_info.updateMany({
+                        where: {
+                            tenant_id: tenantId,
+                            platform_type: PLATFORM_TYPE,
+                            member_uid: memberUid,
+                            order_num: orderNum,
+                        },
+                        data: {
+                            status_date: now,
+                        },
+                    }),
+                    prisma.mallRN_order_goods.updateMany({
+                        where: {
+                            tenant_id: tenantId,
+                            platform_type: PLATFORM_TYPE,
+                            order_num: orderNum,
+                        },
+                        data: {
+                            status: STATUS_CANCELED,
+                            status2: STATUS_CANCELED,
+                            status_date: now,
+                        },
+                    }),
+                ]);
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    status: STATUS_CANCELED,
+                    statusLabel: getStatusLabel(STATUS_CANCELED),
+                    message: "주문이 취소되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "로그인 주문취소 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_CANCEL_ERROR");
+
+                return reply.code(500).send({
+                    ok: false,
+                    error: "order cancel failed",
+                    detail,
+                    message: detail,
+                });
+            }
         }
     );
 
     fastify.get(
         "/v1/orders/:orderNum",
-        async (_request: FastifyRequest, reply: FastifyReply) => {
-            return reply.code(401).send({
-                ok: false,
-                error: "not_logged_in",
-                message: "로그인 주문 상세는 아직 연결되지 않았습니다.",
-            });
+        async (
+            request: FastifyRequest<{
+                Params: { tenant?: string; orderNum: string };
+            }>,
+            reply: FastifyReply
+        ) => {
+            try {
+                const { tenantId, tenantSlug } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+
+                fastify.log.info(
+                    {
+                        tenantId: tenantId ? tenantId.toString() : null,
+                        tenantSlug,
+                        memberUid: memberUid ? memberUid.toString() : null,
+                        orderNum,
+                        sessionMember: (request as any)?.session?.member ?? null,
+                    },
+                    "PUBLIC_ORDER_DETAIL_AUTH_DEBUG"
+                );
+
+                if (!tenantId || !orderNum) {
+                    return reply.code(400).send({
+                        ok: false,
+                        error: "invalid_request",
+                        message: "요청 정보가 올바르지 않습니다.",
+                    });
+                }
+
+                if (!memberUid) {
+                    return reply.code(401).send({
+                        ok: false,
+                        error: "not_logged_in",
+                        message: "로그인이 필요합니다.",
+                    });
+                }
+
+                const order = await findOrderByMember(prisma, tenantId, memberUid, orderNum);
+
+                if (!order) {
+                    return reply.code(404).send({
+                        ok: false,
+                        error: "not_found",
+                        message: "주문을 찾을 수 없습니다.",
+                    });
+                }
+
+                return reply.send({
+                    ok: true,
+                    order,
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "로그인 주문 상세 조회 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_DETAIL_ERROR");
+
+                return reply.code(500).send({
+                    ok: false,
+                    error: "order detail failed",
+                    detail,
+                    message: detail,
+                });
+            }
         }
     );
 };

@@ -1,7 +1,7 @@
 // src/components/order/OrderClient.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints } from "@/lib/api/endpoints";
@@ -28,6 +28,19 @@ type CreateOrderResponse = {
     status?: number;
     statusLabel?: string;
     message?: string;
+};
+
+type AuthSessionResponse = {
+    ok?: boolean;
+    loggedIn?: boolean;
+    member?: {
+        uid?: string | number;
+        id?: string;
+        name?: string;
+        email?: string;
+        phone?: string;
+        tenantSlug?: string;
+    } | null;
 };
 
 function onlyDigits(v: string) {
@@ -64,6 +77,24 @@ function getMaxSelectableQty(item?: { qtyType?: number; stockQty?: number }) {
     return qty > 0 ? qty : 0;
 }
 
+async function fetchAuthSession(): Promise<AuthSessionResponse | null> {
+    try {
+        const res = await fetch("/auth/session", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+            headers: {
+                Accept: "application/json",
+            },
+        });
+
+        if (!res.ok) return null;
+        return (await res.json().catch(() => null)) as AuthSessionResponse | null;
+    } catch {
+        return null;
+    }
+}
+
 export default function OrderClient(props: {
     tenant: string;
     initialItems?: OrderItem[];
@@ -91,6 +122,33 @@ export default function OrderClient(props: {
     const [pickupAt, setPickupAt] = useState(nowLocalDateTimeInputValue());
     const [message, setMessage] = useState("");
     const [memo, setMemo] = useState("");
+
+    useEffect(() => {
+        const profile = readQuickOrderProfile(tenant);
+        if (!profile) return;
+
+        const nickname = String(profile.nickname ?? "").trim();
+        const phone = onlyDigits(String(profile.phone ?? ""));
+
+        if (nickname) {
+            setBuyerName((prev) => prev || nickname);
+            setReceiverName((prev) => prev || nickname);
+        }
+
+        if (phone.length >= 10) {
+            const a = phone.slice(0, 3);
+            const b = phone.length === 10 ? phone.slice(3, 6) : phone.slice(3, 7);
+            const c = phone.length === 10 ? phone.slice(6, 10) : phone.slice(7, 11);
+
+            setBuyerPhoneA((prev) => prev || a || "010");
+            setBuyerPhoneB((prev) => prev || b);
+            setBuyerPhoneC((prev) => prev || c);
+
+            setReceiverPhoneA((prev) => prev || a || "010");
+            setReceiverPhoneB((prev) => prev || b);
+            setReceiverPhoneC((prev) => prev || c);
+        }
+    }, [tenant]);
 
     const items = useMemo<OrderItem[]>(() => {
         if (initialItems.length > 0) {
@@ -125,7 +183,7 @@ export default function OrderClient(props: {
 
     function redirectToLogin() {
         const returnTo = pathname || `/${tenant}/order`;
-        alert("로그인 해야 주문이 가능합니다.");
+        alert("로그인이 필요합니다. 다시 로그인해 주세요.");
         router.push(buildLoginHref(tenant, returnTo));
     }
 
@@ -147,12 +205,6 @@ export default function OrderClient(props: {
 
     async function submitOrder() {
         if (!canSubmit) return;
-
-        const profile = readQuickOrderProfile(tenant);
-        if (!profile) {
-            redirectToLogin();
-            return;
-        }
 
         const normalizedBuyerName = buyerName.trim();
         const normalizedBuyerPhone = joinPhone(buyerPhoneA, buyerPhoneB, buyerPhoneC);
@@ -190,6 +242,12 @@ export default function OrderClient(props: {
         setSubmitting(true);
 
         try {
+            const auth = await fetchAuthSession();
+            if (!auth?.loggedIn || !auth?.member?.uid) {
+                redirectToLogin();
+                return;
+            }
+
             const res = await fetch(endpoints.createOrder(tenant), {
                 method: "POST",
                 headers: {

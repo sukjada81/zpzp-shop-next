@@ -21,17 +21,15 @@ function extractTenantFromPath(pathname?: string | null) {
     const segs = pathname.split("/").filter(Boolean);
     if (segs.length === 0) return "";
 
-    // /seller/{tenant}/... 인 경우
     if (segs[0] === "seller") return normalizeTenant(segs[1] || "");
 
-    // /{tenant}/... 인 경우
     return normalizeTenant(segs[0] || "");
 }
 
 export default function AppShellClient({
-    tenant: rawTenant,
-    children,
-}: {
+                                           tenant: rawTenant,
+                                           children,
+                                       }: {
     tenant: string;
     children: React.ReactNode;
 }) {
@@ -39,13 +37,8 @@ export default function AppShellClient({
     const router = useRouter();
     const [drawerOpen, setDrawerOpen] = useState(false);
 
-    // ✅ 1) prop tenant
     const propTenant = normalizeTenant(rawTenant);
-
-    // ✅ 2) pathname fallback
     const pathTenant = useMemo(() => extractTenantFromPath(pathname), [pathname]);
-
-    // ✅ 최종 tenant
     const tenant = propTenant || pathTenant;
 
     const tenantInfo = useMemo(() => {
@@ -55,13 +48,9 @@ export default function AppShellClient({
     }, [tenant]);
 
     const hideHeader = useMemo(() => {
-        // 로그인 화면에서는 헤더 숨김
         return pathname?.includes(`/login`) ?? false;
     }, [pathname]);
 
-    // ✅ IMPORTANT FIX:
-    // 기존: startsWith(`/${tenant}/order`) 는 /orders(주문내역)도 매칭됨
-    // 수정: 정확히 /{tenant}/order 또는 /{tenant}/order/... 만 주문서로 처리
     const isOrderPage = useMemo(() => {
         if (!pathname || !tenant) return false;
 
@@ -69,7 +58,19 @@ export default function AppShellClient({
         return pathname === base || pathname.startsWith(base + "/");
     }, [pathname, tenant]);
 
-    // ✅ 헤더 타이틀
+    const isGoodsDetailPage = useMemo(() => {
+        if (!pathname || !tenant) return false;
+
+        const goodsBase = `/${tenant}/goods/`;
+        if (!pathname.startsWith(goodsBase)) return false;
+
+        const rest = pathname.slice(goodsBase.length);
+        if (!rest) return false;
+        if (rest.includes("/")) return false;
+
+        return true;
+    }, [pathname, tenant]);
+
     const title = useMemo(() => {
         if (!pathname) return BRAND_NAME;
 
@@ -87,9 +88,14 @@ export default function AppShellClient({
         return BRAND_NAME;
     }, [pathname, tenant]);
 
-    // ✅ 드로어에서는 지점명만
     const brandLabel = tenantInfo?.name ?? "";
     const subLabel = tenantInfo?.name ?? "";
+
+    const headerMode = useMemo<"default" | "order" | "back">(() => {
+        if (isOrderPage) return "order";
+        if (isGoodsDetailPage) return "back";
+        return "default";
+    }, [isOrderPage, isGoodsDetailPage]);
 
     return (
         <div className="min-h-dvh bg-white text-[color:var(--fg)]">
@@ -97,10 +103,13 @@ export default function AppShellClient({
                 <MobileHeader
                     tenant={tenant}
                     title={title}
-                    mode={isOrderPage ? "order" : "default"}
+                    mode={headerMode}
                     onMenuAction={() => {
-                        if (isOrderPage) router.back();
-                        else setDrawerOpen(true);
+                        if (isOrderPage || isGoodsDetailPage) {
+                            router.back();
+                            return;
+                        }
+                        setDrawerOpen(true);
                     }}
                     onCartAction={() => {
                         if (!tenant) router.push("/select-tenant?change=1");
@@ -109,7 +118,6 @@ export default function AppShellClient({
                 />
             )}
 
-            {/* ✅ 주문서에서는 드로어 숨김 */}
             {!isOrderPage && (
                 <SideDrawer
                     tenant={tenant}
@@ -120,9 +128,7 @@ export default function AppShellClient({
                 />
             )}
 
-            <div className="relative pb-10">
-                {children}
-            </div>
+            <div className="relative pb-10">{children}</div>
             <Footer />
         </div>
     );
