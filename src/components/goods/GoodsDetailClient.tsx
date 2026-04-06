@@ -104,6 +104,15 @@ function absolutizeHtmlImageSrc(html: string) {
     return out;
 }
 
+function toAbsoluteImageUrl(input?: string) {
+    const k = String(input ?? "").trim();
+    if (!k) return "";
+    if (/^https?:\/\//i.test(k)) return k;
+
+    const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
+    return base ? `${base}${k.startsWith("/") ? "" : "/"}${k}` : k.startsWith("/") ? k : `/${k}`;
+}
+
 function toOptionalNumberId(value?: string | number) {
     if (value == null) return undefined;
     if (typeof value === "number") {
@@ -301,6 +310,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const pathname = usePathname();
     const cart = useCart();
 
+    const safeImages = useMemo(() => {
+        if (Array.isArray(data.images) && data.images.length > 0) return data.images;
+        return [{ key: "", label: "이미지 없음" }];
+    }, [data.images]);
+
+    const [imgIdx, setImgIdx] = useState(0);
     const [qty, setQty] = useState<Record<string, number>>(
         () => Object.fromEntries(data.options.map((o) => [o.id, 0]))
     );
@@ -353,6 +368,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         return () => window.clearTimeout(timer);
     }, [toastOpen]);
 
+    useEffect(() => {
+        if (imgIdx > safeImages.length - 1) {
+            setImgIdx(0);
+        }
+    }, [imgIdx, safeImages.length]);
+
     const descRaw = String(data.description ?? "").trim();
     const descIsHtml = looksLikeHtml(descRaw);
     const descHtml = descIsHtml ? absolutizeHtmlImageSrc(sanitizeHtml(descRaw)) : "";
@@ -361,6 +382,10 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         data.meta?.pickupStartAt,
         data.meta?.pickupEndAt
     );
+
+    const mainImage = safeImages[imgIdx];
+    const mainImageUrl = toAbsoluteImageUrl(mainImage?.key);
+    const canCarousel = safeImages.length > 1;
 
     function redirectToLogin() {
         const returnTo = pathname || `/${tenant}/goods/${data.id}`;
@@ -400,6 +425,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 quantity: line.quantity,
                 optionId: toOptionalNumberId(line.rawOptionId) ?? line.optionId,
                 optionName: line.optionName,
+                thumbnailUrl: mainImageUrl || undefined,
                 tenant,
                 rawOptionId: line.rawOptionId,
                 qtyType: line.qtyType,
@@ -516,20 +542,88 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         <>
             <main className="mx-auto w-full max-w-[520px] bg-white pb-28">
                 <section className="bg-white px-4 pb-5 pt-4">
-                    {/*<div className="mb-3 flex items-center justify-between">*/}
-                    {/*    <button*/}
-                    {/*        type="button"*/}
-                    {/*        onClick={() => router.back()}*/}
-                    {/*        aria-label="뒤로가기"*/}
-                    {/*        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[color:var(--border)] bg-white shadow-sm"*/}
-                    {/*    >*/}
-                    {/*        <span className="text-[22px] leading-none text-[color:var(--fg)]">←</span>*/}
-                    {/*    </button>*/}
+                    <div className="overflow-hidden rounded-[24px] border border-[color:var(--border)] bg-white shadow-sm">
+                        <div className="relative bg-white">
+                            <div className="aspect-square" />
 
-                    {/*    <div className="w-11 opacity-0 pointer-events-none" aria-hidden="true" />*/}
-                    {/*</div>*/}
+                            {mainImageUrl ? (
+                                <div className="absolute inset-0 flex items-center justify-center p-3">
+                                    <img
+                                        src={mainImageUrl}
+                                        alt={data.title}
+                                        className="max-h-full max-w-full object-contain"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-sm font-semibold text-slate-400">
+                                    이미지 없음
+                                </div>
+                            )}
 
-                    <div className="text-[26px] font-extrabold leading-snug tracking-[-0.03em] text-[color:var(--fg)]">
+                            {canCarousel ? (
+                                <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setImgIdx((v) => (v - 1 + safeImages.length) % safeImages.length)
+                                        }
+                                        className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
+                                        aria-label="이전 이미지"
+                                    >
+                                        ‹
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setImgIdx((v) => (v + 1) % safeImages.length)
+                                        }
+                                        className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-sm font-black text-slate-800 shadow-sm"
+                                        aria-label="다음 이미지"
+                                    >
+                                        ›
+                                    </button>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        {safeImages.length > 1 ? (
+                            <div className="flex gap-2 overflow-x-auto px-4 py-4">
+                                {safeImages.map((img, idx) => {
+                                    const thumb = toAbsoluteImageUrl(img.key);
+                                    const active = idx === imgIdx;
+
+                                    return (
+                                        <button
+                                            key={`${img.key}_${idx}`}
+                                            type="button"
+                                            onClick={() => setImgIdx(idx)}
+                                            className="shrink-0 overflow-hidden rounded-xl border bg-white"
+                                            style={{
+                                                borderColor: active ? "var(--accent)" : "var(--border)",
+                                                boxShadow: active
+                                                    ? "0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent)"
+                                                    : "none",
+                                            }}
+                                        >
+                                            <div className="flex h-16 w-16 items-center justify-center bg-white p-1">
+                                                {thumb ? (
+                                                    <img
+                                                        src={thumb}
+                                                        alt={`${data.title}-${idx + 1}`}
+                                                        className="max-h-full max-w-full object-contain"
+                                                    />
+                                                ) : (
+                                                    <div className="h-full w-full bg-slate-100" />
+                                                )}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <div className="mt-4 text-[26px] font-extrabold leading-snug tracking-[-0.03em] text-[color:var(--fg)]">
                         {data.title}
                     </div>
 
@@ -651,11 +745,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                 type="button"
                                 onClick={submitCart}
                                 disabled={!isActive}
-                                className="h-12 flex-[2.2] rounded-[12px] border bg-white transition-all active:scale-[0.98] disabled:opacity-50"
+                                className="h-12 flex-[2.2] rounded-[12px] border bg-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                 style={{
                                     borderColor: "var(--accent)",
                                     color: "var(--accent)",
                                 }}
+                                aria-label="장바구니 담기"
                             >
                                 <span className="flex items-center justify-center">
                                     <ShoppingCart size={20} />
@@ -666,7 +761,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                 type="button"
                                 onClick={submitQuickOrder}
                                 disabled={!isActive || submitting}
-                                className="relative h-12 flex-[7.6] rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
+                                className="relative h-12 flex-[7.8] rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
                                 style={{
                                     background: isActive
                                         ? "var(--accent)"
