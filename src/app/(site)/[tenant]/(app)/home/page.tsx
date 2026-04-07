@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ChevronRight, Gift, Clock3, Sparkles } from "lucide-react";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
+import HomeProfileGate from "@/components/profile/HomeProfileGate";
 import { endpoints } from "@/lib/api/endpoints";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse } from "@/lib/types/goods";
@@ -57,7 +58,7 @@ function displayCategoryLabel(label?: string) {
 
 function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
     return (items ?? []).map((p) => ({
-        id: String(p.id),
+        id: String(p.id ?? ""),
         title: String(p.title ?? ""),
         price: Number(p.price ?? 0),
         thumbnailUrl: p.thumbnailUrl,
@@ -100,6 +101,8 @@ export default async function HomePage({
 
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 pb-24 pt-3">
+            <HomeProfileGate tenant={tenant} />
+
             <HomeBannerCarousel tenant={tenant} />
 
             <div className="hidden">

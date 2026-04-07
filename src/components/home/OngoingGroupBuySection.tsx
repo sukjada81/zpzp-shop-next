@@ -5,9 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShoppingBag, Clock3, Truck } from "lucide-react";
+import BottomToast, { BottomToastTone } from "@/components/ui/BottomToast";
 import { endpoints } from "@/lib/api/endpoints";
 import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
-import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
+import {
+    isQuickOrderProfileComplete,
+    readQuickOrderProfile,
+} from "@/lib/profile/quickOrderProfile";
 
 type NoticeItem = {
     id: string;
@@ -92,48 +96,6 @@ function formatAddPrice(addPrice?: number) {
     const value = Number(addPrice ?? 0);
     if (!value) return "";
     return value > 0 ? `+${value.toLocaleString()}원` : `${value.toLocaleString()}원`;
-}
-
-function SuccessToast({
-                          open,
-                          message,
-                          onClose,
-                      }: {
-    open: boolean;
-    message: string;
-    onClose: () => void;
-}) {
-    return (
-        <div
-            className={[
-                "pointer-events-none fixed inset-x-0 bottom-24 z-[90] flex justify-center px-4 transition-all duration-300",
-                open ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
-            ].join(" ")}
-        >
-            <div className="pointer-events-auto w-full max-w-[520px]">
-                <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/95 px-5 py-4 shadow-lg backdrop-blur">
-                    <div className="flex items-center gap-3">
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-green-500 text-xl font-black text-white">
-                            ✓
-                        </div>
-
-                        <div className="min-w-0 flex-1 text-[15px] font-extrabold text-emerald-900">
-                            {message}
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="grid h-8 w-8 place-items-center rounded-full text-xl font-bold text-emerald-700"
-                            aria-label="닫기"
-                        >
-                            ×
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
 }
 
 function CompactNoticeBar({ notice }: { notice?: NoticeItem }) {
@@ -393,6 +355,8 @@ export default function OngoingGroupBuySection({
     const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
     const [submitting, setSubmitting] = useState(false);
     const [toastOpen, setToastOpen] = useState(false);
+    const [toastMessage, setToastMessage] = useState("");
+    const [toastTone, setToastTone] = useState<BottomToastTone>("success");
 
     useEffect(() => {
         if (!toastOpen) return;
@@ -495,6 +459,12 @@ export default function OngoingGroupBuySection({
 
     const isActive = totalQty > 0;
 
+    function showToast(message: string, tone: BottomToastTone = "success") {
+        setToastMessage(message);
+        setToastTone(tone);
+        setToastOpen(true);
+    }
+
     function minus(optionKey: string) {
         setQtyMap((prev) => ({
             ...prev,
@@ -525,14 +495,16 @@ export default function OngoingGroupBuySection({
 
         const firstTenant = String(items?.[0]?.tenant ?? "").trim();
         if (!firstTenant) {
-            alert("지점 정보가 올바르지 않습니다.");
+            showToast("지점 정보가 올바르지 않습니다.", "error");
             return;
         }
 
         const profile = readQuickOrderProfile(firstTenant);
-        if (!profile) {
-            alert("주문을 하려면 설정에서 닉네임을 먼저 저장해 주세요.");
-            router.push(`/${firstTenant}/settings`);
+        if (!isQuickOrderProfileComplete(profile)) {
+            showToast("주문자 정보를 먼저 설정해 주세요.", "error");
+            window.setTimeout(() => {
+                router.push(`/${firstTenant}/settings`);
+            }, 700);
             return;
         }
 
@@ -551,7 +523,7 @@ export default function OngoingGroupBuySection({
             .filter(Boolean);
 
         if (!selectedItems.length) {
-            alert("주문할 수량을 선택해 주세요.");
+            showToast("주문할 수량을 선택해 주세요.", "error");
             return;
         }
 
@@ -567,10 +539,10 @@ export default function OngoingGroupBuySection({
                 credentials: "include",
                 cache: "no-store",
                 body: JSON.stringify({
-                    buyerName: profile.nickname,
-                    buyerPhone: profile.phone || "",
-                    receiverName: profile.nickname,
-                    receiverPhone: profile.phone || "",
+                    buyerName: String(profile?.nickname ?? "").trim(),
+                    buyerPhone: String(profile?.phone ?? "").trim(),
+                    receiverName: String(profile?.nickname ?? "").trim(),
+                    receiverPhone: String(profile?.phone ?? "").trim(),
                     pickupAt: null,
                     message: "",
                     memo: "홈페이지 빠른주문",
@@ -580,6 +552,14 @@ export default function OngoingGroupBuySection({
             });
 
             const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
+
+            if (res.status === 401) {
+                showToast("로그인이 필요합니다. 다시 로그인해 주세요.", "error");
+                window.setTimeout(() => {
+                    router.push(`/${firstTenant}/login?returnTo=${encodeURIComponent(`/${firstTenant}/home`)}`);
+                }, 700);
+                return;
+            }
 
             if (!res.ok || json?.ok === false || !json?.orderNum) {
                 throw new Error(
@@ -593,15 +573,16 @@ export default function OngoingGroupBuySection({
             saveGuestOrderRef({
                 tenant: firstTenant,
                 orderNum: json.orderNum,
-                phone: profile.phone || "",
-                buyerName: profile.nickname,
+                phone: String(profile?.phone ?? ""),
+                buyerName: String(profile?.nickname ?? ""),
                 createdAt: new Date().toISOString(),
             });
 
             setQtyMap({});
-            setToastOpen(true);
-        } catch (e: any) {
-            alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
+            showToast("주문이 완료되었어요.");
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : "주문 처리 중 오류가 발생했습니다.";
+            showToast(message, "error");
         } finally {
             setSubmitting(false);
         }
@@ -676,9 +657,10 @@ export default function OngoingGroupBuySection({
                 ) : null}
             </section>
 
-            <SuccessToast
+            <BottomToast
                 open={toastOpen}
-                message="주문이 완료되었어요"
+                message={toastMessage}
+                tone={toastTone}
                 onClose={() => setToastOpen(false)}
             />
         </>

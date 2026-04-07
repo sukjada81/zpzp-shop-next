@@ -117,7 +117,7 @@ export default function SideDrawer({
                 disabled: false,
                 badgeCount: cartCount,
             },
-            { href: `/${tenant}/settings`, label: "설정", Icon: Settings, disabled: false },
+            { href: `/${tenant}/settings`, label: "내 정보 설정", Icon: Settings, disabled: false },
         ];
 
         if (!HIDE_POINTS_MENU) {

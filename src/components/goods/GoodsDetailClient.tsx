@@ -5,9 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ShoppingBag, ShoppingCart, Clock3, Truck, Info } from "lucide-react";
 import { useCart } from "@/lib/cart/CartProvider";
+import BottomToast, { BottomToastTone } from "@/components/ui/BottomToast";
 import { endpoints } from "@/lib/api/endpoints";
 import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
-import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
+import {
+    isQuickOrderProfileComplete,
+    readQuickOrderProfile,
+} from "@/lib/profile/quickOrderProfile";
 
 type GoodsOption = {
     id: string;
@@ -184,48 +188,6 @@ async function fetchAuthSession(): Promise<AuthSessionResponse | null> {
     }
 }
 
-function SuccessToast({
-                          open,
-                          message,
-                          onClose,
-                      }: {
-    open: boolean;
-    message: string;
-    onClose: () => void;
-}) {
-    return (
-        <div
-            className={[
-                "pointer-events-none fixed inset-x-0 bottom-24 z-[95] flex justify-center px-4 transition-all duration-300",
-                open ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
-            ].join(" ")}
-        >
-            <div className="pointer-events-auto w-full max-w-[520px]">
-                <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/95 px-5 py-4 shadow-lg backdrop-blur">
-                    <div className="flex items-center gap-3">
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-green-500 text-xl font-black text-white">
-                            ✓
-                        </div>
-
-                        <div className="min-w-0 flex-1 text-[15px] font-extrabold text-emerald-900">
-                            {message}
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="grid h-8 w-8 place-items-center rounded-full text-xl font-bold text-emerald-700"
-                            aria-label="닫기"
-                        >
-                            ×
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 function QtyControl({
                         value,
                         onMinus,
@@ -322,6 +284,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const [submitting, setSubmitting] = useState(false);
     const [toastOpen, setToastOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState("주문이 완료되었어요.");
+    const [toastTone, setToastTone] = useState<BottomToastTone>("success");
 
     const optionById = useMemo(() => {
         return new Map(data.options.map((o) => [o.id, o]));
@@ -387,10 +350,25 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const mainImageUrl = toAbsoluteImageUrl(mainImage?.key);
     const canCarousel = safeImages.length > 1;
 
+    function showToast(message: string, tone: BottomToastTone = "success") {
+        setToastMessage(message);
+        setToastTone(tone);
+        setToastOpen(true);
+    }
+
     function redirectToLogin() {
         const returnTo = pathname || `/${tenant}/goods/${data.id}`;
-        alert("로그인이 필요합니다. 다시 로그인해 주세요.");
-        router.push(buildLoginHref(tenant, returnTo));
+        showToast("로그인이 필요합니다. 다시 로그인해 주세요.", "error");
+        window.setTimeout(() => {
+            router.push(buildLoginHref(tenant, returnTo));
+        }, 700);
+    }
+
+    function redirectToSettingsWithToast(message: string) {
+        showToast(message, "error");
+        window.setTimeout(() => {
+            router.push(`/${tenant}/settings`);
+        }, 700);
     }
 
     function adjustQty(optionId: string, delta: number) {
@@ -413,7 +391,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     function submitCart() {
         if (!isActive) {
-            alert("옵션을 선택해주세요.");
+            showToast("옵션을 선택해주세요.", "error");
             return;
         }
 
@@ -436,8 +414,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             }))
         );
 
-        setToastMessage("장바구니에 담았어요.");
-        setToastOpen(true);
+        showToast("장바구니에 담았어요.");
     }
 
     async function submitQuickOrder() {
@@ -453,17 +430,19 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             }
 
             const profile = readQuickOrderProfile(tenant);
+            if (!isQuickOrderProfileComplete(profile)) {
+                redirectToSettingsWithToast("주문자 정보를 먼저 설정해 주세요.");
+                return;
+            }
+
             const buyerName =
                 String(profile?.nickname ?? "").trim() || String(auth.member?.name ?? "").trim();
             const buyerPhone =
                 String(profile?.phone ?? "").trim() || String(auth.member?.phone ?? "").trim();
 
-            if (!buyerName) {
-                throw new Error("주문자 이름을 확인할 수 없습니다.");
-            }
-
-            if (!buyerPhone) {
-                throw new Error("주문자 연락처를 확인할 수 없습니다.");
+            if (!buyerName || !buyerPhone) {
+                redirectToSettingsWithToast("주문자 정보를 먼저 설정해 주세요.");
+                return;
             }
 
             const res = await fetch(endpoints.createOrder(tenant), {
@@ -524,15 +503,14 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 return next;
             });
 
-            setToastMessage("주문이 완료되었어요.");
-            setToastOpen(true);
+            showToast("주문이 완료되었어요.");
 
             window.setTimeout(() => {
                 router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(json.orderNum ?? "")}`);
             }, 900);
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : "주문 처리 중 오류가 발생했습니다.";
-            alert(message);
+            showToast(message, "error");
         } finally {
             setSubmitting(false);
         }
@@ -793,9 +771,10 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </div>
             </main>
 
-            <SuccessToast
+            <BottomToast
                 open={toastOpen}
                 message={toastMessage}
+                tone={toastTone}
                 onClose={() => setToastOpen(false)}
             />
         </>
