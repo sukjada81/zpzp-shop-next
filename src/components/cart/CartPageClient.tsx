@@ -100,7 +100,7 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                 tenant,
                 orderNum,
                 phone: profile.phone || "",
-                buyerName: profile.nickname,
+                buyerName: profile.nickname || "",
                 createdAt: new Date().toISOString(),
             });
 
