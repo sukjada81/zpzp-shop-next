@@ -13,6 +13,9 @@ import {
     Package,
     ShoppingBag,
     TrendingUp,
+    BarChart3,
+    Boxes,
+    ListFilter,
 } from "lucide-react";
 import {
     ResponsiveContainer,
@@ -69,7 +72,7 @@ function cardIcon(key: string) {
         case "monthSales":
             return TrendingUp;
         case "yearSales":
-            return TrendingUp;
+            return BarChart3;
         case "rangeOrderCount":
             return ShoppingBag;
         default:
@@ -77,21 +80,12 @@ function cardIcon(key: string) {
     }
 }
 
-function statusBadgeClass(status: number) {
-    if (status === 9) return "bg-rose-50 text-rose-600 ring-rose-100";
-    if (status === 4) return "bg-emerald-50 text-emerald-600 ring-emerald-100";
-    if (status === 0 || status === 1 || status === 2) {
-        return "bg-blue-50 text-blue-600 ring-blue-100";
-    }
-    return "bg-slate-100 text-slate-600 ring-slate-200";
-}
-
 function formatMoney(value: number) {
     return `${Number(value || 0).toLocaleString("ko-KR")}원`;
 }
 
-function formatCount(value: number) {
-    return `${Number(value || 0).toLocaleString("ko-KR")}건`;
+function formatCount(value: number, unit = "건") {
+    return `${Number(value || 0).toLocaleString("ko-KR")}${unit}`;
 }
 
 function SalesTooltip({
@@ -174,33 +168,36 @@ export default function SellerSalesStatsClient({
 
     return (
         <div className="space-y-4">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                        <h1 className="text-[26px] font-extrabold tracking-[-0.03em] text-slate-900">
+                        <h1 className="break-words text-[24px] font-extrabold tracking-[-0.03em] text-slate-900 sm:text-[26px]">
                             {data.summary.title}
                         </h1>
                         <p className="mt-1 text-sm font-medium text-slate-500">
                             {data.summary.subtitle}
                         </p>
+                        {data.summary.basis ? (
+                            <p className="mt-1 text-xs text-slate-400">{data.summary.basis}</p>
+                        ) : null}
                     </div>
 
                     <Link
                         href={getSellerHref(tenant)}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                         대시보드로 이동
                     </Link>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {data.summary.cards.map((item) => {
                         const Icon = cardIcon(item.key);
 
                         return (
                             <div
                                 key={item.key}
-                                className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]"
+                                className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[22px]"
                             >
                                 <div className="mb-3 flex items-start justify-between gap-3">
                                     <div className="text-sm font-semibold tracking-[-0.02em] text-slate-900">
@@ -211,7 +208,11 @@ export default function SellerSalesStatsClient({
                                     </div>
                                 </div>
 
-                                <div className={`text-[24px] font-extrabold tracking-[-0.04em] ${toneNumberClass(item.tone)}`}>
+                                <div
+                                    className={`break-words text-[22px] font-extrabold tracking-[-0.04em] sm:text-[24px] ${toneNumberClass(
+                                        item.tone
+                                    )}`}
+                                >
                                     {item.text}
                                 </div>
                                 <div className="mt-2 text-xs text-slate-500">{item.hint}</div>
@@ -220,26 +221,26 @@ export default function SellerSalesStatsClient({
                     })}
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 sm:rounded-[22px]">
                         <div className="text-xs font-semibold text-slate-500">선택구간 총매출</div>
                         <div className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-slate-900">
                             {data.summary.totals.salesAmountText}
                         </div>
                     </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 sm:rounded-[22px]">
                         <div className="text-xs font-semibold text-slate-500">선택구간 공급가</div>
                         <div className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-slate-900">
                             {data.summary.totals.supplyAmountText}
                         </div>
                     </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 sm:rounded-[22px]">
                         <div className="text-xs font-semibold text-slate-500">선택구간 예상마진</div>
                         <div className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-emerald-600">
                             {data.summary.totals.profitAmountText}
                         </div>
                     </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 sm:rounded-[22px]">
                         <div className="text-xs font-semibold text-slate-500">선택구간 주문/수량</div>
                         <div className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-slate-900">
                             {data.summary.totals.orderCountText} / {data.summary.totals.qtyText}
@@ -248,8 +249,8 @@ export default function SellerSalesStatsClient({
                 </div>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="text-[18px] font-extrabold tracking-[-0.03em] text-slate-900">
                             매출 그래프
@@ -281,23 +282,23 @@ export default function SellerSalesStatsClient({
                     </div>
                 </div>
 
-                <div className="mt-4 h-[420px] rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-                    <div className="h-full rounded-[20px] bg-white p-4">
+                <div className="mt-4 h-[260px] rounded-[20px] border border-slate-200 bg-slate-50 p-3 sm:h-[420px] sm:rounded-[24px] sm:p-4">
+                    <div className="h-full rounded-[18px] bg-white p-3 sm:rounded-[20px] sm:p-4">
                         <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart
                                 data={chartRows}
-                                margin={{ top: 8, right: 12, left: -20, bottom: 8 }}
+                                margin={{ top: 8, right: 12, left: -24, bottom: 0 }}
                             >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                                 <XAxis
                                     dataKey="label"
-                                    tick={{ fontSize: 12, fill: "#64748B" }}
+                                    tick={{ fontSize: 11, fill: "#64748B" }}
                                     axisLine={false}
                                     tickLine={false}
                                 />
                                 <YAxis
                                     yAxisId="left"
-                                    tick={{ fontSize: 12, fill: "#64748B" }}
+                                    tick={{ fontSize: 11, fill: "#64748B" }}
                                     axisLine={false}
                                     tickLine={false}
                                     tickFormatter={(value) => `${Number(value).toLocaleString("ko-KR")}`}
@@ -306,7 +307,7 @@ export default function SellerSalesStatsClient({
                                     yAxisId="right"
                                     orientation="right"
                                     allowDecimals={false}
-                                    tick={{ fontSize: 12, fill: "#64748B" }}
+                                    tick={{ fontSize: 11, fill: "#64748B" }}
                                     axisLine={false}
                                     tickLine={false}
                                 />
@@ -344,9 +345,9 @@ export default function SellerSalesStatsClient({
             <form
                 action={pathname}
                 method="GET"
-                className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]"
+                className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-5"
             >
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="text-[18px] font-extrabold tracking-[-0.03em] text-slate-900">
                             상세 내역 / 검색 / 필터
@@ -358,7 +359,7 @@ export default function SellerSalesStatsClient({
 
                     <Link
                         href={pathname}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                         <RotateCcw className="h-4 w-4" />
                         필터 초기화
@@ -429,14 +430,14 @@ export default function SellerSalesStatsClient({
                 </div>
             </form>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-5">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="text-[18px] font-extrabold tracking-[-0.03em] text-slate-900">
                             매출 상세내역
                         </div>
                         <div className="mt-1 text-sm text-slate-500">
-                            총 {data.details.totalCount.toLocaleString("ko-KR")}건
+                            총 발주건수 {data.summary.totals.orderCountText} / 총 발주수량 {data.summary.totals.qtyText}
                         </div>
                     </div>
                 </div>
@@ -444,50 +445,90 @@ export default function SellerSalesStatsClient({
                 <div className="space-y-3">
                     {data.details.items.length > 0 ? (
                         data.details.items.map((item) => (
-                            <Link
+                            <div
                                 key={item.id}
-                                href={getSellerHref(tenant, `/orders/${item.orderNo}`)}
-                                className="block rounded-[20px] border border-slate-200 bg-slate-50/60 p-4 transition hover:bg-white hover:shadow-sm"
+                                className="rounded-[18px] border border-slate-200 bg-slate-50/70 p-4 transition hover:bg-white hover:shadow-sm sm:rounded-[20px]"
                             >
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div className="min-w-0">
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                    <div className="min-w-0 flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <div className="text-sm font-bold text-slate-900">
-                                                주문번호 {item.orderNo}
+                                            <div className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-200">
+                                                상품집계
                                             </div>
-                                            <div
-                                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusBadgeClass(
-                                                    item.status
-                                                )}`}
-                                            >
-                                                {item.statusLabel}
+                                            {item.optionName ? (
+                                                <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 ring-1 ring-slate-200">
+                                                    옵션 {item.optionName}
+                                                </div>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="mt-2 break-words text-base font-extrabold tracking-[-0.02em] text-slate-900 sm:text-lg">
+                                            {item.productName}
+                                        </div>
+
+                                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                                    <ShoppingBag className="h-3.5 w-3.5" />
+                                                    발주건수
+                                                </div>
+                                                <div className="mt-1 text-base font-extrabold text-slate-900">
+                                                    {item.orderCountText}
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                                    <Boxes className="h-3.5 w-3.5" />
+                                                    총발주수량
+                                                </div>
+                                                <div className="mt-1 text-base font-extrabold text-slate-900">
+                                                    {item.qtyText}
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                                    <Wallet className="h-3.5 w-3.5" />
+                                                    매출
+                                                </div>
+                                                <div className="mt-1 text-base font-extrabold text-slate-900">
+                                                    {item.amountText}
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                                    <TrendingUp className="h-3.5 w-3.5" />
+                                                    예상마진
+                                                </div>
+                                                <div className="mt-1 text-base font-extrabold text-emerald-600">
+                                                    {item.profitAmountText}
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div className="mt-2 text-sm font-semibold text-slate-800">
-                                            {item.itemSummary}
-                                        </div>
-
-                                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                                            <span>주문자: {item.buyerName}</span>
-                                            <span>수량: {item.qty.toLocaleString("ko-KR")}개</span>
-                                            <span>일시: {item.orderedAtText}</span>
+                                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                                            <span>공급가: {item.supplyAmountText}</span>
+                                            <span>최근 주문일시: {item.lastOrderedAtText}</span>
+                                            {item.latestOrderNo ? <span>최근 주문번호: {item.latestOrderNo}</span> : null}
                                         </div>
                                     </div>
 
-                                    <div className="shrink-0 text-right">
-                                        <div className="text-[18px] font-extrabold tracking-[-0.03em] text-slate-900">
-                                            {item.amountText}
-                                        </div>
-                                        <div className="mt-1 text-xs text-slate-500">
-                                            공급가 {item.supplyAmountText}
-                                        </div>
-                                        <div className="mt-1 text-xs font-semibold text-emerald-600">
-                                            예상마진 {item.profitAmountText}
-                                        </div>
+                                    <div className="shrink-0">
+                                        <Link
+                                            href={getSellerHref(
+                                                tenant,
+                                                `/orders?query=${encodeURIComponent(item.productName)}`
+                                            )}
+                                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                        >
+                                            <ListFilter className="h-4 w-4" />
+                                            관련 주문 {item.orderCountText} 보기
+                                        </Link>
                                     </div>
                                 </div>
-                            </Link>
+                            </div>
                         ))
                     ) : (
                         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">

@@ -37,6 +37,20 @@ type BuiltOrder = {
     itemSummary: string;
 };
 
+type AggregatedProductRow = {
+    id: string;
+    productName: string;
+    optionName: string;
+    orderCount: number;
+    qty: number;
+    amount: number;
+    supplyAmount: number;
+    profitAmount: number;
+    lastOrderedAt: Date | null;
+    latestOrderId: string;
+    latestOrderNo: string;
+};
+
 function getSessionMember(req: any): MemberSession | null {
     const member = req.session?.member as MemberSession | undefined;
     if (!member?.uid) return null;
@@ -102,6 +116,10 @@ function getMoneyText(value: number) {
 
 function getCountText(value: number, unit: string) {
     return `${value.toLocaleString("ko-KR")}${unit}`;
+}
+
+function normalizeText(value: unknown) {
+    return String(value ?? "").trim();
 }
 
 function statusLabel(status: number) {
@@ -412,6 +430,7 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                         order_num: true,
                         status: true,
                         signdate: true,
+                        g_uid: true,
                         g_name: true,
                         option_name: true,
                         qty: true,
@@ -505,17 +524,11 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
 
             orders.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 
-            const totalCount = orders.length;
-            const page = query.page;
-            const pageSize = query.pageSize;
-            const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-            const start = (page - 1) * pageSize;
-            const paged = orders.slice(start, start + pageSize);
-
             const totalSales = orders.reduce((acc, row) => acc + row.amount, 0);
             const totalSupply = orders.reduce((acc, row) => acc + row.supplyAmount, 0);
             const totalProfit = orders.reduce((acc, row) => acc + row.profitAmount, 0);
             const totalQty = orders.reduce((acc, row) => acc + row.qty, 0);
+            const totalOrderCount = orders.length;
 
             const chartPoints = aggregateSalesByBuckets(orders, query.range);
             const maxValues = getChartMax(chartPoints);
@@ -524,23 +537,25 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
             const monthStart = toMonthStart();
             const yearStart = toYearStart();
 
-            const allOrderBase = orderInfos.map((info: any) => {
-                const goods = orderGoodsMap.get(String(info.order_num ?? "")) ?? [];
-                const createdAt = getOrderCreatedAt(info) ?? getOrderCreatedAt(goods[0]);
-                const status = deriveOrderStatus(goods);
-                const amount =
-                    sumGoodsAmount(goods, "price") ||
-                    Math.max(
-                        0,
-                        toInt(info.pay_total, 0) - toInt(info.cancel_total, 0) - toInt(info.refund_total, 0)
-                    );
+            const allOrderBase = orderInfos
+                .map((info: any) => {
+                    const goods = orderGoodsMap.get(String(info.order_num ?? "")) ?? [];
+                    const createdAt = getOrderCreatedAt(info) ?? getOrderCreatedAt(goods[0]);
+                    const status = deriveOrderStatus(goods);
+                    const amount =
+                        sumGoodsAmount(goods, "price") ||
+                        Math.max(
+                            0,
+                            toInt(info.pay_total, 0) - toInt(info.cancel_total, 0) - toInt(info.refund_total, 0)
+                        );
 
-                return {
-                    createdAt,
-                    amount,
-                    status,
-                };
-            }).filter((row) => row.status !== 9);
+                    return {
+                        createdAt,
+                        amount,
+                        status,
+                    };
+                })
+                .filter((row) => row.status !== 9);
 
             const todaySales = allOrderBase
                 .filter((row) => row.createdAt && row.createdAt >= todayStart)
@@ -554,12 +569,111 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 .filter((row) => row.createdAt && row.createdAt >= yearStart)
                 .reduce((acc, row) => acc + row.amount, 0);
 
+            const matchedOrderNoSet = new Set(orders.map((item) => item.orderNo));
+            const matchedOrderMap = new Map(orders.map((item) => [item.orderNo, item]));
+
+            const aggregatedMap = new Map<string, AggregatedProductRow & { orderNoSet: Set<string> }>();
+
+            for (const row of orderGoods) {
+                const orderNo = String(row.order_num ?? "");
+                if (!matchedOrderNoSet.has(orderNo)) continue;
+                if (isCanceledOrder(row)) continue;
+
+                const productName = normalizeText(row.g_name) || "상품명 없음";
+                const optionName = normalizeText(row.option_name);
+                const productId = normalizeText(row.g_uid);
+                const groupKey = `${productId || productName}::${optionName}`;
+
+                const matchedOrder = matchedOrderMap.get(orderNo);
+                const createdAt = matchedOrder?.createdAt ?? getOrderCreatedAt(row);
+                const qty = toInt(row.qty, 0);
+                const amount = toInt(row.price, 0) * qty;
+                const supplyAmount = toInt(row.orig_price, 0) * qty;
+                const matchedOrderId = matchedOrder?.id ?? "";
+                const matchedOrderNo = matchedOrder?.orderNo ?? orderNo;
+
+                const existing = aggregatedMap.get(groupKey);
+
+                if (!existing) {
+                    aggregatedMap.set(groupKey, {
+                        id: groupKey,
+                        productName,
+                        optionName,
+                        orderCount: 1,
+                        qty,
+                        amount,
+                        supplyAmount,
+                        profitAmount: Math.max(0, amount - supplyAmount),
+                        lastOrderedAt: createdAt,
+                        latestOrderId: matchedOrderId,
+                        latestOrderNo: matchedOrderNo,
+                        orderNoSet: new Set([orderNo]),
+                    });
+                    continue;
+                }
+
+                if (!existing.orderNoSet.has(orderNo)) {
+                    existing.orderNoSet.add(orderNo);
+                    existing.orderCount += 1;
+                }
+
+                existing.qty += qty;
+                existing.amount += amount;
+                existing.supplyAmount += supplyAmount;
+                existing.profitAmount = Math.max(0, existing.amount - existing.supplyAmount);
+
+                const existingTime = existing.lastOrderedAt?.getTime() ?? 0;
+                const createdTime = createdAt?.getTime() ?? 0;
+
+                if (createdTime >= existingTime) {
+                    existing.lastOrderedAt = createdAt;
+                    existing.latestOrderId = matchedOrderId;
+                    existing.latestOrderNo = matchedOrderNo;
+                }
+            }
+
+            let detailRows = Array.from(aggregatedMap.values()).map((row) => ({
+                id: row.id,
+                productName: row.productName,
+                optionName: row.optionName,
+                orderCount: row.orderCount,
+                orderCountText: getCountText(row.orderCount, "건"),
+                qty: row.qty,
+                qtyText: getCountText(row.qty, "개"),
+                amount: row.amount,
+                amountText: getMoneyText(row.amount),
+                supplyAmount: row.supplyAmount,
+                supplyAmountText: getMoneyText(row.supplyAmount),
+                profitAmount: row.profitAmount,
+                profitAmountText: getMoneyText(row.profitAmount),
+                lastOrderedAt: row.lastOrderedAt ? row.lastOrderedAt.toISOString() : null,
+                lastOrderedAtText: formatDateTimeText(row.lastOrderedAt),
+                latestOrderId: row.latestOrderId,
+                latestOrderNo: row.latestOrderNo,
+            }));
+
+            detailRows.sort((a, b) => {
+                const diff =
+                    (b.lastOrderedAt ? new Date(b.lastOrderedAt).getTime() : 0) -
+                    (a.lastOrderedAt ? new Date(a.lastOrderedAt).getTime() : 0);
+                if (diff !== 0) return diff;
+                return b.amount - a.amount;
+            });
+
+            const detailTotalCount = detailRows.length;
+            const page = query.page;
+            const pageSize = query.pageSize;
+            const totalPages = Math.max(1, Math.ceil(detailTotalCount / pageSize));
+            const start = (page - 1) * pageSize;
+            const paged = detailRows.slice(start, start + pageSize);
+
             return reply.send({
                 ok: true,
                 tenant: tenantSlug,
                 summary: {
                     title: "매출 통계",
                     subtitle: "기간별 주문 흐름",
+                    basis: "상품 기준 집계 / 상세는 발주건수와 총발주수량 기준",
                     cards: [
                         {
                             key: "todaySales",
@@ -591,9 +705,9 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                         {
                             key: "rangeOrderCount",
                             label: "선택구간 주문",
-                            value: totalCount,
+                            value: totalOrderCount,
                             unit: "건",
-                            text: getCountText(totalCount, "건"),
+                            text: getCountText(totalOrderCount, "건"),
                             hint: "현재 검색/필터 기준",
                             tone: "blue",
                         },
@@ -605,8 +719,8 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                         supplyAmountText: getMoneyText(totalSupply),
                         profitAmount: totalProfit,
                         profitAmountText: getMoneyText(totalProfit),
-                        orderCount: totalCount,
-                        orderCountText: getCountText(totalCount, "건"),
+                        orderCount: totalOrderCount,
+                        orderCountText: getCountText(totalOrderCount, "건"),
                         qty: totalQty,
                         qtyText: getCountText(totalQty, "개"),
                     },
@@ -631,28 +745,11 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                     pageSize,
                 },
                 details: {
-                    totalCount,
+                    totalCount: detailTotalCount,
                     totalPages,
                     page,
                     pageSize,
-                    items: paged.map((item) => ({
-                        id: item.id,
-                        orderNo: item.orderNo,
-                        buyerName: item.buyerName || "-",
-                        itemSummary: item.itemSummary || "-",
-                        qty: item.qty,
-                        itemCount: item.itemCount,
-                        amount: item.amount,
-                        amountText: getMoneyText(item.amount),
-                        supplyAmount: item.supplyAmount,
-                        supplyAmountText: getMoneyText(item.supplyAmount),
-                        profitAmount: item.profitAmount,
-                        profitAmountText: getMoneyText(item.profitAmount),
-                        status: item.status,
-                        statusLabel: item.statusLabel,
-                        orderedAt: item.createdAtIso,
-                        orderedAtText: item.createdAtText,
-                    })),
+                    items: paged,
                 },
                 actor: {
                     role: permission.grantedRole,

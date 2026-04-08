@@ -215,10 +215,10 @@ export default function SellerDashboardClient({
     }
 
     return (
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-            <div className="flex items-start justify-between gap-3">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                    <h1 className="truncate text-[26px] font-extrabold tracking-[-0.03em] text-slate-900">
+                    <h1 className="break-words text-[24px] font-extrabold tracking-[-0.03em] text-slate-900 sm:text-[26px]">
                         {pageTitle}
                     </h1>
                     <p className="mt-1 text-sm font-medium text-slate-500">
@@ -226,16 +226,16 @@ export default function SellerDashboardClient({
                     </p>
                 </div>
 
-                <div className="shrink-0 overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+                <div className="w-full shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:w-auto sm:rounded-full">
                     <div className="flex items-center">
-                        <div className="flex h-9 items-center gap-2 border-r border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800">
-                            <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <div className="flex h-10 flex-1 items-center justify-center gap-2 border-r border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 sm:h-9 sm:flex-none">
+                            <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
                             실시간
                         </div>
                         <button
                             type="button"
                             onClick={handleRefresh}
-                            className="inline-flex h-9 items-center gap-2 bg-blue-600 px-4 text-xs font-bold text-white transition hover:bg-blue-700 active:translate-y-px"
+                            className="inline-flex h-10 flex-1 items-center justify-center gap-2 bg-blue-600 px-4 text-xs font-bold text-white transition hover:bg-blue-700 active:translate-y-px sm:h-9 sm:flex-none"
                         >
                             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
                             새로고침
@@ -246,7 +246,7 @@ export default function SellerDashboardClient({
 
             <div className="my-4 h-px bg-slate-200" />
 
-            <div className="mb-3 flex items-center justify-between px-1">
+            <div className="mb-4 flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm font-medium tracking-[-0.02em] text-slate-700">
                     {summary?.dateLabel}
                 </div>
@@ -259,7 +259,7 @@ export default function SellerDashboardClient({
                 </Link>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {summary?.memberKpis?.map((item) => {
                     const Icon = cardIcon(item.key);
 
@@ -267,7 +267,7 @@ export default function SellerDashboardClient({
                         <Link
                             key={item.key}
                             href={cardHref(tenant, item.key)}
-                            className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-[1px] hover:shadow-md"
+                            className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-[1px] hover:shadow-md sm:rounded-[22px]"
                         >
                             <div className="mb-3 flex items-start justify-between gap-3">
                                 <div className="text-sm font-semibold tracking-[-0.02em] text-slate-900">
@@ -278,9 +278,9 @@ export default function SellerDashboardClient({
                                 </div>
                             </div>
 
-                            <div className="flex items-end gap-1">
+                            <div className="flex flex-wrap items-end gap-1">
                                 <span
-                                    className={`text-[30px] font-extrabold leading-none tracking-[-0.04em] ${toneNumberClass(
+                                    className={`text-[28px] font-extrabold leading-none tracking-[-0.04em] sm:text-[30px] ${toneNumberClass(
                                         item.tone
                                     )}`}
                                 >
@@ -300,8 +300,8 @@ export default function SellerDashboardClient({
                 })}
             </div>
 
-            <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
+            <div className="mt-4 rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px]">
+                <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="text-[15px] font-bold tracking-[-0.02em] text-slate-900">
                             최근 7일
@@ -318,7 +318,7 @@ export default function SellerDashboardClient({
                     </Link>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {summary?.operationKpis?.map((item) => {
                         const Icon = cardIcon(item.key);
 
@@ -326,7 +326,7 @@ export default function SellerDashboardClient({
                             <Link
                                 key={item.key}
                                 href={cardHref(tenant, item.key)}
-                                className="rounded-[22px] border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md"
+                                className="rounded-[20px] border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md sm:rounded-[22px]"
                             >
                                 <div className="mb-3 flex items-start justify-between gap-3">
                                     <div className="text-sm font-semibold tracking-[-0.02em] text-slate-900">
@@ -337,9 +337,9 @@ export default function SellerDashboardClient({
                                     </div>
                                 </div>
 
-                                <div className="flex items-end gap-1">
+                                <div className="flex flex-wrap items-end gap-1">
                                     <span
-                                        className={`text-[30px] font-extrabold leading-none tracking-[-0.04em] ${toneNumberClass(
+                                        className={`text-[28px] font-extrabold leading-none tracking-[-0.04em] sm:text-[30px] ${toneNumberClass(
                                             item.tone
                                         )}`}
                                     >
@@ -363,7 +363,7 @@ export default function SellerDashboardClient({
                                 <div className="text-sm font-semibold tracking-[-0.02em] text-slate-800">
                                     {row.label}
                                 </div>
-                                <div className="text-base font-bold tracking-[-0.03em] text-slate-900">
+                                <div className="text-sm font-bold tracking-[-0.03em] text-slate-900 sm:text-base">
                                     {row.text}
                                 </div>
                             </div>
@@ -384,25 +384,28 @@ export default function SellerDashboardClient({
             </div>
 
             {sales ? (
-                <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                    <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+                <div className="mt-4 rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px]">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <div className="text-[18px] font-extrabold tracking-[-0.03em] text-slate-900">
                                 {sales.title}
                             </div>
                             <div className="mt-1 text-sm text-slate-500">{sales.subtitle}</div>
+                            {sales.basis ? (
+                                <div className="mt-1 text-xs text-slate-400">{sales.basis}</div>
+                            ) : null}
                         </div>
 
                         <Link
                             href={getSellerHref(tenant, "/sales")}
-                            className="flex shrink-0 items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
+                            className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
                         >
                             <span>매출통계 상세 보기</span>
                             <ChevronRight className="h-4 w-4" />
                         </Link>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         {sales.cards?.map((item) => {
                             const Icon = cardIcon(item.key);
 
@@ -410,7 +413,7 @@ export default function SellerDashboardClient({
                                 <Link
                                     key={item.key}
                                     href={cardHref(tenant, item.key)}
-                                    className="rounded-[22px] border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md"
+                                    className="rounded-[20px] border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md sm:rounded-[22px]"
                                 >
                                     <div className="mb-3 flex items-start justify-between gap-3">
                                         <div className="text-sm font-semibold tracking-[-0.02em] text-slate-900">
@@ -421,7 +424,11 @@ export default function SellerDashboardClient({
                                         </div>
                                     </div>
 
-                                    <div className={`text-[24px] font-extrabold tracking-[-0.04em] ${toneNumberClass(item.tone)}`}>
+                                    <div
+                                        className={`break-words text-[22px] font-extrabold tracking-[-0.04em] sm:text-[24px] ${toneNumberClass(
+                                            item.tone
+                                        )}`}
+                                    >
                                         {item.text}
                                     </div>
 
@@ -431,8 +438,8 @@ export default function SellerDashboardClient({
                         })}
                     </div>
 
-                    <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="mt-5 rounded-[20px] border border-slate-200 bg-slate-50/70 p-4 sm:rounded-[22px]">
+                        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <div className="text-[15px] font-bold tracking-[-0.02em] text-slate-900">
                                     매출 그래프
@@ -443,22 +450,22 @@ export default function SellerDashboardClient({
                             </div>
                         </div>
 
-                        <div className="h-[320px] rounded-[20px] border border-slate-200 bg-white p-4">
+                        <div className="h-[260px] rounded-[18px] border border-slate-200 bg-white p-3 sm:h-[320px] sm:rounded-[20px] sm:p-4">
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart
                                     data={chartRows}
-                                    margin={{ top: 8, right: 8, left: -20, bottom: 8 }}
+                                    margin={{ top: 8, right: 8, left: -24, bottom: 0 }}
                                 >
                                     <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                                     <XAxis
                                         dataKey="label"
-                                        tick={{ fontSize: 12, fill: "#64748B" }}
+                                        tick={{ fontSize: 11, fill: "#64748B" }}
                                         axisLine={false}
                                         tickLine={false}
                                     />
                                     <YAxis
                                         yAxisId="left"
-                                        tick={{ fontSize: 12, fill: "#64748B" }}
+                                        tick={{ fontSize: 11, fill: "#64748B" }}
                                         axisLine={false}
                                         tickLine={false}
                                         tickFormatter={(value) => `${Number(value).toLocaleString("ko-KR")}`}
@@ -467,7 +474,7 @@ export default function SellerDashboardClient({
                                         yAxisId="right"
                                         orientation="right"
                                         allowDecimals={false}
-                                        tick={{ fontSize: 12, fill: "#64748B" }}
+                                        tick={{ fontSize: 11, fill: "#64748B" }}
                                         axisLine={false}
                                         tickLine={false}
                                     />
@@ -484,7 +491,7 @@ export default function SellerDashboardClient({
                                         name="매출"
                                         fill="#10B981"
                                         radius={[8, 8, 0, 0]}
-                                        maxBarSize={36}
+                                        maxBarSize={30}
                                     />
                                     <Line
                                         yAxisId="right"

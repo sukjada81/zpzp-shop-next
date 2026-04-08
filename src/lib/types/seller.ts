@@ -84,21 +84,22 @@ export type SellerSalesChart = {
 
 export type SellerSalesDetailItem = {
     id: string;
-    orderNo: string;
-    buyerName: string;
-    itemSummary: string;
+    productName: string;
+    optionName: string;
+    orderCount: number;
+    orderCountText: string;
     qty: number;
-    itemCount: number;
+    qtyText: string;
     amount: number;
     amountText: string;
     supplyAmount: number;
     supplyAmountText: string;
     profitAmount: number;
     profitAmountText: string;
-    status: number;
-    statusLabel: string;
-    orderedAt: string | null;
-    orderedAtText: string;
+    lastOrderedAt: string | null;
+    lastOrderedAtText: string;
+    latestOrderId: string;
+    latestOrderNo: string;
 };
 
 export type SellerDashboardData = {

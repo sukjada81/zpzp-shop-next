@@ -134,16 +134,18 @@ function orderStatusNumber(row: any): number {
 }
 
 function isPendingOrder(row: any) {
-    const status = orderStatusNumber(row);
+    const status = typeof row === "object" && row ? orderStatusNumber(row) : toInt(row, -1);
     return status === 0 || status === 1 || status === 2;
 }
 
 function isCompletedOrder(row: any) {
-    return orderStatusNumber(row) === 4;
+    const status = typeof row === "object" && row ? orderStatusNumber(row) : toInt(row, -1);
+    return status === 4;
 }
 
 function isCanceledOrder(row: any) {
-    return orderStatusNumber(row) === 9;
+    const status = typeof row === "object" && row ? orderStatusNumber(row) : toInt(row, -1);
+    return status === 9;
 }
 
 function getProductStatus(row: any) {
@@ -513,12 +515,14 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                 .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 
             const todayOrders = validOrders.filter((o) => isSameDay(o.createdAt)).length;
-            const pendingOrders = validOrders.filter(isPendingOrder).length;
+            const pendingOrders = validOrders.filter((o) => isPendingOrder(o.status)).length;
 
             const last7Orders = validOrders.filter((o) => isOnOrAfter(o.createdAt, weekStart));
             const recentOrderCount = last7Orders.length;
-            const completedOrderCount = last7Orders.filter(isCompletedOrder).length;
-            const canceledOrderCount = orders.filter((o) => isOnOrAfter(o.createdAt, weekStart) && isCanceledOrder(o)).length;
+            const completedOrderCount = last7Orders.filter((o) => isCompletedOrder(o.status)).length;
+            const canceledOrderCount = orders.filter(
+                (o) => isOnOrAfter(o.createdAt, weekStart) && isCanceledOrder(o.status)
+            ).length;
 
             const todaySalesAmount = salesOrders
                 .filter((o) => isSameDay(o.createdAt, todayStart))
@@ -651,6 +655,7 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                     sales: {
                         title: "매출 통계",
                         subtitle: "실시간 주문 흐름",
+                        basis: "주문 기준 요약",
                         cards: [
                             {
                                 key: "todaySales",

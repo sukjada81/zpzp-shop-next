@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
     CalendarDays,
     CheckCircle2,
@@ -171,10 +172,17 @@ function getGroupBadge(item: SellerOrderItem) {
 }
 
 export default function SellerOrdersClient({ tenant }: { tenant: string }) {
+    const searchParams = useSearchParams();
+    const initialQuery = (searchParams.get("query") || "").trim();
+
     const [items, setItems] = useState<SellerOrderItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [query, setQuery] = useState("");
+    const [query, setQuery] = useState(initialQuery);
     const [savingId, setSavingId] = useState<string | null>(null);
+
+    useEffect(() => {
+        setQuery(initialQuery);
+    }, [initialQuery]);
 
     async function load() {
         const res = await fetch(`/api/seller/${tenant}/orders`, {
@@ -259,6 +267,8 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
         });
     }, [items, query]);
 
+    const hasQuery = query.trim().length > 0;
+
     return (
         <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
             <div className="mb-5">
@@ -268,6 +278,11 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                 <p className="mt-1 text-sm text-slate-500">
                     최근 주문을 확인하고 확인 처리 후 픽업완료로 변경할 수 있습니다.
                 </p>
+                {hasQuery ? (
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+                        현재 검색어: {query}
+                    </div>
+                ) : null}
             </div>
 
             <div className="mb-5 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
