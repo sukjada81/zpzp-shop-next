@@ -37,10 +37,19 @@ type BuiltOrder = {
     itemSummary: string;
 };
 
+type AggregatedOptionStat = {
+    optionName: string;
+    orderCount: number;
+    qty: number;
+    amount: number;
+    supplyAmount: number;
+    profitAmount: number;
+    orderNoSet: Set<string>;
+};
+
 type AggregatedProductRow = {
     id: string;
     productName: string;
-    optionName: string;
     orderCount: number;
     qty: number;
     amount: number;
@@ -49,6 +58,8 @@ type AggregatedProductRow = {
     lastOrderedAt: Date | null;
     latestOrderId: string;
     latestOrderNo: string;
+    optionStats: Map<string, AggregatedOptionStat>;
+    orderNoSet: Set<string>;
 };
 
 function getSessionMember(req: any): MemberSession | null {
@@ -572,7 +583,7 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
             const matchedOrderNoSet = new Set(orders.map((item) => item.orderNo));
             const matchedOrderMap = new Map(orders.map((item) => [item.orderNo, item]));
 
-            const aggregatedMap = new Map<string, AggregatedProductRow & { orderNoSet: Set<string> }>();
+            const aggregatedMap = new Map<string, AggregatedProductRow>();
 
             for (const row of orderGoods) {
                 const orderNo = String(row.order_num ?? "");
@@ -580,9 +591,8 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 if (isCanceledOrder(row)) continue;
 
                 const productName = normalizeText(row.g_name) || "상품명 없음";
-                const optionName = normalizeText(row.option_name);
-                const productId = normalizeText(row.g_uid);
-                const groupKey = `${productId || productName}::${optionName}`;
+                const optionName = normalizeText(row.option_name) || "옵션없음";
+                const groupKey = productName.toLowerCase();
 
                 const matchedOrder = matchedOrderMap.get(orderNo);
                 const createdAt = matchedOrder?.createdAt ?? getOrderCreatedAt(row);
@@ -592,65 +602,116 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 const matchedOrderId = matchedOrder?.id ?? "";
                 const matchedOrderNo = matchedOrder?.orderNo ?? orderNo;
 
-                const existing = aggregatedMap.get(groupKey);
+                let productGroup = aggregatedMap.get(groupKey);
 
-                if (!existing) {
-                    aggregatedMap.set(groupKey, {
+                if (!productGroup) {
+                    productGroup = {
                         id: groupKey,
                         productName,
-                        optionName,
-                        orderCount: 1,
-                        qty,
-                        amount,
-                        supplyAmount,
-                        profitAmount: Math.max(0, amount - supplyAmount),
+                        orderCount: 0,
+                        qty: 0,
+                        amount: 0,
+                        supplyAmount: 0,
+                        profitAmount: 0,
                         lastOrderedAt: createdAt,
                         latestOrderId: matchedOrderId,
                         latestOrderNo: matchedOrderNo,
-                        orderNoSet: new Set([orderNo]),
-                    });
-                    continue;
+                        optionStats: new Map<string, AggregatedOptionStat>(),
+                        orderNoSet: new Set<string>(),
+                    };
+                    aggregatedMap.set(groupKey, productGroup);
                 }
 
-                if (!existing.orderNoSet.has(orderNo)) {
-                    existing.orderNoSet.add(orderNo);
-                    existing.orderCount += 1;
+                if (!productGroup.orderNoSet.has(orderNo)) {
+                    productGroup.orderNoSet.add(orderNo);
+                    productGroup.orderCount += 1;
                 }
 
-                existing.qty += qty;
-                existing.amount += amount;
-                existing.supplyAmount += supplyAmount;
-                existing.profitAmount = Math.max(0, existing.amount - existing.supplyAmount);
+                productGroup.qty += qty;
+                productGroup.amount += amount;
+                productGroup.supplyAmount += supplyAmount;
+                productGroup.profitAmount = Math.max(0, productGroup.amount - productGroup.supplyAmount);
 
-                const existingTime = existing.lastOrderedAt?.getTime() ?? 0;
+                const existingTime = productGroup.lastOrderedAt?.getTime() ?? 0;
                 const createdTime = createdAt?.getTime() ?? 0;
-
                 if (createdTime >= existingTime) {
-                    existing.lastOrderedAt = createdAt;
-                    existing.latestOrderId = matchedOrderId;
-                    existing.latestOrderNo = matchedOrderNo;
+                    productGroup.lastOrderedAt = createdAt;
+                    productGroup.latestOrderId = matchedOrderId;
+                    productGroup.latestOrderNo = matchedOrderNo;
                 }
+
+                let optionStat = productGroup.optionStats.get(optionName);
+                if (!optionStat) {
+                    optionStat = {
+                        optionName,
+                        orderCount: 0,
+                        qty: 0,
+                        amount: 0,
+                        supplyAmount: 0,
+                        profitAmount: 0,
+                        orderNoSet: new Set<string>(),
+                    };
+                    productGroup.optionStats.set(optionName, optionStat);
+                }
+
+                if (!optionStat.orderNoSet.has(orderNo)) {
+                    optionStat.orderNoSet.add(orderNo);
+                    optionStat.orderCount += 1;
+                }
+
+                optionStat.qty += qty;
+                optionStat.amount += amount;
+                optionStat.supplyAmount += supplyAmount;
+                optionStat.profitAmount = Math.max(0, optionStat.amount - optionStat.supplyAmount);
             }
 
-            let detailRows = Array.from(aggregatedMap.values()).map((row) => ({
-                id: row.id,
-                productName: row.productName,
-                optionName: row.optionName,
-                orderCount: row.orderCount,
-                orderCountText: getCountText(row.orderCount, "건"),
-                qty: row.qty,
-                qtyText: getCountText(row.qty, "개"),
-                amount: row.amount,
-                amountText: getMoneyText(row.amount),
-                supplyAmount: row.supplyAmount,
-                supplyAmountText: getMoneyText(row.supplyAmount),
-                profitAmount: row.profitAmount,
-                profitAmountText: getMoneyText(row.profitAmount),
-                lastOrderedAt: row.lastOrderedAt ? row.lastOrderedAt.toISOString() : null,
-                lastOrderedAtText: formatDateTimeText(row.lastOrderedAt),
-                latestOrderId: row.latestOrderId,
-                latestOrderNo: row.latestOrderNo,
-            }));
+            let detailRows = Array.from(aggregatedMap.values()).map((row) => {
+                const optionItems = Array.from(row.optionStats.values())
+                    .map((opt) => ({
+                        optionName: opt.optionName,
+                        orderCount: opt.orderCount,
+                        orderCountText: getCountText(opt.orderCount, "건"),
+                        qty: opt.qty,
+                        qtyText: getCountText(opt.qty, "개"),
+                        amount: opt.amount,
+                        amountText: getMoneyText(opt.amount),
+                        supplyAmount: opt.supplyAmount,
+                        supplyAmountText: getMoneyText(opt.supplyAmount),
+                        profitAmount: opt.profitAmount,
+                        profitAmountText: getMoneyText(opt.profitAmount),
+                    }))
+                    .sort((a, b) => {
+                        if (b.orderCount !== a.orderCount) return b.orderCount - a.orderCount;
+                        if (b.qty !== a.qty) return b.qty - a.qty;
+                        return a.optionName.localeCompare(b.optionName, "ko");
+                    });
+
+                return {
+                    id: row.id,
+                    productName: row.productName,
+                    optionCount: optionItems.length,
+                    optionSummary:
+                        optionItems.length > 0
+                            ? `옵션 ${optionItems.length}종`
+                            : "",
+                    optionPreviewList: optionItems.slice(0, 6).map((v) => v.optionName),
+                    optionItems,
+                    orderCount: row.orderCount,
+                    orderCountText: getCountText(row.orderCount, "건"),
+                    qty: row.qty,
+                    qtyText: getCountText(row.qty, "개"),
+                    amount: row.amount,
+                    amountText: getMoneyText(row.amount),
+                    supplyAmount: row.supplyAmount,
+                    supplyAmountText: getMoneyText(row.supplyAmount),
+                    profitAmount: row.profitAmount,
+                    profitAmountText: getMoneyText(row.profitAmount),
+                    lastOrderedAt: row.lastOrderedAt ? row.lastOrderedAt.toISOString() : null,
+                    lastOrderedAtText: formatDateTimeText(row.lastOrderedAt),
+                    latestOrderId: row.latestOrderId,
+                    latestOrderNo: row.latestOrderNo,
+                };
+            });
 
             detailRows.sort((a, b) => {
                 const diff =
@@ -673,7 +734,7 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 summary: {
                     title: "매출 통계",
                     subtitle: "기간별 주문 흐름",
-                    basis: "상품 기준 집계 / 상세는 발주건수와 총발주수량 기준",
+                    basis: "같은 상품은 한 줄로 묶고 / 옵션별 발주건수와 수량은 내부에서 분리 표시",
                     cards: [
                         {
                             key: "todaySales",

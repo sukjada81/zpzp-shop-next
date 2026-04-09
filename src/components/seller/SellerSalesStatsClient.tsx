@@ -16,6 +16,7 @@ import {
     BarChart3,
     Boxes,
     ListFilter,
+    Layers3,
 } from "lucide-react";
 import {
     ResponsiveContainer,
@@ -455,9 +456,9 @@ export default function SellerSalesStatsClient({
                                             <div className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-200">
                                                 상품집계
                                             </div>
-                                            {item.optionName ? (
+                                            {item.optionCount > 0 ? (
                                                 <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 ring-1 ring-slate-200">
-                                                    옵션 {item.optionName}
+                                                    옵션 {item.optionCount}종
                                                 </div>
                                             ) : null}
                                         </div>
@@ -466,11 +467,54 @@ export default function SellerSalesStatsClient({
                                             {item.productName}
                                         </div>
 
+                                        {item.optionSummary ? (
+                                            <div className="mt-2 flex items-start gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                                                <Layers3 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                                                <div className="min-w-0">
+                                                    <div className="font-semibold text-slate-800">{item.optionSummary}</div>
+                                                    {item.optionPreviewList.length > 0 ? (
+                                                        <div className="mt-1 break-words text-xs text-slate-500">
+                                                            {item.optionPreviewList.join(" / ")}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        ) : null}
+
+                                        {item.optionItems.length > 0 ? (
+                                            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                                                <div className="grid grid-cols-[1.5fr_0.8fr_0.9fr] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 sm:grid-cols-[2fr_1fr_1fr]">
+                                                    <div>옵션</div>
+                                                    <div className="text-right">발주건수</div>
+                                                    <div className="text-right">총발주수량</div>
+                                                </div>
+
+                                                {item.optionItems.map((opt) => (
+                                                    <div
+                                                        key={`${item.id}-${opt.optionName}`}
+                                                        className="grid grid-cols-[1.5fr_0.8fr_0.9fr] gap-2 border-b border-slate-100 px-3 py-3 text-sm last:border-b-0 sm:grid-cols-[2fr_1fr_1fr]"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="break-words font-medium text-slate-800">
+                                                                {opt.optionName}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right font-semibold text-slate-900">
+                                                            {opt.orderCountText}
+                                                        </div>
+                                                        <div className="text-right font-semibold text-slate-900">
+                                                            {opt.qtyText}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
+
                                         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                                             <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
                                                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                                                     <ShoppingBag className="h-3.5 w-3.5" />
-                                                    발주건수
+                                                    전체 발주건수
                                                 </div>
                                                 <div className="mt-1 text-base font-extrabold text-slate-900">
                                                     {item.orderCountText}
@@ -480,7 +524,7 @@ export default function SellerSalesStatsClient({
                                             <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
                                                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                                                     <Boxes className="h-3.5 w-3.5" />
-                                                    총발주수량
+                                                    전체 총발주수량
                                                 </div>
                                                 <div className="mt-1 text-base font-extrabold text-slate-900">
                                                     {item.qtyText}

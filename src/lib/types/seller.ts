@@ -82,10 +82,27 @@ export type SellerSalesChart = {
     orderCountMax: number;
 };
 
+export type SellerSalesDetailOptionItem = {
+    optionName: string;
+    orderCount: number;
+    orderCountText: string;
+    qty: number;
+    qtyText: string;
+    amount: number;
+    amountText: string;
+    supplyAmount: number;
+    supplyAmountText: string;
+    profitAmount: number;
+    profitAmountText: string;
+};
+
 export type SellerSalesDetailItem = {
     id: string;
     productName: string;
-    optionName: string;
+    optionCount: number;
+    optionSummary: string;
+    optionPreviewList: string[];
+    optionItems: SellerSalesDetailOptionItem[];
     orderCount: number;
     orderCountText: string;
     qty: number;
