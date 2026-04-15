@@ -19,7 +19,7 @@ export type GoodsListItem = {
 };
 
 const TABS = [
-    { key: "today", label: "오늘의 특가상품" },
+    { key: "today", label: "오늘의 공구" },
     { key: "pickup", label: "바로 픽업 가능" },
     { key: "ongoing", label: "진행 중인 공구" },
 ] as const;
@@ -31,12 +31,12 @@ function isTabKey(x: string | null): x is TabKey {
 }
 
 function displayCategoryLabel(label?: string) {
-    if (label === "오늘의 공구") return "오늘의 특가상품";
+    if (label === "오늘의 공구") return "오늘의 공구";
     return label;
 }
 
 function categoryBadgeColor(label?: string) {
-    if (label === "오늘의 특가상품") {
+    if (label === "오늘의 공구") {
         return "bg-amber-500 text-white";
     }
     if (label === "바로 픽업 가능") {
@@ -67,7 +67,7 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
             const categoryLabel = String(displayCategoryLabel(it.categoryLabel) ?? "").trim();
 
             if (tab === "today") {
-                return cate === "100000" || categoryLabel === "오늘의 특가상품";
+                return cate === "100000" || categoryLabel === "오늘의 공구";
             }
 
             if (tab === "pickup") {
@@ -88,14 +88,14 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
 
     const headerTitle =
         tab === "today"
-            ? "오늘의 특가상품"
+            ? "오늘의 공구"
             : tab === "pickup"
                 ? "바로 픽업 가능"
                 : "진행 중인 공구";
 
     const headerDesc =
         tab === "today"
-            ? "오늘의 특가상품만 모아서 볼 수 있어요."
+            ? "오늘의 공구만 모아서 볼 수 있어요."
             : tab === "pickup"
                 ? "바로 픽업 가능한 상품만 볼 수 있어요."
                 : "현재 예약 가능한 공동구매 상품입니다.";

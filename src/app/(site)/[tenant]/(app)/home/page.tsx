@@ -52,7 +52,7 @@ async function fetchProducts(
 }
 
 function displayCategoryLabel(label?: string) {
-    if (label === "오늘의 공구") return "오늘의 특가상품";
+    if (label === "오늘의 공구") return "오늘의 공구";
     return label;
 }
 
@@ -69,7 +69,7 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
 }
 
 function categoryBadgeColor(label?: string) {
-    if (label === "오늘의 특가상품") return "bg-amber-500 text-white";
+    if (label === "오늘의 공구") return "bg-amber-500 text-white";
     if (label === "바로 픽업 가능") return "bg-sky-500 text-white";
     return "bg-slate-800 text-white";
 }
@@ -88,7 +88,7 @@ export default async function HomePage({
     const pickupProducts = await fetchProducts(tenant, { take: 8, type: "pickup" });
 
     const todaySection: GridSection = {
-        title: "🛒 오늘의 특가상품",
+        title: "🛒 오늘의 공구",
         href: `/${tenant}/goods?tab=today`,
         items: toCardItems(todayProducts),
     };
