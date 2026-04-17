@@ -40,9 +40,9 @@ export default function SettingsPage() {
     const helper = useMemo(() => {
         return {
             nickname:
-                "다이클로 오픈채팅방과 동일한 닉네임으로 입력해 주세요. 하단 버튼에서 확인할 수 있습니다.",
+                "디스카운트 올데이 오픈채팅방과 동일한 닉네임으로 입력해 주세요. 하단 버튼에서 확인할 수 있습니다.",
             phone: "픽업일 알림톡 발송 시 필요합니다.",
-            recommender: "다이클로를 추천해줬다면 추천인의 닉네임을 입력해주세요.",
+            recommender: "디스카운트 올데이를 추천해줬다면 추천인의 닉네임을 입력해주세요.",
         };
     }, []);
 

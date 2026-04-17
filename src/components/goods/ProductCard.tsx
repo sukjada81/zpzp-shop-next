@@ -34,7 +34,7 @@ export default function ProductCard({
                 ) : null}
 
                 <div className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
-                    DAICLO
+                    DISCOUNT ALLDAY
                 </div>
             </div>
 

@@ -106,7 +106,7 @@ export default function ProfileSetupModal({
                         className="mt-2 h-14 w-full rounded-2xl border border-slate-200 px-4 text-[16px] outline-none"
                     />
                     <div className="mt-2 space-y-1 text-[13px] leading-6 text-slate-500">
-                        <div>- 다이클로 용산해링턴스퀘어점 오픈채팅방과 동일한 닉네임으로 입력해주세요.</div>
+                        <div>- 디스카운트 올데이 오픈채팅방과 동일한 닉네임으로 입력해주세요.</div>
                         <div>- 하단의 오픈채팅방 버튼에서 확인하실 수 있습니다.</div>
                     </div>
 
@@ -140,7 +140,7 @@ export default function ProfileSetupModal({
                         className="mt-2 h-14 w-full rounded-2xl border border-slate-200 px-4 text-[16px] outline-none"
                     />
                     <div className="mt-2 text-[13px] leading-6 text-slate-500">
-                        - 다이클로를 추천해줬다면 추천인의 닉네임을 입력해주세요.
+                        - 디스카운트 올데이를 추천해줬다면 추천인의 닉네임을 입력해주세요.
                     </div>
 
                     <div className="mt-8 grid grid-cols-[1fr_1fr] gap-3">

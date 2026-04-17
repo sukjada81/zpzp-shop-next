@@ -316,7 +316,7 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
         {
             id: "svc-1",
             title: "바디프랜드 3월 최고의 혜택",
-            desc: "신세계상품권 최대 30만원 + 다이클로 5만 포인트",
+            desc: "신세계상품권 최대 30만원 + 디스카운트 올데이 5만 포인트",
             image:
                 "https://images.unsplash.com/photo-1584515933487-779824d29309?q=80&w=1200&auto=format&fit=crop",
             href: "https://m.nsmall.com/store/exhibition/31139",
