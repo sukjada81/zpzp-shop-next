@@ -422,6 +422,10 @@ function categoryLabelFromCate(cate?: bigint | null) {
     return undefined;
 }
 
+function isPickupReadyCate(cate?: bigint | null) {
+    return String(cate ?? "") === "100001";
+}
+
 export async function publicProductRoutes(app: FastifyInstance) {
     app.addHook("preHandler", requireTenant());
 
@@ -479,12 +483,19 @@ export async function publicProductRoutes(app: FastifyInstance) {
 
         const items = rows.map((r) => {
             const thumb = goodsImageUrl(r.image1);
-            const timeLeft = calcTimeLeftFromEnd(r.sale_end_at ?? null);
-            const pickupBadgeText = buildPickupBadgeText({
-                pickupOnly: !!r.pickup_only,
-                pickupStartAt: r.pickup_start_at ?? null,
-                pickupEndAt: r.pickup_end_at ?? null,
-            });
+            const hideScheduleMeta = isPickupReadyCate(r.cate);
+
+            const timeLeft = hideScheduleMeta
+                ? undefined
+                : calcTimeLeftFromEnd(r.sale_end_at ?? null);
+
+            const pickupBadgeText = hideScheduleMeta
+                ? undefined
+                : buildPickupBadgeText({
+                    pickupOnly: !!r.pickup_only,
+                    pickupStartAt: r.pickup_start_at ?? null,
+                    pickupEndAt: r.pickup_end_at ?? null,
+                });
 
             return {
                 id: toId(r.uid),
@@ -500,9 +511,9 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 optionUse: Number(r.option_use ?? 0),
                 saleStartAt: formatDbDateTime(r.sale_start_at),
                 saleEndAt: formatDbDateTime(r.sale_end_at),
-                pickupStartAt: formatDbDateTime(r.pickup_start_at),
-                pickupEndAt: formatDbDateTime(r.pickup_end_at),
-                pickupNote: r.pickup_note ? String(r.pickup_note) : null,
+                pickupStartAt: hideScheduleMeta ? null : formatDbDateTime(r.pickup_start_at),
+                pickupEndAt: hideScheduleMeta ? null : formatDbDateTime(r.pickup_end_at),
+                pickupNote: hideScheduleMeta ? null : (r.pickup_note ? String(r.pickup_note) : null),
             };
         });
 
@@ -590,6 +601,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
             null;
 
         const hasPickupPeriod = !!row.pickup_start_at || !!row.pickup_end_at;
+        const hideScheduleMeta = isPickupReadyCate(row.cate);
 
         const product = {
             id: toId(row.uid),
@@ -598,15 +610,17 @@ export async function publicProductRoutes(app: FastifyInstance) {
             description: desc,
             categoryLabel: categoryLabelFromCate(row.cate),
             meta: {
-                timeLeft: calcTimeLeftFromEnd(row.sale_end_at ?? null),
-                pickup: hasPickupPeriod
+                timeLeft: hideScheduleMeta ? undefined : calcTimeLeftFromEnd(row.sale_end_at ?? null),
+                pickup: hideScheduleMeta
                     ? undefined
-                    : row.pickup_only
-                        ? "바로 픽업 가능 / 주문 후 매장에서 바로 수령"
-                        : undefined,
-                pickupStartAt: formatDbDateTime(row.pickup_start_at),
-                pickupEndAt: formatDbDateTime(row.pickup_end_at),
-                pickupNote: row.pickup_note ? String(row.pickup_note) : null,
+                    : hasPickupPeriod
+                        ? undefined
+                        : row.pickup_only
+                            ? "바로 픽업 가능 / 주문 후 매장에서 바로 수령"
+                            : undefined,
+                pickupStartAt: hideScheduleMeta ? null : formatDbDateTime(row.pickup_start_at),
+                pickupEndAt: hideScheduleMeta ? null : formatDbDateTime(row.pickup_end_at),
+                pickupNote: hideScheduleMeta ? null : (row.pickup_note ? String(row.pickup_note) : null),
             },
             images,
             options,
