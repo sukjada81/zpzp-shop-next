@@ -5,6 +5,8 @@ function apiProxy(path: string) {
 }
 
 export const endpoints = {
+    publicTenant: (tenant: string) => apiProxy(`${tenant}/v1/public/tenant`),
+
     publicProducts: (
         tenant: string,
         q?: {

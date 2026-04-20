@@ -11,6 +11,7 @@ import { sessionPlugin } from "./plugins/session.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
 import { publicProductRoutes } from "./modules/public/products.routes.js";
 import { publicOrderRoutes } from "./modules/public/orders.routes.js";
+import { publicTenantRoutes } from "./modules/public/tenants.routes.js";
 
 import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
 import { adminDashboardRoutes } from "./modules/admin/dashboard.routes.js";
@@ -70,6 +71,7 @@ await sellerOrderRoutes(app);
 
 app.register(
     async (tenantScoped) => {
+        await publicTenantRoutes(tenantScoped);
         await publicProductRoutes(tenantScoped);
         await publicOrderRoutes(tenantScoped);
     },
