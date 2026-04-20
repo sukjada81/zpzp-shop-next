@@ -83,7 +83,7 @@ export default function AppShellClient({
     }, [pathname, tenant]);
 
     const brandLabel = tenantName || "";
-    const subLabel = tenantName || "";
+    const subLabel = "";
 
     const headerMode = useMemo<"default" | "order" | "back">(() => {
         if (isOrderPage) return "order";
