@@ -4,10 +4,16 @@ import { notFound } from "next/navigation";
 import { ChevronRight, Gift, Clock3, Sparkles } from "lucide-react";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
+import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import HomeProfileGate from "@/components/profile/HomeProfileGate";
 import { endpoints } from "@/lib/api/endpoints";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse } from "@/lib/types/goods";
+
+type RecentOrdersResponse = {
+    ok?: boolean;
+    items?: RecentOrderTickerItem[];
+};
 
 type CardItem = {
     id: string;
@@ -51,6 +57,20 @@ async function fetchProducts(
     return data.items ?? [];
 }
 
+async function fetchRecentOrders(tenant: string, take = 10): Promise<RecentOrderTickerItem[]> {
+    const origin = getInternalOrigin();
+    const path = endpoints.publicRecentOrders(tenant, { take });
+    const url = new URL(path, origin);
+
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) return [];
+
+    const data = (await res.json().catch(() => null)) as RecentOrdersResponse | null;
+    if (!data?.ok || !Array.isArray(data.items)) return [];
+
+    return data.items;
+}
+
 function displayCategoryLabel(label?: string) {
     if (label === "오늘의 공구") return "오늘의 공구";
     return label;
@@ -84,8 +104,11 @@ export default async function HomePage({
 
     if (!tenant) notFound();
 
-    const todayProducts = await fetchProducts(tenant, { take: 8, type: "today" });
-    const pickupProducts = await fetchProducts(tenant, { take: 8, type: "pickup" });
+    const [todayProducts, pickupProducts, recentOrders] = await Promise.all([
+        fetchProducts(tenant, { take: 8, type: "today" }),
+        fetchProducts(tenant, { take: 8, type: "pickup" }),
+        fetchRecentOrders(tenant, 10),
+    ]);
 
     const todaySection: GridSection = {
         title: "🛒 오늘의 공구",
@@ -104,6 +127,7 @@ export default async function HomePage({
             <HomeProfileGate tenant={tenant} />
 
             <HomeBannerCarousel tenant={tenant} />
+            <RecentOrderTicker items={recentOrders} />
 
             <div className="hidden">
                 <HomeCategoryIcons tenant={tenant} />

@@ -34,9 +34,29 @@ function toNumber(v: unknown, fallback = 0): number {
     return Number.isFinite(n) ? n : fallback;
 }
 
+const DB_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+function getDbNow(): Date {
+    return new Date(Date.now() + DB_TIME_OFFSET_MS);
+}
+
+function pad2(value: number): string {
+    return String(value).padStart(2, "0");
+}
+
+function formatDbDateTime(value?: Date | null): string | null {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${pad2(
+        d.getUTCHours()
+    )}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
+}
+
 function calcTimeLeftFromEnd(end?: Date | null): string | undefined {
     if (!end) return undefined;
-    const diff = end.getTime() - Date.now();
+    const diff = end.getTime() - getDbNow().getTime();
     if (diff <= 0) return "마감";
 
     const mins = Math.floor(diff / 60000);
@@ -266,9 +286,13 @@ function formatKoreanShortDate(value?: Date | null) {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "";
 
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const dayKor = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()] ?? "";
+    const utc = new Date(
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds())
+    );
+
+    const mm = pad2(utc.getUTCMonth() + 1);
+    const dd = pad2(utc.getUTCDate());
+    const dayKor = ["일", "월", "화", "수", "목", "금", "토"][utc.getUTCDay()] ?? "";
 
     return `${mm}/${dd}(${dayKor})`;
 }
@@ -291,7 +315,7 @@ function buildPickupBadgeText(input: {
 }
 
 function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput {
-    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const now = getDbNow();
 
     return {
         tenant_id: { in: [tenantId, HQ_TENANT_ID] },
@@ -474,10 +498,10 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 cate: r.cate != null ? toId(r.cate) : null,
                 icon: String(r.icon ?? ""),
                 optionUse: Number(r.option_use ?? 0),
-                saleStartAt: r.sale_start_at ? r.sale_start_at.toISOString() : null,
-                saleEndAt: r.sale_end_at ? r.sale_end_at.toISOString() : null,
-                pickupStartAt: r.pickup_start_at ? r.pickup_start_at.toISOString() : null,
-                pickupEndAt: r.pickup_end_at ? r.pickup_end_at.toISOString() : null,
+                saleStartAt: formatDbDateTime(r.sale_start_at),
+                saleEndAt: formatDbDateTime(r.sale_end_at),
+                pickupStartAt: formatDbDateTime(r.pickup_start_at),
+                pickupEndAt: formatDbDateTime(r.pickup_end_at),
                 pickupNote: r.pickup_note ? String(r.pickup_note) : null,
             };
         });
@@ -580,15 +604,15 @@ export async function publicProductRoutes(app: FastifyInstance) {
                     : row.pickup_only
                         ? "바로 픽업 가능 / 주문 후 매장에서 바로 수령"
                         : undefined,
-                pickupStartAt: row.pickup_start_at ? row.pickup_start_at.toISOString() : null,
-                pickupEndAt: row.pickup_end_at ? row.pickup_end_at.toISOString() : null,
+                pickupStartAt: formatDbDateTime(row.pickup_start_at),
+                pickupEndAt: formatDbDateTime(row.pickup_end_at),
                 pickupNote: row.pickup_note ? String(row.pickup_note) : null,
             },
             images,
             options,
             sourceTenantId: row.tenant_id != null ? toId(row.tenant_id) : null,
-            saleStartAt: row.sale_start_at ? row.sale_start_at.toISOString() : null,
-            saleEndAt: row.sale_end_at ? row.sale_end_at.toISOString() : null,
+            saleStartAt: formatDbDateTime(row.sale_start_at),
+            saleEndAt: formatDbDateTime(row.sale_end_at),
             cate: row.cate != null ? toId(row.cate) : null,
         };
 

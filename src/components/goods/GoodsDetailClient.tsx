@@ -128,19 +128,34 @@ function toOptionalNumberId(value?: string | number) {
     return Number.isFinite(n) ? n : undefined;
 }
 
-function formatDateTime(value?: string | null) {
-    if (!value) return "";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "";
+function parseDbDateTime(value?: string | null) {
+    const text = String(value ?? "").trim();
+    if (!text) return null;
 
-    return new Intl.DateTimeFormat("ko-KR", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-    }).format(d);
+    const normalized = text.replace("T", " ").replace(/\.\d+$/, "").replace(/Z$/, "");
+    const m = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (!m) return null;
+
+    return {
+        year: Number(m[1]),
+        month: Number(m[2]),
+        day: Number(m[3]),
+        hour: Number(m[4] ?? "0"),
+        minute: Number(m[5] ?? "0"),
+    };
+}
+
+function formatDateTime(value?: string | null) {
+    const parsed = parseDbDateTime(value);
+    if (!parsed) return "";
+
+    const yyyy = String(parsed.year);
+    const mm = String(parsed.month).padStart(2, "0");
+    const dd = String(parsed.day).padStart(2, "0");
+    const hh = String(parsed.hour).padStart(2, "0");
+    const mi = String(parsed.minute).padStart(2, "0");
+
+    return `${yyyy}. ${mm}. ${dd}. ${hh}:${mi}`;
 }
 
 function buildPickupPeriodText(start?: string | null, end?: string | null) {

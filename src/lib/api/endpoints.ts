@@ -27,6 +27,13 @@ export const endpoints = {
 
     createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
 
+
+    publicRecentOrders: (tenant: string, q?: { take?: number }) => {
+        const url = new URL(apiProxy(`${tenant}/v1/orders/recent`), "http://local");
+        if (q?.take) url.searchParams.set("take", String(q.take));
+        return url.pathname + (url.search ? url.search : "");
+    },
+
     myOrders: (tenant: string, q?: { page?: number; limit?: number }) => {
         const url = new URL(apiProxy(`${tenant}/v1/orders/me`), "http://local");
         if (q?.page) url.searchParams.set("page", String(q.page));

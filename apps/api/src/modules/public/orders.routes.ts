@@ -187,6 +187,26 @@ function toIsoDate(value: unknown): string {
     return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+function maskBuyerName(value: unknown): string {
+    const text = toSafeString(value, "");
+    if (!text) return "고객";
+
+    if (text.length <= 1) return `${text}*`;
+    if (text.length === 2) return `${text[0]}*`;
+
+    return `${text[0]}${"*".repeat(Math.max(1, text.length - 2))}${text[text.length - 1]}`;
+}
+
+function minutesAgoFromUnix(signdate: unknown): number {
+    const ts = toInt(signdate, 0);
+    if (!ts) return 0;
+
+    const diff = Math.floor(Date.now() / 1000) - ts;
+    if (diff <= 0) return 0;
+
+    return Math.floor(diff / 60);
+}
+
 function formatPickupBadge(pickupAt: Date | null): string | null {
     if (!pickupAt) return null;
 
@@ -666,6 +686,104 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             });
         }
     });
+
+
+    fastify.get(
+        "/v1/orders/recent",
+        async (
+            request: FastifyRequest<{
+                Querystring: { take?: number | string };
+            }>,
+            reply: FastifyReply
+        ) => {
+            try {
+                const { tenantId } = getTenantContext(request as unknown as FastifyRequest<PublicOrderRoute>);
+                const take = Math.min(Math.max(toInt(request.query?.take, 10), 1), 20);
+
+                if (!tenantId) {
+                    return reply.code(400).send({
+                        ok: false,
+                        error: "invalid_tenant",
+                        message: "지점 정보가 올바르지 않습니다.",
+                    });
+                }
+
+                const rows = await prisma.mallRN_order_info.findMany({
+                    where: {
+                        tenant_id: tenantId,
+                        platform_type: PLATFORM_TYPE,
+                        pay_status: {
+                            in: ["A", "B", "D"],
+                        },
+                    },
+                    orderBy: [{ signdate: "desc" }, { uid: "desc" }],
+                    take,
+                    select: {
+                        order_num: true,
+                        name: true,
+                        signdate: true,
+                    },
+                });
+
+                if (!rows.length) {
+                    return reply.send({
+                        ok: true,
+                        items: [],
+                    });
+                }
+
+                const orderNums = rows.map((row) => row.order_num).filter(Boolean);
+
+                const orderGoods = orderNums.length
+                    ? await prisma.mallRN_order_goods.findMany({
+                        where: {
+                            tenant_id: tenantId,
+                            platform_type: PLATFORM_TYPE,
+                            order_num: { in: orderNums },
+                            status: { not: STATUS_CANCELED },
+                        },
+                        select: {
+                            order_num: true,
+                            qty: true,
+                        },
+                    })
+                    : [];
+
+                const qtyMap = new Map<string, number>();
+                for (const item of orderGoods) {
+                    const orderNum = toSafeString(item.order_num, "");
+                    if (!orderNum) continue;
+
+                    qtyMap.set(orderNum, (qtyMap.get(orderNum) ?? 0) + Math.max(0, toInt(item.qty, 0)));
+                }
+
+                const items = rows.map((row) => {
+                    const orderNum = toSafeString(row.order_num, "");
+                    return {
+                        id: orderNum,
+                        maskedName: maskBuyerName(row.name),
+                        minutesAgo: minutesAgoFromUnix(row.signdate),
+                        qty: Math.max(1, qtyMap.get(orderNum) ?? 0),
+                    };
+                });
+
+                return reply.send({
+                    ok: true,
+                    items,
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "최근 주문 조회 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_RECENT_LIST_ERROR");
+
+                return reply.code(500).send({
+                    ok: false,
+                    error: "recent orders failed",
+                    detail,
+                    message: detail,
+                });
+            }
+        }
+    );
 
     fastify.get("/v1/orders", async (request: FastifyRequest, reply: FastifyReply) => {
         try {
