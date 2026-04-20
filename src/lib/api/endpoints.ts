@@ -21,13 +21,11 @@ export const endpoints = {
         if (q?.type) url.searchParams.set("type", q.type);
         return url.pathname + (url.search ? url.search : "");
     },
-    tenantBySlug: (slug: string) => `/api/tenant/select?slug=${encodeURIComponent(slug)}`,
 
     publicProductDetail: (tenant: string, id: string | number) =>
         apiProxy(`${tenant}/v1/public/products/${id}`),
 
     createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
-
 
     publicRecentOrders: (tenant: string, q?: { take?: number }) => {
         const url = new URL(apiProxy(`${tenant}/v1/orders/recent`), "http://local");

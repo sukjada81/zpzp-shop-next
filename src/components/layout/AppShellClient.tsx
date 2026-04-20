@@ -9,13 +9,14 @@ import Footer from "./Footer";
 const BRAND_NAME = "디스카운트 올데이";
 
 function normalizeTenant(raw: string) {
-    const t = (raw || "").trim();
-    if (!t || t.toLowerCase() === "undefined" || t.toLowerCase() === "null") return "";
+    const t = (raw || "").trim().toLowerCase();
+    if (!t || t === "undefined" || t === "null") return "";
     return t;
 }
 
 function extractTenantFromPath(pathname?: string | null) {
     if (!pathname) return "";
+
     const segs = pathname.split("/").filter(Boolean);
     if (segs.length === 0) return "";
 

@@ -1,12 +1,18 @@
 // src/lib/tenant/getTenant.ts
-import { endpoints } from "@/lib/api/endpoints";
 
+/**
+ * tenant slug 정규화
+ */
 export function normalizeTenant(raw: string) {
-    const t = (raw || "").trim();
-    if (!t || t.toLowerCase() === "undefined" || t.toLowerCase() === "null") return "";
+    const t = (raw || "").trim().toLowerCase();
+    if (!t || t === "undefined" || t === "null") return "";
     return t;
 }
 
+/**
+ * pathname에서 tenant 추출 (path mode: /:tenant/home)
+ * ex) "/a/home" -> "a"
+ */
 export function tenantFromPathname(pathname: string) {
     const seg =
         (pathname || "")
@@ -14,34 +20,15 @@ export function tenantFromPathname(pathname: string) {
             .split("#")[0]
             .split("/")
             .filter(Boolean)[0] || "";
+
     return normalizeTenant(seg);
 }
 
+/**
+ * Next App Router params에서 tenant 추출
+ */
 export function tenantFromParams(params: any) {
     const t = params?.tenant;
     if (typeof t === "string") return normalizeTenant(t);
     return "";
-}
-
-export async function getTenantBySlug(rawSlug: string) {
-    const slug = normalizeTenant(rawSlug);
-    if (!slug) return null;
-
-    const res = await fetch(endpoints.tenantBySlug(slug), {
-        cache: "no-store",
-    });
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    if (!data?.ok || !data?.item) return null;
-
-    return data.item as {
-        id: number;
-        slug: string;
-        name: string;
-        status?: string;
-        timezone?: string | null;
-        primary_domain?: string | null;
-    };
 }
