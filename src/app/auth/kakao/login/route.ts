@@ -51,16 +51,11 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    // tenant 우선순위:
-    // 1) 쿼리스트링
-    // 2) selectedTenant 쿠키
-    // 3) 기본값 a
     const tenant =
         safeTenantSlug(req.nextUrl.searchParams.get("tenant") || "") ||
         safeTenantSlug(req.cookies.get("selectedTenant")?.value || "") ||
         "a";
 
-    // 로그인 후 무조건 유저 홈페이지
     const defaultReturnTo = buildTenantHome(req.nextUrl.protocol, tenant);
     const returnTo = req.nextUrl.searchParams.get("returnTo") || defaultReturnTo;
 
@@ -86,7 +81,7 @@ export async function GET(req: NextRequest) {
 
     authorizeUrl.searchParams.set(
         "scope",
-        ["profile_nickname", "profile_image"].join(" ")
+        ["profile_nickname", "profile_image", "account_email"].join(" ")
     );
 
     if (auto === "1") {

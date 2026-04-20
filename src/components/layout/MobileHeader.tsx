@@ -1,4 +1,3 @@
-// src/components/layout/MobileHeader.tsx
 "use client";
 
 import Link from "next/link";
@@ -6,7 +5,6 @@ import Image from "next/image";
 import { Menu } from "lucide-react";
 
 const BRAND_NAME = "디스카운트 올데이";
-const STORE_NAME = "일산장항점";
 
 const LOGO_H = 32;
 const LOGO_W = Math.round(LOGO_H * 3.05);
@@ -15,12 +13,14 @@ const SIDE_W = 108;
 export default function MobileHeader({
                                          title,
                                          tenant,
+                                         storeName = "",
                                          onMenuAction,
                                          onCartAction,
                                          mode = "default",
                                      }: {
     title: string;
     tenant: string;
+    storeName?: string;
     onMenuAction: () => void;
     onCartAction: () => void;
     mode?: "default" | "order" | "back";
@@ -78,7 +78,7 @@ export default function MobileHeader({
                                 </Link>
 
                                 <div className="mt-1 max-w-[108px] truncate text-[10px] font-medium tracking-[-0.01em] text-neutral-400">
-                                    {STORE_NAME}
+                                    {storeName || ""}
                                 </div>
                             </div>
                         ) : (

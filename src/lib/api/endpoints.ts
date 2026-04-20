@@ -21,6 +21,7 @@ export const endpoints = {
         if (q?.type) url.searchParams.set("type", q.type);
         return url.pathname + (url.search ? url.search : "");
     },
+    tenantBySlug: (slug: string) => `/api/tenant/select?slug=${encodeURIComponent(slug)}`,
 
     publicProductDetail: (tenant: string, id: string | number) =>
         apiProxy(`${tenant}/v1/public/products/${id}`),

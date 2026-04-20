@@ -1,18 +1,16 @@
-// src/components/layout/AppShellClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import MobileHeader from "./MobileHeader";
 import SideDrawer from "./SideDrawer";
-import { getTenantList } from "@/lib/tenant/tenants";
 import Footer from "./Footer";
 
 const BRAND_NAME = "디스카운트 올데이";
 
 function normalizeTenant(raw: string) {
-    const t = (raw || "").toLowerCase().trim();
-    if (!t || t === "undefined" || t === "null") return "";
+    const t = (raw || "").trim();
+    if (!t || t.toLowerCase() === "undefined" || t.toLowerCase() === "null") return "";
     return t;
 }
 
@@ -22,15 +20,16 @@ function extractTenantFromPath(pathname?: string | null) {
     if (segs.length === 0) return "";
 
     if (segs[0] === "seller") return normalizeTenant(segs[1] || "");
-
     return normalizeTenant(segs[0] || "");
 }
 
 export default function AppShellClient({
                                            tenant: rawTenant,
+                                           tenantName = "",
                                            children,
                                        }: {
     tenant: string;
+    tenantName?: string;
     children: React.ReactNode;
 }) {
     const pathname = usePathname();
@@ -40,12 +39,6 @@ export default function AppShellClient({
     const propTenant = normalizeTenant(rawTenant);
     const pathTenant = useMemo(() => extractTenantFromPath(pathname), [pathname]);
     const tenant = propTenant || pathTenant;
-
-    const tenantInfo = useMemo(() => {
-        if (!tenant) return null;
-        const list = getTenantList();
-        return list.find((t) => t.slug === tenant) ?? null;
-    }, [tenant]);
 
     const hideHeader = useMemo(() => {
         return pathname?.includes(`/login`) ?? false;
@@ -88,8 +81,8 @@ export default function AppShellClient({
         return BRAND_NAME;
     }, [pathname, tenant]);
 
-    const brandLabel = tenantInfo?.name ?? "";
-    const subLabel = tenantInfo?.name ?? "";
+    const brandLabel = tenantName || "";
+    const subLabel = tenantName || "";
 
     const headerMode = useMemo<"default" | "order" | "back">(() => {
         if (isOrderPage) return "order";
@@ -103,6 +96,7 @@ export default function AppShellClient({
                 <MobileHeader
                     tenant={tenant}
                     title={title}
+                    storeName={tenantName}
                     mode={headerMode}
                     onMenuAction={() => {
                         if (isOrderPage || isGoodsDetailPage) {
