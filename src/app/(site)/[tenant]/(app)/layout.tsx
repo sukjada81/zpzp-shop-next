@@ -1,4 +1,3 @@
-// src/app/(site)/[tenant]/(app)/layout.tsx
 import AppShellClient from "@/components/layout/AppShellClient";
 import { endpoints } from "@/lib/api/endpoints";
 
@@ -8,19 +7,12 @@ function normalizeTenant(raw: string) {
     return t;
 }
 
-function resolveAppOrigin() {
-    const explicit =
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        process.env.APP_ORIGIN ||
-        process.env.AUTH_ORIGIN ||
-        "";
-
-    if (explicit) {
-        return explicit.replace(/\/+$/, "");
-    }
-
-    const port = process.env.PORT || "3000";
-    return `http://127.0.0.1:${port}`;
+function getInternalOrigin() {
+    return (
+        process.env.NEXT_INTERNAL_ORIGIN ||
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        "http://127.0.0.1:3000"
+    );
 }
 
 type TenantInfoResponse = {
@@ -49,25 +41,24 @@ export default async function AppLayout({
 
     if (tenant) {
         try {
-            const url = `${resolveAppOrigin()}${endpoints.publicTenant(tenant)}`;
+            const url = new URL(endpoints.publicTenant(tenant), getInternalOrigin());
 
-            const res = await fetch(url, {
-                method: "GET",
+            const res = await fetch(url.toString(), {
                 cache: "no-store",
-                headers: {
-                    accept: "application/json",
-                    "x-tenant-slug": tenant,
-                },
             });
 
             if (res.ok) {
                 const data = (await res.json()) as TenantInfoResponse;
                 tenantName = data?.item?.name?.trim() || "";
+            } else {
+                console.error("APP_LAYOUT_TENANT_FETCH_NOT_OK", res.status, url.toString());
             }
         } catch (err) {
             console.error("APP_LAYOUT_TENANT_FETCH_FAILED", err);
         }
     }
+
+    console.log("APP_LAYOUT_TENANT", { tenant, tenantName });
 
     return (
         <AppShellClient tenant={tenant} tenantName={tenantName}>
