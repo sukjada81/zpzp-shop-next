@@ -12,11 +12,7 @@ const banners = [
     {
         id: 2,
         image: "/banners/banner_1.jpg",
-    },
-    {
-        id: 3,
-        image: "/banners/banner_2.jpg",
-    },
+    }
 ];
 
 export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
