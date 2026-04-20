@@ -501,56 +501,56 @@ function RecommendedBlock({ tenant }: { tenant: string }) {
                 <Divider className="mt-6" />
             </div>
 
-            <section className="mt-6">
-                <div className="text-[18px] font-extrabold tracking-[-0.02em] text-neutral-900">
-                    이런 상품은 어때요?
-                </div>
+            {/*<section className="mt-6">*/}
+            {/*    <div className="text-[18px] font-extrabold tracking-[-0.02em] text-neutral-900">*/}
+            {/*        이런 상품은 어때요?*/}
+            {/*    </div>*/}
 
-                <div className="mt-4 space-y-3">
-                    {suggestList.map((item) => (
-                        <a
-                            key={item.id}
-                            href={item.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-3 rounded-2xl border bg-white p-3"
-                            style={{ borderColor: "#e8e8e8" }}
-                        >
-                            <div className="h-[82px] w-[82px] flex-shrink-0 overflow-hidden rounded-xl bg-neutral-100">
-                                <img
-                                    src={item.image}
-                                    alt={item.title}
-                                    className="h-full w-full object-cover"
-                                />
-                            </div>
+            {/*    <div className="mt-4 space-y-3">*/}
+            {/*        {suggestList.map((item) => (*/}
+            {/*            <a*/}
+            {/*                key={item.id}*/}
+            {/*                href={item.href}*/}
+            {/*                target="_blank"*/}
+            {/*                rel="noopener noreferrer"*/}
+            {/*                className="flex items-center gap-3 rounded-2xl border bg-white p-3"*/}
+            {/*                style={{ borderColor: "#e8e8e8" }}*/}
+            {/*            >*/}
+            {/*                <div className="h-[82px] w-[82px] flex-shrink-0 overflow-hidden rounded-xl bg-neutral-100">*/}
+            {/*                    <img*/}
+            {/*                        src={item.image}*/}
+            {/*                        alt={item.title}*/}
+            {/*                        className="h-full w-full object-cover"*/}
+            {/*                    />*/}
+            {/*                </div>*/}
 
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="rounded bg-[#f2f2f7] px-1.5 py-0.5 text-[10px] font-semibold text-neutral-500">
-                                        {item.badge}
-                                    </span>
-                                    <span className="truncate text-[12px] text-neutral-500">
-                                        {item.brand}
-                                    </span>
-                                </div>
+            {/*                <div className="min-w-0 flex-1">*/}
+            {/*                    <div className="flex items-center gap-2">*/}
+            {/*                        <span className="rounded bg-[#f2f2f7] px-1.5 py-0.5 text-[10px] font-semibold text-neutral-500">*/}
+            {/*                            {item.badge}*/}
+            {/*                        </span>*/}
+            {/*                        <span className="truncate text-[12px] text-neutral-500">*/}
+            {/*                            {item.brand}*/}
+            {/*                        </span>*/}
+            {/*                    </div>*/}
 
-                                <div className="mt-1 line-clamp-2 text-[18px] font-bold leading-[1.35] tracking-[-0.02em] text-neutral-900">
-                                    {item.title}
-                                </div>
+            {/*                    <div className="mt-1 line-clamp-2 text-[18px] font-bold leading-[1.35] tracking-[-0.02em] text-neutral-900">*/}
+            {/*                        {item.title}*/}
+            {/*                    </div>*/}
 
-                                <div className="mt-1 line-clamp-2 text-[14px] text-neutral-500">
-                                    {item.desc}
-                                </div>
+            {/*                    <div className="mt-1 line-clamp-2 text-[14px] text-neutral-500">*/}
+            {/*                        {item.desc}*/}
+            {/*                    </div>*/}
 
-                                <div className="mt-2 inline-flex items-center gap-1 text-[14px] font-semibold text-[#4f6df5]">
-                                    {item.cta}
-                                    <ChevronRight size={14} />
-                                </div>
-                            </div>
-                        </a>
-                    ))}
-                </div>
-            </section>
+            {/*                    <div className="mt-2 inline-flex items-center gap-1 text-[14px] font-semibold text-[#4f6df5]">*/}
+            {/*                        {item.cta}*/}
+            {/*                        <ChevronRight size={14} />*/}
+            {/*                    </div>*/}
+            {/*                </div>*/}
+            {/*            </a>*/}
+            {/*        ))}*/}
+            {/*    </div>*/}
+            {/*</section>*/}
         </section>
     );
 }
