@@ -2,7 +2,7 @@
 import type { FastifyInstance } from "fastify";
 
 const SUPER_ADMIN_ROLE = "hq_super";
-const SELLER_ROLES = ["seller_owner", "seller_staff"] as const;
+const SELLER_ROLES = ["seller_owner", "seller_staff"];
 
 type MemberSession = { uid?: string | number };
 
