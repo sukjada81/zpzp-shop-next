@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 
 const SUPER_ADMIN_ROLE = "hq_super";
+const SELLER_ROLES = ["seller_owner", "seller_staff"] as const;
 
 type MemberSession = { uid?: string | number };
 
@@ -46,18 +47,31 @@ async function requireSuperAdmin(
 }
 
 export async function sellerApplicationsRoutes(app: FastifyInstance) {
-    // 셀러 신청 목록 (전체 테넌트)
+    // hq_super 여부 확인 (tenant 없이 호출 가능)
+    app.get("/v1/seller/super-check", async (req: any, reply) => {
+        const member = getSessionMember(req);
+        if (!member?.uid) return reply.code(401).send({ ok: false, isSuperAdmin: false });
+
+        const memberUid = toInt(member.uid, 0);
+        const ms = await app.prisma.mallRN_member_membership.findFirst({
+            where: { member_uid: memberUid, status: "active", scope_type: "global", role_code: SUPER_ADMIN_ROLE },
+        });
+
+        return reply.send({ ok: true, isSuperAdmin: !!ms });
+    });
+
+    // 셀러 신청 목록 (전체 테넌트) — 같은 (member_uid, scope_id) 쌍으로 그룹핑
     app.get("/v1/seller/applications", async (req: any, reply) => {
         if (!(await requireSuperAdmin(app, req, reply))) return;
 
-        const statusFilter = String(req.query?.status ?? "pending").trim();
-        const validStatuses = ["pending", "active", "rejected", "all"];
-        const status = validStatuses.includes(statusFilter) ? statusFilter : "pending";
+        const statusFilter = String(req.query?.status ?? "all").trim();
+        const validStatuses = ["pending", "active", "all"];
+        const status = validStatuses.includes(statusFilter) ? statusFilter : "all";
 
         const rows = await app.prisma.mallRN_member_membership.findMany({
             where: {
                 scope_type: "tenant",
-                role_code: { in: ["seller_owner", "seller_staff"] },
+                role_code: { in: SELLER_ROLES },
                 ...(status !== "all" ? { status } : {}),
             },
             select: {
@@ -89,31 +103,63 @@ export async function sellerApplicationsRoutes(app: FastifyInstance) {
             }),
         ]);
 
-        const memberMap = new Map(members.map((m) => [m.uid, m]));
+        const memberMap = new Map(members.map((m) => [String(m.uid), m]));
         const tenantMap = new Map(tenants.map((t) => [String(t.id), t]));
 
-        const items = rows.map((r) => {
-            const member = memberMap.get(r.member_uid);
-            const tenant = tenantMap.get(String(r.scope_id));
+        // (member_uid, scope_id) 기준으로 그룹핑
+        const grouped = new Map<string, {
+            id: number;
+            memberUid: number;
+            roleCodes: string[];
+            status: string;
+            scopeId: bigint | null;
+            joinedAt: Date | null;
+        }>();
+
+        for (const r of rows) {
+            const key = `${r.member_uid}-${r.scope_id}`;
+            const existing = grouped.get(key);
+            if (existing) {
+                const rc = String(r.role_code ?? "");
+                if (rc && !existing.roleCodes.includes(rc)) {
+                    existing.roleCodes.push(rc);
+                }
+                // pending이 하나라도 있으면 그룹 상태를 pending으로
+                if (r.status === "pending") existing.status = "pending";
+            } else {
+                grouped.set(key, {
+                    id: Number(r.uid),
+                    memberUid: Number(r.member_uid),
+                    roleCodes: [String(r.role_code ?? "")].filter(Boolean),
+                    status: String(r.status ?? ""),
+                    scopeId: r.scope_id ?? null,
+                    joinedAt: r.joined_at ?? null,
+                });
+            }
+        }
+
+        const items = Array.from(grouped.values()).map((g) => {
+            const member = memberMap.get(String(g.memberUid));
+            const tenant = tenantMap.get(String(g.scopeId));
             return {
-                id: Number(r.uid),
-                memberUid: r.member_uid,
+                id: g.id,
+                memberUid: g.memberUid,
                 memberName: member?.name ?? "-",
                 memberPhone: member?.cell ?? "-",
                 memberEmail: member?.email ?? "-",
-                roleCode: r.role_code,
-                status: r.status,
-                tenantId: r.scope_id ? Number(r.scope_id) : null,
+                roleCodes: g.roleCodes,
+                status: g.status,
+                tenantId: g.scopeId ? Number(g.scopeId) : null,
                 tenantSlug: tenant?.slug ?? "-",
                 tenantName: tenant?.name ?? "-",
-                joinedAt: r.joined_at?.toISOString() ?? null,
+                joinedAt: g.joinedAt?.toISOString() ?? null,
             };
         });
 
         return reply.send({ ok: true, items });
     });
 
-    // 승인
+    // 승인 — 같은 (member_uid, scope_id) 그룹 전체를 active로
     app.post("/v1/seller/applications/:id/approve", async (req: any, reply) => {
         if (!(await requireSuperAdmin(app, req, reply))) return;
 
@@ -121,36 +167,37 @@ export async function sellerApplicationsRoutes(app: FastifyInstance) {
         if (!id) return reply.code(400).send({ ok: false, message: "invalid id" });
 
         const ms = await app.prisma.mallRN_member_membership.findFirst({
-            where: { uid: id, scope_type: "tenant", role_code: { in: ["seller_owner", "seller_staff"] } },
+            where: { uid: id, scope_type: "tenant", role_code: { in: SELLER_ROLES } },
         });
 
         if (!ms) return reply.code(404).send({ ok: false, message: "not found" });
-        if (ms.status === "active") return reply.send({ ok: true, message: "already active" });
 
-        await app.prisma.mallRN_member_membership.update({
-            where: { uid: id },
+        await app.prisma.mallRN_member_membership.updateMany({
+            where: {
+                member_uid: ms.member_uid,
+                scope_id: ms.scope_id,
+                scope_type: "tenant",
+                role_code: { in: SELLER_ROLES },
+            },
             data: { status: "active" },
         });
 
         return reply.send({ ok: true });
     });
 
-    // 거절
-    app.post("/v1/seller/applications/:id/reject", async (req: any, reply) => {
+    // 회원 셀러 권한 삭제 — 해당 member_uid의 모든 seller 멤버십 제거
+    app.delete("/v1/seller/applications/member/:memberUid", async (req: any, reply) => {
         if (!(await requireSuperAdmin(app, req, reply))) return;
 
-        const id = toInt(req.params?.id, 0);
-        if (!id) return reply.code(400).send({ ok: false, message: "invalid id" });
+        const memberUid = toInt(req.params?.memberUid, 0);
+        if (!memberUid) return reply.code(400).send({ ok: false, message: "invalid memberUid" });
 
-        const ms = await app.prisma.mallRN_member_membership.findFirst({
-            where: { uid: id, scope_type: "tenant", role_code: { in: ["seller_owner", "seller_staff"] } },
-        });
-
-        if (!ms) return reply.code(404).send({ ok: false, message: "not found" });
-
-        await app.prisma.mallRN_member_membership.update({
-            where: { uid: id },
-            data: { status: "rejected" },
+        await app.prisma.mallRN_member_membership.deleteMany({
+            where: {
+                member_uid: memberUid,
+                scope_type: "tenant",
+                role_code: { in: SELLER_ROLES },
+            },
         });
 
         return reply.send({ ok: true });

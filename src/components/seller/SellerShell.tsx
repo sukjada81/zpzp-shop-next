@@ -142,12 +142,13 @@ export default function SellerShell({
     }, []);
 
     useEffect(() => {
-        if (!isAdmin) return;
+        if (!isSuperAdmin) return;
         let alive = true;
 
         async function loadTenants() {
             try {
-                const res = await fetch(`/api/seller/${tenant}/tenants`, {
+                const slugForApi = tenant === "__all__" ? "__all__" : tenant;
+                const res = await fetch(`/api/seller/${slugForApi}/tenants`, {
                     method: "GET",
                     cache: "no-store",
                     credentials: "include",
@@ -165,7 +166,7 @@ export default function SellerShell({
 
         loadTenants();
         return () => { alive = false; };
-    }, [isAdmin, tenant]);
+    }, [isSuperAdmin, tenant]);
 
     useEffect(() => {
         setMobileMenuOpen(false);
@@ -207,8 +208,10 @@ export default function SellerShell({
         setMobileMenuOpen(false);
     }
 
+    const currentTenantLabel = tenant === "__all__" ? "전체 지점" : tenant;
+
     const tenantSwitcher =
-        isAdmin && tenants.length > 1 ? (
+        isSuperAdmin ? (
             <div className="relative mb-4">
                 <button
                     type="button"
@@ -217,13 +220,27 @@ export default function SellerShell({
                 >
                     <span className="flex items-center gap-2 truncate">
                         <ShieldCheck className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{tenant}</span>
+                        <span className="truncate">{currentTenantLabel}</span>
                     </span>
                     <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-60" />
                 </button>
 
                 {tenantSwitcherOpen ? (
                     <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 shadow-lg">
+                        <button
+                            key="__all__"
+                            type="button"
+                            onClick={() => handleTenantSwitch("__all__")}
+                            className={[
+                                "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition",
+                                tenant === "__all__"
+                                    ? "bg-violet-50 font-semibold text-violet-700"
+                                    : "text-slate-700 hover:bg-slate-50",
+                            ].join(" ")}
+                        >
+                            <span className="font-medium">전체 지점</span>
+                            <span className="text-xs text-slate-400">(all)</span>
+                        </button>
                         {tenants.map((t) => (
                             <button
                                 key={t.slug}
@@ -252,7 +269,7 @@ export default function SellerShell({
                     Seller Console
                 </div>
                 <div className="mt-2 break-words text-2xl font-extrabold tracking-[-0.04em] text-slate-900">
-                    {tenant}
+                    {tenant === "__all__" ? "전체 지점" : tenant}
                 </div>
                 <div className="mt-2 text-sm text-slate-500">
                     지점 운영 / 주문 / 회원 / 매출 통계
@@ -362,7 +379,7 @@ export default function SellerShell({
                             </div>
                             <div className="mt-1 flex items-center gap-2">
                                 <span className="truncate text-xl font-extrabold tracking-[-0.04em] text-slate-900">
-                                    {tenant}
+                                    {tenant === "__all__" ? "전체 지점" : tenant}
                                 </span>
                                 {isAdmin ? (
                                     <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">

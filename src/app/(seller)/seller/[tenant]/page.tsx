@@ -22,9 +22,22 @@ export default async function SellerDashboardPage({
     if (!tenant) notFound();
 
     const origin = getInternalOrigin();
-    const url = new URL(`/api/seller/${tenant}/dashboard`, origin);
     const cookie = await getCookieHeader();
 
+    // 전체 지점 합산 대시보드 (hq_super 전용)
+    if (tenant === "__all__") {
+        const url = new URL(`/api/seller/__all__/global/dashboard`, origin);
+        const result = await fetchSellerApi<SellerDashboardData>(url, cookie, "__all__");
+
+        if (!result.ok) {
+            if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+            notFound();
+        }
+
+        return <SellerDashboardClient tenant="__all__" data={result.data} />;
+    }
+
+    const url = new URL(`/api/seller/${tenant}/dashboard`, origin);
     const result = await fetchSellerApi<SellerDashboardData>(url, cookie, tenant);
 
     if (!result.ok) {

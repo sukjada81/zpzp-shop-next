@@ -25,6 +25,7 @@ import { sellerSalesRoutes } from "./modules/seller/sales.routes.js";
 import { sellerAccessCheckRoutes } from "./modules/seller/access-check.routes.js";
 import { sellerTenantsRoutes } from "./modules/seller/tenants.routes.js";
 import { sellerApplicationsRoutes } from "./modules/seller/applications.routes.js";
+import { sellerGlobalRoutes } from "./modules/seller/global.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
@@ -70,6 +71,7 @@ await publicAuthRoutes(app);
 await sellerAccessCheckRoutes(app);
 await sellerTenantsRoutes(app);
 await sellerApplicationsRoutes(app);
+await sellerGlobalRoutes(app);
 await sellerDashboardRoutes(app);
 await sellerSalesRoutes(app);
 await sellerMembersRoutes(app);

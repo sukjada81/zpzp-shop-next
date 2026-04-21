@@ -21,15 +21,23 @@ type AccessCheckResponse = {
     message?: string;
 };
 
-async function fetchAccessCheck(tenant: string): Promise<AccessCheckResponse> {
-    const origin = getInternalOrigin();
-    const url = new URL(`/api/seller/${tenant}/access-check`, origin);
+type SuperCheckResponse = {
+    ok: boolean;
+    isSuperAdmin?: boolean;
+};
 
+async function getCookieString() {
     const store = await cookies();
-    const cookie = store
+    return store
         .getAll()
         .map((item) => `${item.name}=${item.value}`)
         .join("; ");
+}
+
+async function fetchAccessCheck(tenant: string): Promise<AccessCheckResponse> {
+    const origin = getInternalOrigin();
+    const url = new URL(`/api/seller/${tenant}/access-check`, origin);
+    const cookie = await getCookieString();
 
     try {
         const res = await fetch(url.toString(), {
@@ -39,6 +47,25 @@ async function fetchAccessCheck(tenant: string): Promise<AccessCheckResponse> {
         });
 
         const data = (await res.json().catch(() => null)) as AccessCheckResponse | null;
+        return data ?? { ok: false };
+    } catch {
+        return { ok: false };
+    }
+}
+
+async function fetchSuperCheck(tenant: string): Promise<SuperCheckResponse> {
+    const origin = getInternalOrigin();
+    const url = new URL(`/api/seller/${tenant}/super-check`, origin);
+    const cookie = await getCookieString();
+
+    try {
+        const res = await fetch(url.toString(), {
+            method: "GET",
+            cache: "no-store",
+            headers: { cookie, "x-tenant-slug": tenant, accept: "application/json" },
+        });
+
+        const data = (await res.json().catch(() => null)) as SuperCheckResponse | null;
         return data ?? { ok: false };
     } catch {
         return { ok: false };
@@ -57,6 +84,23 @@ export default async function SellerTenantLayout({
 
     if (!tenant) {
         return <div className="p-6">tenant 정보가 없습니다.</div>;
+    }
+
+    // "__all__" 전체 지점 뷰: super-check만으로 접근 제어
+    if (tenant === "__all__") {
+        const superCheck = await fetchSuperCheck("__all__");
+        if (!superCheck.isSuperAdmin) {
+            return (
+                <SellerShell tenant={tenant} isAdmin={false} isSuperAdmin={false} role="">
+                    <SellerNoAccess tenant={tenant} />
+                </SellerShell>
+            );
+        }
+        return (
+            <SellerShell tenant={tenant} isAdmin={true} isSuperAdmin={true} role={SUPER_ADMIN_ROLE}>
+                {children}
+            </SellerShell>
+        );
     }
 
     const access = await fetchAccessCheck(tenant);

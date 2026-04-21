@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import SellerSalesStatsClient from "@/components/seller/SellerSalesStatsClient";
 import type { SellerSalesResponse } from "@/lib/types/seller";
 import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerGlobalNotSupported from "@/components/seller/SellerGlobalNotSupported";
 import {
     fetchSellerApi,
     getCookieHeader,
@@ -23,6 +24,7 @@ export default async function SellerSalesPage({
     const tenant = String(resolved?.tenant ?? "").trim();
 
     if (!tenant) notFound();
+    if (tenant === "__all__") return <SellerGlobalNotSupported pageLabel="매출통계" />;
 
     const resolvedSearchParams = await Promise.resolve(searchParams);
     const origin = getInternalOrigin();

@@ -6,6 +6,7 @@ import SellerMembersClient, {
     type SellerMembersSummary,
 } from "@/components/seller/SellerMembersClient";
 import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerGlobalNotSupported from "@/components/seller/SellerGlobalNotSupported";
 import { isAuthError, getInternalOrigin } from "@/lib/seller/fetchSeller";
 
 type MembersResponse = {
@@ -63,6 +64,7 @@ export default async function SellerMembersPage({
     const keyword = String(resolvedSearch?.q ?? "").trim();
 
     if (!tenant) notFound();
+    if (tenant === "__all__") return <SellerGlobalNotSupported pageLabel="회원관리" />;
 
     const result = await fetchSellerMembers(tenant, keyword);
 

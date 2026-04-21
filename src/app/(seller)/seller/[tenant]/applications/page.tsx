@@ -13,7 +13,7 @@ import {
 
 type ApplicationsResponse = { ok: boolean; items?: ApplicationItem[] };
 
-type StatusFilter = "pending" | "active" | "rejected" | "all";
+type StatusFilter = "pending" | "active" | "all";
 
 export default async function SellerApplicationsPage({
     params,
@@ -28,9 +28,9 @@ export default async function SellerApplicationsPage({
 
     if (!tenant) notFound();
 
-    const validStatuses = ["pending", "active", "rejected", "all"];
-    const rawStatus = String(resolvedSearch?.status ?? "pending").trim();
-    const statusFilter = (validStatuses.includes(rawStatus) ? rawStatus : "pending") as StatusFilter;
+    const validStatuses = ["pending", "active", "all"];
+    const rawStatus = String(resolvedSearch?.status ?? "all").trim();
+    const statusFilter = (validStatuses.includes(rawStatus) ? rawStatus : "all") as StatusFilter;
 
     const origin = getInternalOrigin();
     const url = new URL(`/api/seller/${tenant}/applications`, origin);
@@ -44,11 +44,15 @@ export default async function SellerApplicationsPage({
         notFound();
     }
 
+    const items = result.data.items ?? [];
+    const pendingCount = items.filter((i) => i.status === "pending").length;
+
     return (
         <SellerApplicationsClient
             tenant={tenant}
-            initialItems={result.data.items ?? []}
+            initialItems={items}
             initialStatus={statusFilter}
+            initialPendingCount={pendingCount}
         />
     );
 }
