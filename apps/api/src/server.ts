@@ -22,6 +22,9 @@ import { sellerMembersRoutes } from "./modules/seller/members.routes.js";
 import { sellerOrderRoutes } from "./modules/seller/orders.routes.js";
 import { sellerDashboardRoutes } from "./modules/seller/dashboard.routes.js";
 import { sellerSalesRoutes } from "./modules/seller/sales.routes.js";
+import { sellerAccessCheckRoutes } from "./modules/seller/access-check.routes.js";
+import { sellerTenantsRoutes } from "./modules/seller/tenants.routes.js";
+import { sellerApplicationsRoutes } from "./modules/seller/applications.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
@@ -64,6 +67,9 @@ await adminUploadsRoutes(app);
 await adminRoutes(app);
 await publicAuthRoutes(app);
 
+await sellerAccessCheckRoutes(app);
+await sellerTenantsRoutes(app);
+await sellerApplicationsRoutes(app);
 await sellerDashboardRoutes(app);
 await sellerSalesRoutes(app);
 await sellerMembersRoutes(app);

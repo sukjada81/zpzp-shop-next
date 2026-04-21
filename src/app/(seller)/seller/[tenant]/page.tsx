@@ -1,52 +1,19 @@
 // src/app/(seller)/seller/[tenant]/page.tsx
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
 import SellerDashboardClient, {
     type SellerDashboardData,
 } from "@/components/seller/SellerDashboardClient";
-
-function getInternalOrigin() {
-    return (
-        process.env.NEXT_INTERNAL_ORIGIN ||
-        process.env.NEXT_PUBLIC_BASE_URL ||
-        "http://127.0.0.1:3000"
-    );
-}
-
-async function getCookieHeader() {
-    const store = await cookies();
-    return store
-        .getAll()
-        .map((item) => `${item.name}=${item.value}`)
-        .join("; ");
-}
-
-async function fetchSellerDashboard(
-    tenant: string
-): Promise<SellerDashboardData | null> {
-    const origin = getInternalOrigin();
-    const url = new URL(`/api/seller/${tenant}/dashboard`, origin);
-    const cookie = await getCookieHeader();
-
-    const res = await fetch(url.toString(), {
-        cache: "no-store",
-        headers: {
-            cookie,
-            "x-tenant-slug": tenant,
-        },
-    });
-
-    if (!res.ok) return null;
-
-    const data = (await res.json().catch(() => null)) as SellerDashboardData | null;
-    if (!data?.ok) return null;
-
-    return data;
-}
+import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import {
+    fetchSellerApi,
+    getCookieHeader,
+    getInternalOrigin,
+    isAuthError,
+} from "@/lib/seller/fetchSeller";
 
 export default async function SellerDashboardPage({
-                                                      params,
-                                                  }: {
+    params,
+}: {
     params: Promise<{ tenant: string }> | { tenant: string };
 }) {
     const resolved = await Promise.resolve(params);
@@ -54,8 +21,16 @@ export default async function SellerDashboardPage({
 
     if (!tenant) notFound();
 
-    const data = await fetchSellerDashboard(tenant);
-    if (!data) notFound();
+    const origin = getInternalOrigin();
+    const url = new URL(`/api/seller/${tenant}/dashboard`, origin);
+    const cookie = await getCookieHeader();
 
-    return <SellerDashboardClient tenant={tenant} data={data} />;
+    const result = await fetchSellerApi<SellerDashboardData>(url, cookie, tenant);
+
+    if (!result.ok) {
+        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        notFound();
+    }
+
+    return <SellerDashboardClient tenant={tenant} data={result.data} />;
 }
