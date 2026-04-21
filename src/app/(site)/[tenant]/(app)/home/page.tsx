@@ -1,7 +1,7 @@
 // src/app/(site)/[tenant]/(app)/home/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, Gift, Clock3, Sparkles } from "lucide-react";
+import { ChevronRight, Gift } from "lucide-react";
 import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
 import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
@@ -147,65 +147,110 @@ export default async function HomePage({
             />
             <Grid2 tenant={tenant} items={pickupSection.items} emptyText="등록된 상품이 없습니다." />
 
-            <PreparingSection />
+            {/* <OngoingSection tenant={tenant} items={toCardItems(ongoingProducts)} recentOrders={recentOrders} /> */}
 
             <RecommendedBlock tenant={tenant} />
         </main>
     );
 }
 
-function PreparingSection() {
+function OngoingSection({
+    tenant,
+    items,
+    recentOrders,
+}: {
+    tenant: string;
+    items: CardItem[];
+    recentOrders: RecentOrderTickerItem[];
+}) {
     return (
         <section className="mt-6">
             <div className="flex items-center justify-between">
                 <div className="text-xl font-bold text-neutral-1">🔥 진행 중인 공구</div>
+                {items.length > 0 && (
+                    <Link
+                        href={`/${tenant}/goods?tab=today`}
+                        className="text-xs font-bold text-[color:var(--muted)] hover:opacity-80"
+                    >
+                        더보기 &gt;
+                    </Link>
+                )}
             </div>
 
-            <div className="mt-3 overflow-hidden rounded-[24px] border border-[#f2d1a6] bg-white shadow-sm">
-                <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#fff7ed] via-[#fffaf4] to-[#ffffff]" />
-                    <div className="relative px-5 py-6">
-                        <div className="flex items-start gap-3">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#ffedd5] text-[#f97316] shadow-sm">
-                                <Clock3 size={22} strokeWidth={2.2} />
-                            </div>
+            {items.length > 0 && <RecentOrderTicker items={recentOrders} />}
 
-                            <div className="min-w-0 flex-1">
-                                <div className="inline-flex items-center gap-1 rounded-full border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-1 text-[11px] font-extrabold text-[#ea580c]">
-                                    <Sparkles size={12} strokeWidth={2.2} />
-                                    COMING SOON
-                                </div>
+            {items.length === 0 ? (
+                <div className="mt-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5 text-sm font-semibold text-[color:var(--muted)]">
+                    현재 진행 중인 공구가 없습니다.
+                </div>
+            ) : (
+                <div className="mt-3 space-y-3">
+                    {items.map((item) => (
+                        <OngoingCard key={item.id} item={item} tenant={tenant} />
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
 
-                                <div className="mt-3 text-[20px] font-extrabold tracking-[-0.02em] text-[#1f2937]">
-                                    준비중입니다
-                                </div>
-
-                                <div className="mt-2 text-[14px] leading-[1.6] text-[#6b7280]">
-                                    진행 중인 공구 상품은 현재 준비 중입니다.
-                                    <br />
-                                    더 좋은 구성으로 곧 업데이트될 예정입니다.
-                                </div>
-                            </div>
+function OngoingCard({ item, tenant }: { item: CardItem; tenant: string }) {
+    return (
+        <div className="overflow-hidden rounded-[20px] border border-[#ecebe9] bg-white shadow-sm">
+            <Link href={`/${tenant}/goods/${item.id}`} className="flex gap-0">
+                {/* 썸네일 */}
+                <div className="relative aspect-square w-[120px] shrink-0 overflow-hidden bg-[#f8f8f6]">
+                    {item.thumbnailUrl ? (
+                        <img
+                            src={item.thumbnailUrl}
+                            alt={item.title}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                        />
+                    ) : (
+                        <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
+                    )}
+                    {item.categoryLabel && (
+                        <div className="absolute left-2 top-2">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${categoryBadgeColor(item.categoryLabel)}`}>
+                                {item.categoryLabel}
+                            </span>
                         </div>
+                    )}
+                </div>
 
-                        <div className="mt-5 grid grid-cols-2 gap-2">
-                            <div className="rounded-2xl border border-[#fde7cf] bg-white/80 px-3 py-3">
-                                <div className="text-[11px] font-bold text-[#f97316]">상태</div>
-                                <div className="mt-1 text-[14px] font-extrabold text-[#111827]">업데이트 준비중</div>
+                {/* 정보 */}
+                <div className="flex min-w-0 flex-1 flex-col justify-between px-4 py-3">
+                    <div>
+                        {item.tags && item.tags.length > 0 && (
+                            <div className="mb-1.5 flex flex-wrap gap-1">
+                                {item.tags.map((tag) => (
+                                    <span
+                                        key={tag}
+                                        className="rounded-full border border-[#e5e5e5] px-2 py-0.5 text-[11px] font-semibold text-[#6b7280]"
+                                    >
+                                        {tag}
+                                    </span>
+                                ))}
                             </div>
-                            <div className="rounded-2xl border border-[#fde7cf] bg-white/80 px-3 py-3">
-                                <div className="text-[11px] font-bold text-[#f97316]">안내</div>
-                                <div className="mt-1 text-[14px] font-extrabold text-[#111827]">곧 오픈 예정</div>
-                            </div>
+                        )}
+                        <div className="line-clamp-2 text-[15px] font-bold leading-snug tracking-tight text-[color:var(--fg)]">
+                            {item.title}
                         </div>
+                    </div>
 
-                        <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-[#ffedd5]">
-                            <div className="h-full w-[38%] rounded-full bg-gradient-to-r from-[#fb923c] to-[#f97316]" />
+                    <div className="mt-2 flex items-end justify-between gap-2">
+                        <div className="text-[18px] font-extrabold tracking-[-0.03em] text-[color:var(--fg)]">
+                            {item.price.toLocaleString("ko-KR")}
+                            <span className="ml-0.5 text-[13px] font-semibold text-[#9ca3af]">원</span>
+                        </div>
+                        <div className="shrink-0 rounded-xl bg-[color:var(--brand)] px-3 py-1.5 text-[13px] font-bold text-white">
+                            주문하기
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </Link>
+        </div>
     );
 }
 
