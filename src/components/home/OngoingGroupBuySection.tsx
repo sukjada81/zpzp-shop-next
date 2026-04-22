@@ -310,7 +310,7 @@ function GroupBuyItemBlock({
 
     return (
         <article
-            className="overflow-hidden rounded-[24px] border px-3 py-3"
+            className="rounded-[24px] border px-3 py-3"
             style={{
                 background: "var(--surface, #fff)",
                 borderColor: "color-mix(in srgb, var(--border) 80%, transparent)",
