@@ -171,7 +171,7 @@ function ImageGallery({
                         key={`${img.key}_${i}`}
                         className="overflow-hidden rounded-2xl"
                         style={{
-                            flex: "0 0 85%",
+                            flex: "0 0 62%",
                             aspectRatio: "1 / 1",
                             scrollSnapAlign: "start",
                             background: "#ffffff",
