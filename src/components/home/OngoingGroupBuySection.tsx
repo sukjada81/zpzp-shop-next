@@ -186,8 +186,8 @@ function ImageGallery({
                                 key={`${img.key}_${i}`}
                                 className="relative flex-shrink-0 overflow-hidden rounded-xl border bg-white"
                                 style={{
-                                    width: 176,
-                                    height: 176,
+                                    width: 220,
+                                    height: 220,
                                     borderColor: "var(--border)",
                                 }}
                                 onClick={() => setActiveIdx(i)}
@@ -196,7 +196,7 @@ function ImageGallery({
                                     <img
                                         src={url}
                                         alt={img.label || `${title} 이미지`}
-                                        className="h-full w-full object-contain p-2"
+                                        className="h-full w-full object-cover"
                                         draggable={false}
                                     />
                                 ) : (
