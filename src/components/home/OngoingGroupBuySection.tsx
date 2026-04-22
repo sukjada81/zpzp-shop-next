@@ -154,58 +154,32 @@ function ImageGallery({
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
 
-    const touchStartX = useRef<number | null>(null);
-    const [activeIdx, setActiveIdx] = useState(0);
-
-    function handleTouchStart(e: React.TouchEvent) {
-        touchStartX.current = e.touches[0].clientX;
-    }
-
-    function handleTouchEnd(e: React.TouchEvent) {
-        if (touchStartX.current === null || list.length <= 1) return;
-        const diff = touchStartX.current - e.changedTouches[0].clientX;
-        touchStartX.current = null;
-        if (Math.abs(diff) < 40) return;
-        if (diff > 0) setActiveIdx((v) => Math.min(v + 1, list.length - 1));
-        else setActiveIdx((v) => Math.max(v - 1, 0));
-    }
-
     return (
-        <div className="relative">
-            <div
-                className="-mx-3 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-            >
-                <div className="flex gap-2 px-3">
-                    {list.map((img, i) => {
-                        const url = toAbsUrl(img.key);
-
-                        return (
-                            <div
-                                key={`${img.key}_${i}`}
-                                className="relative flex-shrink-0 overflow-hidden rounded-xl border bg-white"
-                                style={{
-                                    width: 160,
-                                    height: 160,
-                                    borderColor: "var(--border)",
-                                }}
-                                onClick={() => setActiveIdx(i)}
-                            >
-                                {url ? (
-                                    <img
-                                        src={url}
-                                        alt={img.label || `${title} 이미지`}
-                                        className="h-full w-full object-cover"
-                                        draggable={false}
-                                    />
-                                ) : (
-                                    <div className="h-full w-full bg-slate-100" />
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
+        <div
+            className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        >
+            <div className="flex gap-2 p-3">
+                {list.map((img, i) => {
+                    const url = toAbsUrl(img.key);
+                    return (
+                        <div
+                            key={`${img.key}_${i}`}
+                            className="relative flex-shrink-0 overflow-hidden rounded-xl bg-slate-100"
+                            style={{ width: 180, height: 180 }}
+                        >
+                            {url ? (
+                                <img
+                                    src={url}
+                                    alt={img.label || `${title} 이미지`}
+                                    className="h-full w-full object-cover"
+                                    draggable={false}
+                                />
+                            ) : (
+                                <div className="h-full w-full bg-slate-100" />
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -310,20 +284,19 @@ function GroupBuyItemBlock({
 
     return (
         <article
-            className="rounded-[24px] border px-3 py-3"
+            className="overflow-hidden rounded-[24px] border"
             style={{
                 background: "var(--surface, #fff)",
                 borderColor: "color-mix(in srgb, var(--border) 80%, transparent)",
                 boxShadow: "0 6px 20px rgba(0,0,0,0.05)",
             }}
         >
+            {/* 이미지 갤러리 — 카드 상단, 패딩 없음 */}
+            <ImageGallery images={item.images} title={item.title} />
+
+            <div className="px-3 pb-3">
             {/* 주문 알림 */}
             <ItemNoticeTicker items={item.recentOrders} />
-
-            {/* 이미지 갤러리 */}
-            <div className="mt-3">
-                <ImageGallery images={item.images} title={item.title} />
-            </div>
 
             {/* 제목 + 뱃지 */}
             <Link href={item.href || "#"} className="mt-3 block">
@@ -400,6 +373,7 @@ function GroupBuyItemBlock({
                     );
                 })}
             </div>
+            </div>{/* /px-3 pb-3 */}
         </article>
     );
 }
