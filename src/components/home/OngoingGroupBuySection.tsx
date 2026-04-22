@@ -153,7 +153,6 @@ function ImageGallery({
     title: string;
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
-
     const touchStartX = useRef<number | null>(null);
     const [activeIdx, setActiveIdx] = useState(0);
 
@@ -170,44 +169,47 @@ function ImageGallery({
         else setActiveIdx((v) => Math.max(v - 1, 0));
     }
 
+    const url = toAbsUrl(list[activeIdx]?.key);
+
     return (
-        <div className="relative">
+        <div>
             <div
-                className="-mx-3 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                className="w-full overflow-hidden rounded-xl"
+                style={{ aspectRatio: "1 / 1" }}
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
             >
-                <div className="flex gap-2 px-3">
-                    {list.map((img, i) => {
-                        const url = toAbsUrl(img.key);
-
-                        return (
-                            <div
-                                key={`${img.key}_${i}`}
-                                className="relative flex-shrink-0 overflow-hidden rounded-xl border bg-white"
-                                style={{
-                                    width: 220,
-                                    height: 220,
-                                    borderColor: "var(--border)",
-                                }}
-                                onClick={() => setActiveIdx(i)}
-                            >
-                                {url ? (
-                                    <img
-                                        src={url}
-                                        alt={img.label || `${title} 이미지`}
-                                        className="h-full w-full object-cover"
-                                        draggable={false}
-                                    />
-                                ) : (
-                                    <div className="h-full w-full bg-slate-100" />
-                                )}
-
-                            </div>
-                        );
-                    })}
-                </div>
+                {url ? (
+                    <img
+                        src={url}
+                        alt={list[activeIdx]?.label || title}
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                    />
+                ) : (
+                    <div className="h-full w-full bg-slate-100" />
+                )}
             </div>
+
+            {list.length > 1 && (
+                <div className="mt-2 flex justify-center gap-1.5">
+                    {list.map((_, i) => (
+                        <button
+                            key={i}
+                            type="button"
+                            onClick={() => setActiveIdx(i)}
+                            className="h-1.5 rounded-full transition-all duration-200"
+                            style={{
+                                width: i === activeIdx ? 20 : 6,
+                                background: i === activeIdx
+                                    ? "var(--accent)"
+                                    : "color-mix(in srgb, var(--fg) 20%, transparent)",
+                            }}
+                            aria-label={`이미지 ${i + 1}`}
+                        />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

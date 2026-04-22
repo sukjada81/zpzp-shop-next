@@ -378,7 +378,7 @@ export async function middleware(req: NextRequest) {
 
         const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
         const mockLogin = false;
-        const hasSession = await hasUserSession(req);
+        const hasSession = bypassAuth ? true : await hasUserSession(req);
         const isProtected = needsAuth(internalPath);
 
         const addDebug = (res: NextResponse, action: string) => {
@@ -452,7 +452,7 @@ export async function middleware(req: NextRequest) {
 
         const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
         const mockLogin = false;
-        const hasSession = await hasUserSession(req);
+        const hasSession = bypassAuth ? true : await hasUserSession(req);
 
         if (!needsAuth(pathname) || mockLogin || hasSession) {
             const segs = pathname.split("/").filter(Boolean);
@@ -512,7 +512,7 @@ export async function middleware(req: NextRequest) {
 
     const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
     const mockLogin = false;
-    const hasSession = await hasUserSession(req);
+    const hasSession = bypassAuth ? true : await hasUserSession(req);
     const isProtected = needsAuth(internalPathname);
 
     const addDebug = (res: NextResponse, action: string) => {

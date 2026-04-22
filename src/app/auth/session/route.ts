@@ -106,28 +106,32 @@ function resolveTenant(req: NextRequest) {
 export async function GET(req: NextRequest) {
     const tenant = resolveTenant(req);
 
-    const res = await fetch(`${getApiBase()}/v1/auth/session`, {
-        method: "GET",
-        headers: {
-            accept: "application/json",
-            cookie: req.headers.get("cookie") || "",
-            ...(tenant ? { "x-tenant-slug": tenant } : {}),
-            ...(req.headers.get("x-forwarded-host")
-                ? { "x-forwarded-host": req.headers.get("x-forwarded-host") as string }
-                : {}),
-            ...(req.headers.get("x-forwarded-proto")
-                ? { "x-forwarded-proto": req.headers.get("x-forwarded-proto") as string }
-                : {}),
-        },
-        cache: "no-store",
-    });
+    try {
+        const res = await fetch(`${getApiBase()}/v1/auth/session`, {
+            method: "GET",
+            headers: {
+                accept: "application/json",
+                cookie: req.headers.get("cookie") || "",
+                ...(tenant ? { "x-tenant-slug": tenant } : {}),
+                ...(req.headers.get("x-forwarded-host")
+                    ? { "x-forwarded-host": req.headers.get("x-forwarded-host") as string }
+                    : {}),
+                ...(req.headers.get("x-forwarded-proto")
+                    ? { "x-forwarded-proto": req.headers.get("x-forwarded-proto") as string }
+                    : {}),
+            },
+            cache: "no-store",
+        });
 
-    const data = await res.json().catch(() => null);
+        const data = await res.json().catch(() => null);
 
-    return NextResponse.json({
-        ok: true,
-        loggedIn: Boolean(data?.loggedIn),
-        member: data?.member ?? null,
-        tenant: data?.member?.tenantSlug ?? tenant ?? "",
-    });
+        return NextResponse.json({
+            ok: true,
+            loggedIn: Boolean(data?.loggedIn),
+            member: data?.member ?? null,
+            tenant: data?.member?.tenantSlug ?? tenant ?? "",
+        });
+    } catch {
+        return NextResponse.json({ ok: false, loggedIn: false, member: null, tenant });
+    }
 }
