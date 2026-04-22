@@ -162,7 +162,7 @@ function ImageGallery({
          */
         <div
             className="flex gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            style={{ scrollSnapType: "x mandatory" }}
+            style={{ scrollSnapType: "x mandatory", alignItems: "flex-start" }}
         >
             {list.map((img, i) => {
                 const url = toAbsUrl(img.key);
@@ -174,7 +174,7 @@ function ImageGallery({
                             flex: "0 0 85%",
                             aspectRatio: "1 / 1",
                             scrollSnapAlign: "start",
-                            background: "#f5f5f5",
+                            background: "#ffffff",
                         }}
                     >
                         {url ? (
@@ -182,6 +182,7 @@ function ImageGallery({
                                 src={url}
                                 alt={img.label || `${title} 이미지`}
                                 className="h-full w-full object-contain"
+                                style={{ background: "#ffffff" }}
                                 draggable={false}
                             />
                         ) : (
