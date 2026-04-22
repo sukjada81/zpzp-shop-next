@@ -6,9 +6,10 @@ import HomeBannerCarousel from "@/components/home/HomeBannerCarousel";
 import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
 import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import HomeProfileGate from "@/components/profile/HomeProfileGate";
+import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/home/OngoingGroupBuySection";
 import { endpoints } from "@/lib/api/endpoints";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
-import type { PublicProductsResponse } from "@/lib/types/goods";
+import type { PublicProductsResponse, PublicProductListItem, PublicProductDetailResponse } from "@/lib/types/goods";
 
 type RecentOrdersResponse = {
     ok?: boolean;
@@ -71,6 +72,22 @@ async function fetchRecentOrders(tenant: string, take = 10): Promise<RecentOrder
     return data.items;
 }
 
+async function fetchProductDetail(
+    tenant: string,
+    id: string | number
+): Promise<PublicProductDetailResponse["product"] | null> {
+    try {
+        const origin = getInternalOrigin();
+        const url = new URL(endpoints.publicProductDetail(tenant, id), origin);
+        const res = await fetch(url.toString(), { cache: "no-store" });
+        if (!res.ok) return null;
+        const data = (await res.json().catch(() => null)) as PublicProductDetailResponse | null;
+        return data?.product ?? null;
+    } catch {
+        return null;
+    }
+}
+
 function displayCategoryLabel(label?: string) {
     if (label === "오늘의 공구") return "오늘의 공구";
     return label;
@@ -86,6 +103,70 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
         categoryLabel: displayCategoryLabel(p.categoryLabel),
         tags: [...(p.metaLeft ? [p.metaLeft] : []), ...(p.metaRight ? [p.metaRight] : [])].slice(0, 2),
     }));
+}
+
+function toOngoingItems(
+    products: PublicProductListItem[],
+    tenant: string,
+    recentOrders: RecentOrderTickerItem[],
+    details: (PublicProductDetailResponse["product"] | null)[]
+): OngoingGroupBuyItem[] {
+    return (products ?? []).map((p, i) => {
+        const detail = details[i] ?? null;
+
+        // 이미지: 상세 API > 목록 API images[] > thumbnailUrl 순으로 폴백
+        const rawImages =
+            Array.isArray(detail?.images) && detail.images.length
+                ? detail.images
+                : Array.isArray(p.images) && p.images.length
+                    ? p.images
+                    : null;
+
+        const images = rawImages
+            ? rawImages.map((img) => ({ key: img.key, label: img.label }))
+            : p.thumbnailUrl
+                ? [{ key: p.thumbnailUrl, label: p.title }]
+                : [];
+
+        // 옵션: 상세 API > 목록 API 순으로 폴백
+        const rawOptions =
+            Array.isArray(detail?.options) && detail.options.length
+                ? detail.options
+                : Array.isArray(p.options) && p.options.length
+                    ? p.options
+                    : [];
+
+        const options = rawOptions.map((o) => ({
+            id: String(o.id),
+            name: String(o.name ?? ""),
+            price: o.price === null || o.price === undefined ? null : Number(o.price),
+            addPrice: o.addPrice === undefined ? undefined : Number(o.addPrice),
+            qty: o.qty === undefined ? undefined : Number(o.qty),
+            qtyType: o.qtyType === undefined ? undefined : Number(o.qtyType),
+            soldout: !!o.soldout,
+            stockNote: o.stockNote,
+            rawOptionId: o.rawOptionId,
+            code: o.code,
+        }));
+
+        return {
+            id: String(p.id),
+            tenant,
+            title: String(p.title ?? ""),
+            price: Number(p.price ?? 0),
+            href: `/${tenant}/goods/${p.id}`,
+            images,
+            options,
+            meta: {
+                deadlineAt: p.saleEndAt ?? null,
+                timeLeft: p.metaLeft ?? undefined,
+                pickup: p.metaRight ?? undefined,
+                pickupStartAt: p.pickupStartAt ?? null,
+                pickupEndAt: p.pickupEndAt ?? null,
+            },
+            recentOrders,
+        };
+    });
 }
 
 function categoryBadgeColor(label?: string) {
@@ -104,11 +185,17 @@ export default async function HomePage({
 
     if (!tenant) notFound();
 
-    const [todayProducts, pickupProducts, recentOrders] = await Promise.all([
+    const [todayProducts, pickupProducts, ongoingProducts, recentOrders] = await Promise.all([
         fetchProducts(tenant, { take: 8, type: "today" }),
         fetchProducts(tenant, { take: 8, type: "pickup" }),
+        fetchProducts(tenant, { take: 10, type: "ongoing" }),
         fetchRecentOrders(tenant, 10),
     ]);
+
+    // ongoing 상품마다 상세 API를 병렬 호출 → 추가 이미지 + 옵션 확보
+    const ongoingDetails = await Promise.all(
+        ongoingProducts.map((p) => fetchProductDetail(tenant, p.id))
+    );
 
     const todaySection: GridSection = {
         title: "🛒 오늘의 공구",
@@ -123,7 +210,7 @@ export default async function HomePage({
     };
 
     return (
-        <main className="mx-auto w-full max-w-[520px] px-4 pb-24 pt-3">
+        <main className="mx-auto w-full max-w-[520px] px-4 pb-28 pt-3">
             <HomeProfileGate tenant={tenant} />
 
             <HomeBannerCarousel tenant={tenant} />
@@ -147,112 +234,17 @@ export default async function HomePage({
             />
             <Grid2 tenant={tenant} items={pickupSection.items} emptyText="등록된 상품이 없습니다." />
 
-            {/* <OngoingSection tenant={tenant} items={toCardItems(ongoingProducts)} recentOrders={recentOrders} /> */}
+            {ongoingProducts.length > 0 && (
+                <OngoingGroupBuySection
+                    items={toOngoingItems(ongoingProducts, tenant, recentOrders, ongoingDetails)}
+                />
+            )}
 
             <RecommendedBlock tenant={tenant} />
         </main>
     );
 }
 
-function OngoingSection({
-    tenant,
-    items,
-    recentOrders,
-}: {
-    tenant: string;
-    items: CardItem[];
-    recentOrders: RecentOrderTickerItem[];
-}) {
-    return (
-        <section className="mt-6">
-            <div className="flex items-center justify-between">
-                <div className="text-xl font-bold text-neutral-1">🔥 진행 중인 공구</div>
-                {items.length > 0 && (
-                    <Link
-                        href={`/${tenant}/goods?tab=today`}
-                        className="text-xs font-bold text-[color:var(--muted)] hover:opacity-80"
-                    >
-                        더보기 &gt;
-                    </Link>
-                )}
-            </div>
-
-            {items.length > 0 && <RecentOrderTicker items={recentOrders} />}
-
-            {items.length === 0 ? (
-                <div className="mt-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5 text-sm font-semibold text-[color:var(--muted)]">
-                    현재 진행 중인 공구가 없습니다.
-                </div>
-            ) : (
-                <div className="mt-3 space-y-3">
-                    {items.map((item) => (
-                        <OngoingCard key={item.id} item={item} tenant={tenant} />
-                    ))}
-                </div>
-            )}
-        </section>
-    );
-}
-
-function OngoingCard({ item, tenant }: { item: CardItem; tenant: string }) {
-    return (
-        <div className="overflow-hidden rounded-[20px] border border-[#ecebe9] bg-white shadow-sm">
-            <Link href={`/${tenant}/goods/${item.id}`} className="flex gap-0">
-                {/* 썸네일 */}
-                <div className="relative aspect-square w-[120px] shrink-0 overflow-hidden bg-[#f8f8f6]">
-                    {item.thumbnailUrl ? (
-                        <img
-                            src={item.thumbnailUrl}
-                            alt={item.title}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                        />
-                    ) : (
-                        <div className="h-full w-full bg-gradient-to-br from-white to-[color:var(--brand-soft)]" />
-                    )}
-                    {item.categoryLabel && (
-                        <div className="absolute left-2 top-2">
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${categoryBadgeColor(item.categoryLabel)}`}>
-                                {item.categoryLabel}
-                            </span>
-                        </div>
-                    )}
-                </div>
-
-                {/* 정보 */}
-                <div className="flex min-w-0 flex-1 flex-col justify-between px-4 py-3">
-                    <div>
-                        {item.tags && item.tags.length > 0 && (
-                            <div className="mb-1.5 flex flex-wrap gap-1">
-                                {item.tags.map((tag) => (
-                                    <span
-                                        key={tag}
-                                        className="rounded-full border border-[#e5e5e5] px-2 py-0.5 text-[11px] font-semibold text-[#6b7280]"
-                                    >
-                                        {tag}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                        <div className="line-clamp-2 text-[15px] font-bold leading-snug tracking-tight text-[color:var(--fg)]">
-                            {item.title}
-                        </div>
-                    </div>
-
-                    <div className="mt-2 flex items-end justify-between gap-2">
-                        <div className="text-[18px] font-extrabold tracking-[-0.03em] text-[color:var(--fg)]">
-                            {item.price.toLocaleString("ko-KR")}
-                            <span className="ml-0.5 text-[13px] font-semibold text-[#9ca3af]">원</span>
-                        </div>
-                        <div className="shrink-0 rounded-xl bg-[color:var(--brand)] px-3 py-1.5 text-[13px] font-bold text-white">
-                            주문하기
-                        </div>
-                    </div>
-                </div>
-            </Link>
-        </div>
-    );
-}
 
 function SectionTitle({
                           title,

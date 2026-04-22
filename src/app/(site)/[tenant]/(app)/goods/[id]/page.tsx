@@ -61,7 +61,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                             : [
                                 {
                                     id: "default",
-                                    name: "기본 옵션",
+                                    name: (Array.isArray(p.images) && p.images[0]?.label?.trim()) || String(p.title ?? ""),
                                     price: null,
                                     soldout: false,
                                     rawOptionId: 0,
@@ -107,7 +107,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
             options: [
                 {
                     id: "default",
-                    name: "기본 옵션",
+                    name: String(found.title ?? ""),
                     price: null,
                     soldout: false,
                     rawOptionId: 0,

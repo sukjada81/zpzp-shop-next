@@ -35,6 +35,13 @@ export const endpoints = {
         return url.pathname + (url.search ? url.search : "");
     },
 
+    publicOngoingProducts: (tenant: string, q?: { take?: number }) => {
+        const url = new URL(apiProxy(`${tenant}/v1/public/products`), "http://local");
+        url.searchParams.set("type", "ongoing");
+        if (q?.take) url.searchParams.set("take", String(q.take));
+        return url.pathname + (url.search ? url.search : "");
+    },
+
     myOrders: (tenant: string, q?: { page?: number; limit?: number }) => {
         const url = new URL(apiProxy(`${tenant}/v1/orders/me`), "http://local");
         if (q?.page) url.searchParams.set("page", String(q.page));

@@ -1,7 +1,7 @@
 // src/components/home/OngoingGroupBuySection.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShoppingBag, Clock3, Truck } from "lucide-react";
@@ -12,13 +12,9 @@ import {
     isQuickOrderProfileComplete,
     readQuickOrderProfile,
 } from "@/lib/profile/quickOrderProfile";
+import type { RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 
-type NoticeItem = {
-    id: string;
-    maskedName: string;
-    minutesAgo: number;
-    qty: number;
-};
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type OptionItem = {
     id: string;
@@ -43,37 +39,30 @@ export type OngoingGroupBuyItem = {
     options: OptionItem[];
     meta?: {
         timeLeft?: string;
+        deadlineAt?: string | null;
         pickup?: string;
+        pickupStartAt?: string | null;
+        pickupEndAt?: string | null;
     };
-    notice?: NoticeItem;
-    isMockPreview?: boolean;
+    recentOrders: RecentOrderTickerItem[];
 };
 
 type CreateOrderResponse = {
     ok: boolean;
     orderNum?: string;
-    status?: number;
-    statusLabel?: string;
     message?: string;
     error?: string;
     detail?: string;
 };
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function formatAgo(minutesAgo: number) {
     if (minutesAgo <= 0) return "방금";
     if (minutesAgo < 60) return `${minutesAgo}분 전`;
-    const hours = Math.floor(minutesAgo / 60);
-    if (hours < 24) return `${hours}시간 전`;
-    const days = Math.floor(hours / 24);
-    return `${days}일 전`;
-}
-
-function formatTimeLeft(timeLeft?: string) {
-    return timeLeft || "진행 중";
-}
-
-function formatPickupText(pickup?: string) {
-    return pickup?.trim() || "픽업일 정보 없음";
+    const h = Math.floor(minutesAgo / 60);
+    if (h < 24) return `${h}시간 전`;
+    return `${Math.floor(h / 24)}일 전`;
 }
 
 function toNumberOrZero(v: unknown) {
@@ -92,48 +81,176 @@ function getMaxSelectableQty(option?: OptionItem) {
     return qty > 0 ? qty : 0;
 }
 
-function formatAddPrice(addPrice?: number) {
-    const value = Number(addPrice ?? 0);
-    if (!value) return "";
-    return value > 0 ? `+${value.toLocaleString()}원` : `${value.toLocaleString()}원`;
+function formatAddPrice(v?: number) {
+    const n = Number(v ?? 0);
+    if (!n) return "";
+    return n > 0 ? `+${n.toLocaleString()}원` : `${n.toLocaleString()}원`;
 }
 
-function CompactNoticeBar({ notice }: { notice?: NoticeItem }) {
-    if (!notice) return null;
+function toAbsUrl(key?: string) {
+    const k = String(key ?? "").trim();
+    if (!k) return "";
+    if (/^https?:\/\//i.test(k)) return k;
+    const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
+    return base ? `${base}${k.startsWith("/") ? "" : "/"}${k}` : k.startsWith("/") ? k : `/${k}`;
+}
+
+// ─── Per-item rolling notice ticker ──────────────────────────────────────────
+
+function ItemNoticeTicker({ items }: { items: RecentOrderTickerItem[] }) {
+    const [idx, setIdx] = useState(0);
+
+    useEffect(() => {
+        if (items.length <= 1) return;
+        const t = setInterval(() => setIdx((p) => (p + 1) % items.length), 4000);
+        return () => clearInterval(t);
+    }, [items.length]);
+
+    if (!items.length) return null;
+
+    const cur = items[idx % items.length];
 
     return (
         <div
-            className="w-full rounded-[12px] border px-3 py-2 transition-all duration-300"
+            className="w-full rounded-[12px] border px-3 py-2.5"
             style={{
-                borderColor: "rgba(240,127,34,0.30)",
-                background: "rgba(240,127,34,0.06)",
+                borderColor: "color-mix(in srgb, var(--accent) 28%, transparent)",
+                background: "color-mix(in srgb, var(--accent) 5%, white)",
             }}
         >
-            <div className="flex items-center gap-2 text-sm text-neutral-700">
-                <ShoppingBag
-                    size={16}
-                    strokeWidth={2}
-                    className="flex-shrink-0"
-                    style={{ color: "#f07f22" }}
-                />
-
-                <span className="leading-none">
-                    <strong style={{ color: "#f07f22", fontWeight: 600 }}>{notice.maskedName}</strong>
-                    <span> 님이 {formatAgo(notice.minutesAgo)} </span>
-                    <span style={{ color: "#f07f22", fontWeight: 700 }}>{notice.qty}개</span>
-                    <span>를 주문했어요</span>
+            <div className="flex items-center gap-2">
+                <span
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px]"
+                    style={{ borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)" }}
+                >
+                    ✅
+                </span>
+                <span className="text-[13px] leading-snug text-[color:var(--fg)]">
+                    <span className="font-extrabold" style={{ color: "var(--accent)" }}>
+                        {cur.maskedName}
+                    </span>{" "}
+                    님이{" "}
+                    <span className="font-bold" style={{ color: "var(--accent)" }}>
+                        {formatAgo(cur.minutesAgo)}
+                    </span>{" "}
+                    <span className="font-bold" style={{ color: "var(--accent)" }}>
+                        {cur.qty}개
+                    </span>
+                    를 주문했어요
                 </span>
             </div>
         </div>
     );
 }
 
+// ─── Image gallery ────────────────────────────────────────────────────────────
+
+function ImageGallery({
+    images,
+    title,
+}: {
+    images: { key: string; label?: string }[];
+    title: string;
+}) {
+    const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
+
+    const touchStartX = useRef<number | null>(null);
+    const [activeIdx, setActiveIdx] = useState(0);
+
+    function handleTouchStart(e: React.TouchEvent) {
+        touchStartX.current = e.touches[0].clientX;
+    }
+
+    function handleTouchEnd(e: React.TouchEvent) {
+        if (touchStartX.current === null || list.length <= 1) return;
+        const diff = touchStartX.current - e.changedTouches[0].clientX;
+        touchStartX.current = null;
+        if (Math.abs(diff) < 40) return;
+        if (diff > 0) setActiveIdx((v) => Math.min(v + 1, list.length - 1));
+        else setActiveIdx((v) => Math.max(v - 1, 0));
+    }
+
+    return (
+        <div className="relative">
+            <div
+                className="-mx-3 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+            >
+                <div className="flex gap-2 px-3">
+                    {list.map((img, i) => {
+                        const url = toAbsUrl(img.key);
+
+                        return (
+                            <div
+                                key={`${img.key}_${i}`}
+                                className="relative flex-shrink-0 overflow-hidden rounded-xl border bg-white"
+                                style={{
+                                    width: 176,
+                                    height: 176,
+                                    borderColor: "var(--border)",
+                                }}
+                                onClick={() => setActiveIdx(i)}
+                            >
+                                {url ? (
+                                    <img
+                                        src={url}
+                                        alt={img.label || `${title} 이미지`}
+                                        className="h-full w-full object-contain p-2"
+                                        draggable={false}
+                                    />
+                                ) : (
+                                    <div className="h-full w-full bg-slate-100" />
+                                )}
+
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Countdown hook ───────────────────────────────────────────────────────────
+
+function useCountdown(deadlineAt?: string | null, fallback?: string) {
+    const [text, setText] = useState(fallback || "진행 중");
+
+    useEffect(() => {
+        if (!deadlineAt) return;
+
+        function tick() {
+            const ms = new Date(deadlineAt!).getTime() - Date.now();
+            if (ms <= 0) {
+                setText("마감");
+                return;
+            }
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+
+            if (h > 0) setText(`${h}시간 ${m}분 뒤 마감`);
+            else if (m > 0) setText(`${m}분 ${s}초 뒤 마감`);
+            else setText(`${s}초 뒤 마감`);
+        }
+
+        tick();
+        const t = setInterval(tick, 1000);
+        return () => clearInterval(t);
+    }, [deadlineAt]);
+
+    return text;
+}
+
+// ─── Qty control ──────────────────────────────────────────────────────────────
+
 function QtyControl({
-                        value,
-                        onMinus,
-                        onPlus,
-                        disabled,
-                    }: {
+    value,
+    onMinus,
+    onPlus,
+    disabled,
+}: {
     value: number;
     onMinus: () => void;
     onPlus: () => void;
@@ -145,28 +262,24 @@ function QtyControl({
                 disabled={disabled || value <= 0}
                 onClick={onMinus}
                 type="button"
-                aria-label="decrease"
+                aria-label="감소"
                 className="flex h-9 w-9 items-center justify-center rounded-full border text-lg font-medium transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                style={{
-                    borderColor: "#e5e7eb",
-                    background: "#fff",
-                    color: "#c8c8c8",
-                }}
+                style={{ borderColor: "var(--border)", background: "#fff", color: "var(--muted)" }}
             >
                 −
             </button>
-
-            <div className="min-w-10 text-center text-base font-semibold text-neutral-800">{value}</div>
-
+            <div className="min-w-[2rem] text-center text-base font-semibold text-[color:var(--fg)]">
+                {value}
+            </div>
             <button
                 onClick={onPlus}
                 disabled={disabled}
                 type="button"
-                aria-label="increase"
+                aria-label="증가"
                 className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-medium text-white transition-all active:scale-95 disabled:opacity-40"
                 style={{
-                    background: "#f07f22",
-                    boxShadow: "0 4px 10px rgba(240,127,34,0.25)",
+                    background: "var(--accent)",
+                    boxShadow: "0 4px 10px color-mix(in srgb, var(--accent) 28%, transparent)",
                 }}
             >
                 +
@@ -175,163 +288,113 @@ function QtyControl({
     );
 }
 
-function ProductThumbStrip({
-                               images,
-                           }: {
-    images: { key: string; label?: string }[];
-}) {
-    const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
-
-    return (
-        <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex gap-2">
-                {list.map((img, idx) => (
-                    <div
-                        key={`${img.key}_${idx}`}
-                        className="relative h-44 w-44 flex-shrink-0 overflow-hidden rounded-lg border bg-white"
-                        style={{ borderColor: "#e5e7eb" }}
-                    >
-                        {img.key ? (
-                            <div className="flex h-full w-full items-center justify-center p-2">
-                                <img
-                                    alt={img.label || `thumb-${idx + 1}`}
-                                    src={img.key}
-                                    className="max-h-full max-w-full object-contain"
-                                />
-                            </div>
-                        ) : (
-                            <div className="h-full w-full bg-neutral-200" />
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
+// ─── Single group-buy item block ──────────────────────────────────────────────
 
 function GroupBuyItemBlock({
-                               item,
-                               qtyMap,
-                               onMinus,
-                               onPlus,
-                           }: {
+    item,
+    qtyMap,
+    onMinus,
+    onPlus,
+}: {
     item: OngoingGroupBuyItem;
     qtyMap: Record<string, number>;
-    onMinus: (optionKey: string) => void;
-    onPlus: (optionKey: string) => void;
+    onMinus: (key: string) => void;
+    onPlus: (key: string) => void;
 }) {
     const options = useMemo(() => {
         if (item.options?.length) return item.options;
-
-        return [
-            {
-                id: `base_${item.id}`,
-                name: item.title,
-                price: item.price,
-                soldout: false,
-                rawOptionId: 0,
-            },
-        ];
+        return [{ id: `base_${item.id}`, name: item.images?.[0]?.label?.trim() || item.title, price: item.price, soldout: false, rawOptionId: 0 }];
     }, [item]);
+
+    const deadlineText = useCountdown(item.meta?.deadlineAt, item.meta?.timeLeft);
+    const pickupText = item.meta?.pickup?.trim() || "";
 
     return (
         <article
-            className="mt-6 rounded-[28px] border px-3 py-3 shadow-sm"
+            className="rounded-[24px] border px-3 py-3"
             style={{
-                background: "var(--surface)",
-                borderColor: "rgba(23,59,69,0.09)",
-                boxShadow: "0 8px 22px rgba(15, 42, 49, 0.06)",
+                background: "var(--surface, #fff)",
+                borderColor: "color-mix(in srgb, var(--border) 80%, transparent)",
+                boxShadow: "0 6px 20px rgba(0,0,0,0.05)",
             }}
         >
-            <CompactNoticeBar notice={item.notice} />
+            {/* 주문 알림 */}
+            <ItemNoticeTicker items={item.recentOrders} />
 
+            {/* 이미지 갤러리 */}
             <div className="mt-3">
-                <ProductThumbStrip images={item.images} />
+                <ImageGallery images={item.images} title={item.title} />
             </div>
 
+            {/* 제목 + 뱃지 */}
             <Link href={item.href || "#"} className="mt-3 block">
-                <div
-                    className="mb-1 line-clamp-2 text-[17px] font-extrabold leading-[1.4] tracking-[-0.03em]"
-                    style={{ color: "#222222" }}
-                >
+                <div className="text-[17px] font-extrabold leading-snug tracking-[-0.03em] text-[color:var(--fg)] line-clamp-2">
                     {item.title}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span
-                        className="inline-flex h-[25px] items-center gap-1 rounded-full border px-3 text-[12px] font-medium"
-                        style={{
-                            borderColor: "#ffd6d6",
-                            background: "#fff5f5",
-                            color: "#ff6b6b",
-                        }}
+                        className="inline-flex h-[26px] items-center gap-1 rounded-full border px-3 text-[12px] font-semibold"
+                        style={{ borderColor: "var(--border-danger, #ffd6d6)", background: "var(--surface-danger, #fff5f5)", color: "var(--fg-danger, #e53e3e)" }}
                     >
-                        <Clock3 size={14} strokeWidth={2} />
-                        <span>{formatTimeLeft(item.meta?.timeLeft)}</span>
+                        <Clock3 size={13} strokeWidth={2} />
+                        <span>{deadlineText}</span>
                     </span>
 
-                    <span
-                        className="inline-flex min-h-[25px] items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium"
-                        style={{
-                            borderColor: "#c7d7ff",
-                            background: "#f5f8ff",
-                            color: "#5b7cff",
-                        }}
-                    >
-                        <Truck size={14} strokeWidth={2} />
-                        <span>{formatPickupText(item.meta?.pickup)}</span>
-                    </span>
+                    {pickupText ? (
+                        <span
+                            className="inline-flex min-h-[26px] items-center gap-1 rounded-full border px-3 py-0.5 text-[12px] font-semibold"
+                            style={{ borderColor: "var(--border-info, #c7d7ff)", background: "var(--surface-info, #f5f8ff)", color: "var(--fg-info, #5b7cff)" }}
+                        >
+                            <Truck size={13} strokeWidth={2} />
+                            <span>{pickupText}</span>
+                        </span>
+                    ) : null}
                 </div>
             </Link>
 
-            <div className="mt-5 space-y-2">
+            {/* 옵션 수량 카드 */}
+            <div className="mt-4 space-y-2">
                 {options.map((option) => {
-                    const optionKey = buildOptionKey(item.id, option.id);
-                    const qty = qtyMap[optionKey] ?? 0;
+                    const key = buildOptionKey(item.id, option.id);
+                    const qty = qtyMap[key] ?? 0;
                     const price = Number(option.price ?? item.price ?? 0);
                     const soldout = !!option.soldout;
-                    const stockText = option.stockNote?.trim() || "옵션 선택 가능";
+                    const stockText = option.stockNote?.trim() || "전량 한정! 조기 마감될 수 있습니다.";
                     const maxQty = getMaxSelectableQty(option);
-                    const isMaxReached = maxQty !== Number.POSITIVE_INFINITY && qty >= maxQty;
+                    const isMax = maxQty !== Number.POSITIVE_INFINITY && qty >= maxQty;
 
                     return (
                         <div
-                            key={optionKey}
-                            className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 transition-shadow shadow-sm"
-                            style={{
-                                borderColor: "#e5e7eb",
-                                opacity: soldout ? 0.6 : 1,
-                            }}
+                            key={key}
+                            className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm"
+                            style={{ borderColor: "var(--border)", opacity: soldout ? 0.6 : 1 }}
                         >
                             <div className="min-w-0 flex-1">
-                                <span className="inline-flex items-center gap-1 text-xs" style={{ color: "#ff6b6b" }}>
-                                    <span>{stockText}</span>
-                                </span>
-
-                                <div className="mt-1 font-medium text-neutral-900">
+                                <div className="text-[11px] font-semibold text-rose-500">{stockText}</div>
+                                <div className="mt-1 font-semibold text-[color:var(--fg)]">
                                     {option.name}
                                     {option.addPrice ? (
-                                        <span className="ml-1 text-xs font-bold text-rose-600">
+                                        <span className="ml-1 text-[12px] font-bold text-rose-500">
                                             ({formatAddPrice(option.addPrice)})
                                         </span>
                                     ) : null}
                                 </div>
-
-                                <div className="mt-1 text-sm text-neutral-600">
+                                <div className="mt-1 text-[14px] text-[color:var(--muted)]">
                                     {price.toLocaleString()}원
                                 </div>
                             </div>
 
                             {soldout ? (
-                                <div className="flex h-10 min-w-[68px] items-center justify-center rounded-xl bg-[#f3f4f6] px-4 text-sm font-bold text-[#9ca3af]">
+                                <div className="flex h-9 min-w-[64px] items-center justify-center rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-400">
                                     품절
                                 </div>
                             ) : (
                                 <QtyControl
                                     value={qty}
-                                    disabled={!!item.isMockPreview || isMaxReached}
-                                    onMinus={() => onMinus(optionKey)}
-                                    onPlus={() => onPlus(optionKey)}
+                                    disabled={isMax}
+                                    onMinus={() => onMinus(key)}
+                                    onPlus={() => onPlus(key)}
                                 />
                             )}
                         </div>
@@ -342,11 +405,13 @@ function GroupBuyItemBlock({
     );
 }
 
+// ─── Main export ──────────────────────────────────────────────────────────────
+
 export default function OngoingGroupBuySection({
-                                                   title = "🔥 진행 중인 공구",
-                                                   items,
-                                                   showOrderBar = true,
-                                               }: {
+    title = "🔥 진행 중인 공구",
+    items,
+    showOrderBar = true,
+}: {
     title?: string;
     items: OngoingGroupBuyItem[];
     showOrderBar?: boolean;
@@ -360,182 +425,116 @@ export default function OngoingGroupBuySection({
 
     useEffect(() => {
         if (!toastOpen) return;
-
-        const timer = window.setTimeout(() => {
-            setToastOpen(false);
-        }, 1800);
-
-        return () => window.clearTimeout(timer);
+        const t = setTimeout(() => setToastOpen(false), 1800);
+        return () => clearTimeout(t);
     }, [toastOpen]);
 
-    const displayItems = useMemo(() => {
-        return items ?? [];
-    }, [items]);
+    const displayItems = useMemo(() => items ?? [], [items]);
 
+    // option key → meta 매핑
     const optionMetaMap = useMemo(() => {
-        const map = new Map<
-            string,
-            {
-                tenant: string;
-                productId: string;
-                optionId: string;
-                rawOptionId: number;
-                optionName: string;
-                qty?: number;
-                qtyType?: number;
-                soldout?: boolean;
-            }
-        >();
+        const map = new Map<string, {
+            tenant: string;
+            productId: string;
+            rawOptionId: number;
+            optionName: string;
+            qty?: number;
+            qtyType?: number;
+            soldout?: boolean;
+        }>();
 
-        for (const item of items ?? []) {
-            const options =
-                item.options?.length
-                    ? item.options
-                    : [
-                        {
-                            id: `base_${item.id}`,
-                            name: item.title,
-                            price: item.price,
-                            rawOptionId: 0,
-                        },
-                    ];
+        for (const item of displayItems) {
+            const opts = item.options?.length
+                ? item.options
+                : [{ id: `base_${item.id}`, name: item.title, price: item.price, rawOptionId: 0 }];
 
-            for (const option of options) {
-                const rawOptionId = toNumberOrZero(option.rawOptionId);
-                const optionKey = buildOptionKey(item.id, option.id);
-
-                map.set(optionKey, {
+            for (const opt of opts) {
+                map.set(buildOptionKey(item.id, opt.id), {
                     tenant: item.tenant,
                     productId: String(item.id),
-                    optionId: String(option.id),
-                    rawOptionId,
-                    optionName: option.name,
-                    qty: option.qty,
-                    qtyType: option.qtyType,
-                    soldout: option.soldout,
+                    rawOptionId: toNumberOrZero(opt.rawOptionId),
+                    optionName: opt.name,
+                    qty: opt.qty,
+                    qtyType: opt.qtyType,
+                    soldout: opt.soldout,
                 });
-            }
-        }
-
-        return map;
-    }, [items]);
-
-    const optionPriceMap = useMemo(() => {
-        const map: Record<string, number> = {};
-
-        for (const item of displayItems ?? []) {
-            const options =
-                item.options?.length
-                    ? item.options
-                    : [
-                        {
-                            id: `base_${item.id}`,
-                            name: item.title,
-                            price: item.price,
-                            rawOptionId: 0,
-                        },
-                    ];
-
-            for (const option of options) {
-                const optionKey = buildOptionKey(item.id, option.id);
-                map[optionKey] = Number(option.price ?? item.price ?? 0);
             }
         }
 
         return map;
     }, [displayItems]);
 
-    const realSelectedEntries = useMemo(() => {
-        return Object.entries(qtyMap).filter(
-            ([optionKey, qty]) => Number(qty) > 0 && optionMetaMap.has(optionKey)
-        );
-    }, [qtyMap, optionMetaMap]);
+    // option key → 단가
+    const optionPriceMap = useMemo(() => {
+        const map: Record<string, number> = {};
+        for (const item of displayItems) {
+            const opts = item.options?.length
+                ? item.options
+                : [{ id: `base_${item.id}`, price: item.price }];
+            for (const opt of opts) {
+                map[buildOptionKey(item.id, opt.id)] = Number(opt.price ?? item.price ?? 0);
+            }
+        }
+        return map;
+    }, [displayItems]);
 
-    const totalQty = realSelectedEntries.reduce((sum, [, qty]) => sum + qty, 0);
+    const selectedEntries = useMemo(
+        () => Object.entries(qtyMap).filter(([k, q]) => q > 0 && optionMetaMap.has(k)),
+        [qtyMap, optionMetaMap]
+    );
 
-    const totalPrice = realSelectedEntries.reduce((sum, [optionKey, qty]) => {
-        return sum + (optionPriceMap[optionKey] ?? 0) * qty;
-    }, 0);
-
+    const totalQty = selectedEntries.reduce((s, [, q]) => s + q, 0);
+    const totalPrice = selectedEntries.reduce((s, [k, q]) => s + (optionPriceMap[k] ?? 0) * q, 0);
     const isActive = totalQty > 0;
 
-    function showToast(message: string, tone: BottomToastTone = "success") {
-        setToastMessage(message);
+    function showToast(msg: string, tone: BottomToastTone = "success") {
+        setToastMessage(msg);
         setToastTone(tone);
         setToastOpen(true);
     }
 
-    function minus(optionKey: string) {
-        setQtyMap((prev) => ({
-            ...prev,
-            [optionKey]: Math.max(0, (prev[optionKey] ?? 0) - 1),
-        }));
+    function minus(key: string) {
+        setQtyMap((p) => ({ ...p, [key]: Math.max(0, (p[key] ?? 0) - 1) }));
     }
 
-    function plus(optionKey: string) {
-        const meta = optionMetaMap.get(optionKey);
+    function plus(key: string) {
+        const meta = optionMetaMap.get(key);
         if (!meta || meta.soldout) return;
-
-        const maxQty =
-            Number(meta.qtyType ?? 1) === 1
-                ? Number.POSITIVE_INFINITY
-                : Math.max(0, Number(meta.qty ?? 0));
-
-        setQtyMap((prev) => {
-            const next = (prev[optionKey] ?? 0) + 1;
-            return {
-                ...prev,
-                [optionKey]: maxQty === Number.POSITIVE_INFINITY ? next : Math.min(next, maxQty),
-            };
+        const max = Number(meta.qtyType ?? 1) === 1 ? Number.POSITIVE_INFINITY : Math.max(0, Number(meta.qty ?? 0));
+        setQtyMap((p) => {
+            const next = (p[key] ?? 0) + 1;
+            return { ...p, [key]: max === Number.POSITIVE_INFINITY ? next : Math.min(next, max) };
         });
     }
 
-    async function submitQuickOrder() {
+    async function submitOrder() {
         if (!isActive || submitting) return;
 
-        const firstTenant = String(items?.[0]?.tenant ?? "").trim();
-        if (!firstTenant) {
-            showToast("지점 정보가 올바르지 않습니다.", "error");
-            return;
-        }
+        const firstTenant = String(displayItems[0]?.tenant ?? "").trim();
+        if (!firstTenant) { showToast("지점 정보가 올바르지 않습니다.", "error"); return; }
 
         const profile = readQuickOrderProfile(firstTenant);
         if (!isQuickOrderProfileComplete(profile)) {
             showToast("주문자 정보를 먼저 설정해 주세요.", "error");
-            window.setTimeout(() => {
-                router.push(`/${firstTenant}/settings`);
-            }, 700);
+            setTimeout(() => router.push(`/${firstTenant}/settings`), 700);
             return;
         }
 
-        const selectedItems = realSelectedEntries
-            .map(([optionKey, qty]) => {
-                const meta = optionMetaMap.get(optionKey);
+        const orderItems = selectedEntries
+            .map(([key, qty]) => {
+                const meta = optionMetaMap.get(key);
                 if (!meta) return null;
-
-                return {
-                    productId: Number(meta.productId),
-                    optionId: meta.rawOptionId || undefined,
-                    optionName: meta.optionName,
-                    qty: Number(qty),
-                };
+                return { productId: Number(meta.productId), optionId: meta.rawOptionId || undefined, optionName: meta.optionName, qty };
             })
             .filter(Boolean);
 
-        if (!selectedItems.length) {
-            showToast("주문할 수량을 선택해 주세요.", "error");
-            return;
-        }
+        if (!orderItems.length) { showToast("주문할 수량을 선택해 주세요.", "error"); return; }
 
         setSubmitting(true);
-
         try {
             const res = await fetch(endpoints.createOrder(firstTenant), {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                },
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
                 credentials: "include",
                 cache: "no-store",
                 body: JSON.stringify({
@@ -545,29 +544,22 @@ export default function OngoingGroupBuySection({
                     receiverPhone: String(profile?.phone ?? "").trim(),
                     pickupAt: null,
                     message: "",
-                    memo: "홈페이지 빠른주문",
+                    memo: "진행중인공구 빠른주문",
                     direct: 1,
-                    items: selectedItems,
+                    items: orderItems,
                 }),
             });
 
             const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
 
             if (res.status === 401) {
-                showToast("로그인이 필요합니다. 다시 로그인해 주세요.", "error");
-                window.setTimeout(() => {
-                    router.push(`/${firstTenant}/login?returnTo=${encodeURIComponent(`/${firstTenant}/home`)}`);
-                }, 700);
+                showToast("로그인이 필요합니다.", "error");
+                setTimeout(() => router.push(`/${firstTenant}/login?returnTo=/${firstTenant}/groupbuys`), 700);
                 return;
             }
 
             if (!res.ok || json?.ok === false || !json?.orderNum) {
-                throw new Error(
-                    json?.message ||
-                    json?.error ||
-                    json?.detail ||
-                    `주문 생성 실패 (HTTP ${res.status})`
-                );
+                throw new Error(json?.message || json?.error || json?.detail || `주문 실패 (HTTP ${res.status})`);
             }
 
             saveGuestOrderRef({
@@ -581,8 +573,7 @@ export default function OngoingGroupBuySection({
             setQtyMap({});
             showToast("주문이 완료되었어요.");
         } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : "주문 처리 중 오류가 발생했습니다.";
-            showToast(message, "error");
+            showToast(e instanceof Error ? e.message : "주문 처리 중 오류가 발생했습니다.", "error");
         } finally {
             setSubmitting(false);
         }
@@ -591,29 +582,22 @@ export default function OngoingGroupBuySection({
     return (
         <>
             <section className="mt-6 pb-0">
-                <div className="text-xl font-bold text-neutral-1" style={{ color: "#222222" }}>
-                    {title}
-                </div>
+                <div className="text-xl font-bold text-[color:var(--fg)]">{title}</div>
 
                 {!displayItems.length ? (
                     <div className="mt-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm font-semibold text-[color:var(--muted)]">
                         진행 중인 공구가 없습니다.
                     </div>
                 ) : (
-                    <div className="pb-0">
-                        {displayItems.map((item, index) => (
-                            <div key={item.id}>
-                                <GroupBuyItemBlock
-                                    item={item}
-                                    qtyMap={qtyMap}
-                                    onMinus={minus}
-                                    onPlus={plus}
-                                />
-
-                                {index !== displayItems.length - 1 && (
-                                    <div className="w-full border-t" style={{ borderColor: "#d9d9d9" }} />
-                                )}
-                            </div>
+                    <div className="mt-4 space-y-5">
+                        {displayItems.map((item) => (
+                            <GroupBuyItemBlock
+                                key={item.id}
+                                item={item}
+                                qtyMap={qtyMap}
+                                onMinus={minus}
+                                onPlus={plus}
+                            />
                         ))}
                     </div>
                 )}
@@ -623,17 +607,13 @@ export default function OngoingGroupBuySection({
                         <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
                             <button
                                 type="button"
-                                onClick={submitQuickOrder}
+                                onClick={submitOrder}
                                 disabled={!isActive || submitting}
                                 className="relative h-12 w-full rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
                                 style={{
-                                    background: isActive
-                                        ? "linear-gradient(180deg, #f6a45d 0%, #f07f22 0%)"
-                                        : "#ffb224",
-                                    boxShadow: isActive
-                                        ? "0 10px 22px rgba(240,127,34,0.35)"
-                                        : "none",
-                                    opacity: isActive ? 1 : 0.5,
+                                    background: isActive ? "var(--accent)" : "color-mix(in srgb, var(--accent) 55%, white)",
+                                    boxShadow: isActive ? "0 10px 22px color-mix(in srgb, var(--accent) 30%, transparent)" : "none",
+                                    opacity: isActive ? 1 : 0.65,
                                 }}
                             >
                                 <div className="relative flex w-full items-center justify-center">
@@ -641,13 +621,10 @@ export default function OngoingGroupBuySection({
                                         <ShoppingBag size={18} />
                                         {submitting ? "주문 처리 중..." : "주문하기"}
                                     </span>
-
                                     {isActive ? (
                                         <span className="absolute inset-y-0 right-4 flex flex-col items-end justify-center text-right">
-                                            <span className="text-[13px] opacity-90">총 {totalQty}개</span>
-                                            <span className="text-[13px] opacity-90">
-                                                {totalPrice.toLocaleString()}원
-                                            </span>
+                                            <span className="text-[12px] opacity-90">총 {totalQty}개</span>
+                                            <span className="text-[12px] opacity-90">{totalPrice.toLocaleString()}원</span>
                                         </span>
                                     ) : null}
                                 </div>
@@ -657,12 +634,7 @@ export default function OngoingGroupBuySection({
                 ) : null}
             </section>
 
-            <BottomToast
-                open={toastOpen}
-                message={toastMessage}
-                tone={toastTone}
-                onClose={() => setToastOpen(false)}
-            />
+            <BottomToast open={toastOpen} message={toastMessage} tone={toastTone} onClose={() => setToastOpen(false)} />
         </>
     );
 }

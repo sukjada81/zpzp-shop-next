@@ -75,6 +75,7 @@ export default function AppShellClient({
 
         if (p === "" || p === "/") return "홈";
         if (p.startsWith("/home")) return BRAND_NAME;
+        if (p.startsWith("/groupbuys")) return "진행 중인 공구";
         if (p.startsWith("/goods")) return "상품";
         if (p.startsWith("/orders")) return "주문내역";
         if (p.startsWith("/order")) return "주문/결제";

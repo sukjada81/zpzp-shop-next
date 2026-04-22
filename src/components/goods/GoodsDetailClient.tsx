@@ -1,7 +1,7 @@
 // src/components/goods/GoodsDetailClient.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ShoppingBag, ShoppingCart, Clock3, Truck, Info } from "lucide-react";
 import { useCart } from "@/lib/cart/CartProvider";
@@ -12,6 +12,7 @@ import {
     isQuickOrderProfileComplete,
     readQuickOrderProfile,
 } from "@/lib/profile/quickOrderProfile";
+import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 
 type GoodsOption = {
     id: string;
@@ -300,6 +301,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const [toastOpen, setToastOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState("주문이 완료되었어요.");
     const [toastTone, setToastTone] = useState<BottomToastTone>("success");
+    const [recentOrders, setRecentOrders] = useState<RecentOrderTickerItem[]>([]);
+
+    const touchStartX = useRef<number | null>(null);
 
     const optionById = useMemo(() => {
         return new Map(data.options.map((o) => [o.id, o]));
@@ -351,6 +355,15 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             setImgIdx(0);
         }
     }, [imgIdx, safeImages.length]);
+
+    useEffect(() => {
+        fetch(endpoints.publicRecentOrders(tenant, { take: 10 }))
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => {
+                if (d?.ok && Array.isArray(d.items)) setRecentOrders(d.items);
+            })
+            .catch(() => {});
+    }, [tenant]);
 
     const descRaw = String(data.description ?? "").trim();
     const descIsHtml = looksLikeHtml(descRaw);
@@ -531,6 +544,22 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         }
     }
 
+    function handleTouchStart(e: React.TouchEvent) {
+        touchStartX.current = e.touches[0].clientX;
+    }
+
+    function handleTouchEnd(e: React.TouchEvent) {
+        if (touchStartX.current === null || !canCarousel) return;
+        const diff = touchStartX.current - e.changedTouches[0].clientX;
+        touchStartX.current = null;
+        if (Math.abs(diff) < 40) return;
+        if (diff > 0) {
+            setImgIdx((v) => (v + 1) % safeImages.length);
+        } else {
+            setImgIdx((v) => (v - 1 + safeImages.length) % safeImages.length);
+        }
+    }
+
     return (
         <>
             <main className="mx-auto w-full max-w-[520px] bg-white pb-28">
@@ -540,11 +569,16 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             <div className="aspect-square" />
 
                             {mainImageUrl ? (
-                                <div className="absolute inset-0 flex items-center justify-center p-3">
+                                <div
+                                    className="absolute inset-0 flex items-center justify-center p-3"
+                                    onTouchStart={handleTouchStart}
+                                    onTouchEnd={handleTouchEnd}
+                                >
                                     <img
                                         src={mainImageUrl}
                                         alt={data.title}
                                         className="max-h-full max-w-full object-contain"
+                                        draggable={false}
                                     />
                                 </div>
                             ) : (
@@ -575,6 +609,27 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                     >
                                         ›
                                     </button>
+                                </div>
+                            ) : null}
+
+                            {canCarousel ? (
+                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+                                    {safeImages.map((_, idx) => (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => setImgIdx(idx)}
+                                            aria-label={`이미지 ${idx + 1}`}
+                                            className="rounded-full transition-all"
+                                            style={{
+                                                width: idx === imgIdx ? 18 : 6,
+                                                height: 6,
+                                                background: idx === imgIdx
+                                                    ? "var(--accent)"
+                                                    : "color-mix(in srgb, var(--accent) 30%, white)",
+                                            }}
+                                        />
+                                    ))}
                                 </div>
                             ) : null}
                         </div>
@@ -673,6 +728,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </section>
 
                 <section className="border-t border-[color:var(--border)] bg-white px-3 pb-4 pt-4">
+                    {recentOrders.length > 0 && (
+                        <div className="mb-4">
+                            <RecentOrderTicker items={recentOrders} />
+                        </div>
+                    )}
+
                     <div className="space-y-3">
                         {data.options.map((option) => {
                             const optionQty = qty[option.id] ?? 0;

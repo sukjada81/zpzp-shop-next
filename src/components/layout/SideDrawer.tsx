@@ -13,6 +13,7 @@ import {
     Coins,
     Settings,
     Store,
+    Flame,
     X,
 } from "lucide-react";
 import { useCart } from "@/lib/cart/CartProvider";
@@ -109,6 +110,7 @@ export default function SideDrawer({
     const itemsMenu: DrawerItemDef[] = useMemo(() => {
         const base: DrawerItemDef[] = [
             { href: `/${tenant}/home`, label: "홈", Icon: Home },
+            { href: `/${tenant}/groupbuys`, label: "진행 중인 공구", Icon: Flame },
             { href: `/${tenant}/orders`, label: "주문내역", Icon: Receipt },
             {
                 href: `/${tenant}/cart`,
