@@ -155,25 +155,33 @@ function ImageGallery({
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
 
     return (
-        <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex gap-2.5">
+        <div
+            className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            style={{ scrollSnapType: "x mandatory" }}
+        >
+            <div className="flex gap-2">
                 {list.map((img, i) => {
                     const url = toAbsUrl(img.key);
                     return (
                         <div
                             key={`${img.key}_${i}`}
-                            className="relative flex-shrink-0 overflow-hidden rounded-2xl bg-slate-100"
-                            style={{ width: 176, height: 176 }}
+                            className="flex-shrink-0 overflow-hidden rounded-2xl bg-slate-50"
+                            style={{
+                                /* 컨테이너 너비 - 36px → 다음 이미지가 ~36px 미리보기 */
+                                minWidth: "calc(100% - 36px)",
+                                aspectRatio: "1 / 1",
+                                scrollSnapAlign: "start",
+                            }}
                         >
                             {url ? (
                                 <img
                                     src={url}
                                     alt={img.label || `${title} 이미지`}
-                                    className="h-full w-full object-cover"
+                                    className="h-full w-full object-contain p-1"
                                     draggable={false}
                                 />
                             ) : (
-                                <div className="h-full w-full bg-slate-100" />
+                                <div className="h-full w-full bg-slate-100 rounded-2xl" />
                             )}
                         </div>
                     );
