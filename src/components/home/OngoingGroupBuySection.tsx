@@ -155,38 +155,41 @@ function ImageGallery({
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
 
     return (
+        /*
+         * flex + overflow-x: auto 를 같은 요소에 두는 것이 핵심.
+         * 이렇게 해야 flex 자식의 flex-basis % 가 scroll 컨테이너 너비 기준으로 계산됨.
+         * flex: 0 0 85% → 한 장이 컨테이너의 85%, 나머지 15%에 다음 이미지가 살짝 노출.
+         */
         <div
-            className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="flex gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ scrollSnapType: "x mandatory" }}
         >
-            <div className="flex gap-2">
-                {list.map((img, i) => {
-                    const url = toAbsUrl(img.key);
-                    return (
-                        <div
-                            key={`${img.key}_${i}`}
-                            className="flex-shrink-0 overflow-hidden rounded-2xl bg-slate-50"
-                            style={{
-                                /* 컨테이너 너비 - 36px → 다음 이미지가 ~36px 미리보기 */
-                                minWidth: "calc(100% - 36px)",
-                                aspectRatio: "1 / 1",
-                                scrollSnapAlign: "start",
-                            }}
-                        >
-                            {url ? (
-                                <img
-                                    src={url}
-                                    alt={img.label || `${title} 이미지`}
-                                    className="h-full w-full object-contain p-1"
-                                    draggable={false}
-                                />
-                            ) : (
-                                <div className="h-full w-full bg-slate-100 rounded-2xl" />
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
+            {list.map((img, i) => {
+                const url = toAbsUrl(img.key);
+                return (
+                    <div
+                        key={`${img.key}_${i}`}
+                        className="overflow-hidden rounded-2xl"
+                        style={{
+                            flex: "0 0 85%",
+                            aspectRatio: "1 / 1",
+                            scrollSnapAlign: "start",
+                            background: "#f5f5f5",
+                        }}
+                    >
+                        {url ? (
+                            <img
+                                src={url}
+                                alt={img.label || `${title} 이미지`}
+                                className="h-full w-full object-contain"
+                                draggable={false}
+                            />
+                        ) : (
+                            <div className="h-full w-full" />
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }
