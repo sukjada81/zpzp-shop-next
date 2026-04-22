@@ -155,17 +155,15 @@ function ImageGallery({
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
 
     return (
-        <div
-            className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        >
-            <div className="flex gap-2 p-3">
+        <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-2.5">
                 {list.map((img, i) => {
                     const url = toAbsUrl(img.key);
                     return (
                         <div
                             key={`${img.key}_${i}`}
-                            className="relative flex-shrink-0 overflow-hidden rounded-xl bg-slate-100"
-                            style={{ width: 180, height: 180 }}
+                            className="relative flex-shrink-0 overflow-hidden rounded-2xl bg-slate-100"
+                            style={{ width: 176, height: 176 }}
                         >
                             {url ? (
                                 <img
@@ -284,19 +282,20 @@ function GroupBuyItemBlock({
 
     return (
         <article
-            className="overflow-hidden rounded-[24px] border"
+            className="rounded-[24px] border px-3 py-3"
             style={{
                 background: "var(--surface, #fff)",
                 borderColor: "color-mix(in srgb, var(--border) 80%, transparent)",
                 boxShadow: "0 6px 20px rgba(0,0,0,0.05)",
             }}
         >
-            {/* 이미지 갤러리 — 카드 상단, 패딩 없음 */}
-            <ImageGallery images={item.images} title={item.title} />
-
-            <div className="px-3 pb-3">
-            {/* 주문 알림 */}
+            {/* 주문 알림 — 이미지 위 */}
             <ItemNoticeTicker items={item.recentOrders} />
+
+            {/* 이미지 갤러리 */}
+            <div className="mt-3">
+                <ImageGallery images={item.images} title={item.title} />
+            </div>
 
             {/* 제목 + 뱃지 */}
             <Link href={item.href || "#"} className="mt-3 block">
@@ -373,7 +372,6 @@ function GroupBuyItemBlock({
                     );
                 })}
             </div>
-            </div>{/* /px-3 pb-3 */}
         </article>
     );
 }
