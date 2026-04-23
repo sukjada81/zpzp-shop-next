@@ -185,16 +185,15 @@ export default async function HomePage({
 
     if (!tenant) notFound();
 
-    const [todayProducts, pickupProducts, ongoingProducts, recentOrders] = await Promise.all([
-        fetchProducts(tenant, { take: 8, type: "today" }),
+    const [todayProducts, pickupProducts, recentOrders] = await Promise.all([
+        fetchProducts(tenant, { take: 10, type: "today" }),
         fetchProducts(tenant, { take: 8, type: "pickup" }),
-        fetchProducts(tenant, { take: 10, type: "ongoing" }),
         fetchRecentOrders(tenant, 10),
     ]);
 
-    // ongoing 상품마다 상세 API를 병렬 호출 → 추가 이미지 + 옵션 확보
+    // 오늘의공구 상품마다 상세 API를 병렬 호출 → 추가 이미지 + 옵션 확보
     const ongoingDetails = await Promise.all(
-        ongoingProducts.map((p) => fetchProductDetail(tenant, p.id))
+        todayProducts.map((p) => fetchProductDetail(tenant, p.id))
     );
 
     const todaySection: GridSection = {
@@ -234,9 +233,9 @@ export default async function HomePage({
             />
             <Grid2 tenant={tenant} items={pickupSection.items} emptyText="등록된 상품이 없습니다." />
 
-            {ongoingProducts.length > 0 && (
+            {todayProducts.length > 0 && (
                 <OngoingGroupBuySection
-                    items={toOngoingItems(ongoingProducts, tenant, recentOrders, ongoingDetails)}
+                    items={toOngoingItems(todayProducts, tenant, recentOrders, ongoingDetails)}
                 />
             )}
 
