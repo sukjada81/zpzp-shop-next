@@ -286,7 +286,7 @@ function GroupBuyItemBlock({
 }) {
     const options = useMemo(() => {
         if (item.options?.length) return item.options;
-        return [{ id: `base_${item.id}`, name: item.images?.[0]?.label?.trim() || item.title, price: item.price, soldout: false, rawOptionId: 0 }];
+        return [{ id: `base_${item.id}`, name: item.title, price: item.price, soldout: false, rawOptionId: 0 }];
     }, [item]);
 
     const deadlineText = useCountdown(item.meta?.deadlineAt, item.meta?.timeLeft);
