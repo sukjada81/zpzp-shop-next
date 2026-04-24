@@ -343,7 +343,7 @@ function GroupBuyItemBlock({
                     const qty = qtyMap[key] ?? 0;
                     const price = Number(option.price ?? item.price ?? 0);
                     const soldout = !!option.soldout;
-                    const stockText = option.stockNote?.trim() || "전량 한정! 조기 마감될 수 있습니다.";
+                    // TODO(2026-04-24): 한정수량 상품 도입 시 stockText 뱃지 재활성화
                     const maxQty = getMaxSelectableQty(option);
                     const isMax = maxQty !== Number.POSITIVE_INFINITY && qty >= maxQty;
 
@@ -354,7 +354,9 @@ function GroupBuyItemBlock({
                             style={{ borderColor: "var(--border)", opacity: soldout ? 0.6 : 1 }}
                         >
                             <div className="min-w-0 flex-1">
-                                <div className="text-[11px] font-semibold text-rose-500">{stockText}</div>
+                                {/* TODO(2026-04-24): 한정수량 상품 도입 시 재활성화
+                                <div className="text-[11px] font-semibold text-rose-500">{option.stockNote?.trim() || "전량 한정! 조기 마감될 수 있습니다."}</div>
+                                */}
                                 <div className="mt-1 font-semibold text-[color:var(--fg)]">
                                     {option.name}
                                     {option.addPrice ? (

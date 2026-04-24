@@ -741,8 +741,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             const maxQty = getMaxSelectableQty(option);
                             const isMaxReached =
                                 maxQty !== Number.POSITIVE_INFINITY && optionQty >= maxQty;
-                            const stockText =
-                                option.stockNote?.trim() || "전량 한정! 조기 마감될 수 있습니다.";
+                            // TODO(2026-04-24): 한정수량 상품 도입 시 stockText 뱃지 재활성화
                             const displayPrice = Number(option.price ?? data.price ?? 0);
 
                             return (
@@ -755,9 +754,11 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                     }}
                                 >
                                     <div className="min-w-0 flex-1">
+                                        {/* TODO(2026-04-24): 한정수량 상품 도입 시 재활성화
                                         <div className="text-[12px] font-semibold text-rose-500">
-                                            {stockText}
+                                            {option.stockNote?.trim() || "전량 한정! 조기 마감될 수 있습니다."}
                                         </div>
+                                        */}
 
                                         <div className="mt-1 text-[22px] font-extrabold leading-snug tracking-[-0.02em] text-[color:var(--fg)]">
                                             {option.name}
