@@ -153,10 +153,8 @@ function formatDateTime(value?: string | null) {
     const yyyy = String(parsed.year);
     const mm = String(parsed.month).padStart(2, "0");
     const dd = String(parsed.day).padStart(2, "0");
-    const hh = String(parsed.hour).padStart(2, "0");
-    const mi = String(parsed.minute).padStart(2, "0");
 
-    return `${yyyy}. ${mm}. ${dd}. ${hh}:${mi}`;
+    return `${yyyy}. ${mm}. ${dd}.`;
 }
 
 function buildPickupPeriodText(start?: string | null, end?: string | null) {
