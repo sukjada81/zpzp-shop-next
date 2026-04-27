@@ -22,7 +22,7 @@ const FAKE_NAMES = [
 
 const TARGET_COUNT = 30;
 
-function formatAgo(minutesAgo: number) {
+export function formatAgo(minutesAgo: number) {
     if (minutesAgo <= 0) return "방금 전";
     if (minutesAgo < 60) return `${minutesAgo}분 전`;
     const hours = Math.floor(minutesAgo / 60);
@@ -41,21 +41,20 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 function generateFakeItems(count: number): RecentOrderTickerItem[] {
+    const names = shuffle([...FAKE_NAMES]);
     return Array.from({ length: count }, (_, i) => ({
-        id: `fake-${i}-${Date.now()}`,
-        maskedName: FAKE_NAMES[i % FAKE_NAMES.length],
+        id: `fake-${i}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        maskedName: names[i % names.length],
         minutesAgo: Math.floor(Math.random() * 70) + 1,
         qty: Math.floor(Math.random() * 4) + 1,
     }));
 }
 
-export default function RecentOrderTicker({
-    items,
+// 각 인스턴스가 독립적으로 호출해 자신만의 셔플된 랜덤 풀을 갖도록 하는 훅
+export function useTickerItems(
+    items: RecentOrderTickerItem[],
     rotateMs = 4000,
-}: {
-    items: RecentOrderTickerItem[];
-    rotateMs?: number;
-}) {
+): RecentOrderTickerItem | null {
     const [displayItems, setDisplayItems] = useState<RecentOrderTickerItem[]>([]);
     const [index, setIndex] = useState(0);
 
@@ -64,12 +63,11 @@ export default function RecentOrderTicker({
             ...item,
             minutesAgo: Math.min(Math.max(item.minutesAgo, 1), 70),
         }));
-
         const fakeCount = Math.max(0, TARGET_COUNT - realItems.length);
         const merged = shuffle([...realItems, ...generateFakeItems(fakeCount)]);
-
         setDisplayItems(merged);
         setIndex(Math.floor(Math.random() * Math.max(merged.length, 1)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -80,9 +78,17 @@ export default function RecentOrderTicker({
         return () => window.clearInterval(timer);
     }, [displayItems.length, rotateMs]);
 
-    if (!displayItems.length) return null;
+    return displayItems[index] ?? displayItems[0] ?? null;
+}
 
-    const current = displayItems[index] ?? displayItems[0];
+export default function RecentOrderTicker({
+    items,
+    rotateMs = 4000,
+}: {
+    items: RecentOrderTickerItem[];
+    rotateMs?: number;
+}) {
+    const current = useTickerItems(items, rotateMs);
     if (!current) return null;
 
     return (

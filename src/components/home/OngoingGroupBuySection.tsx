@@ -12,7 +12,7 @@ import {
     isQuickOrderProfileComplete,
     readQuickOrderProfile,
 } from "@/lib/profile/quickOrderProfile";
-import type { RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
+import { useTickerItems, formatAgo as tickerFormatAgo, type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,13 +57,6 @@ type CreateOrderResponse = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatAgo(minutesAgo: number) {
-    if (minutesAgo <= 0) return "방금";
-    if (minutesAgo < 60) return `${minutesAgo}분 전`;
-    const h = Math.floor(minutesAgo / 60);
-    if (h < 24) return `${h}시간 전`;
-    return `${Math.floor(h / 24)}일 전`;
-}
 
 function toNumberOrZero(v: unknown) {
     const n = Number(v);
@@ -98,46 +91,25 @@ function toAbsUrl(key?: string) {
 // ─── Per-item rolling notice ticker ──────────────────────────────────────────
 
 function ItemNoticeTicker({ items }: { items: RecentOrderTickerItem[] }) {
-    const [idx, setIdx] = useState(0);
-
-    useEffect(() => {
-        if (items.length <= 1) return;
-        const t = setInterval(() => setIdx((p) => (p + 1) % items.length), 4000);
-        return () => clearInterval(t);
-    }, [items.length]);
-
-    if (!items.length) return null;
-
-    const cur = items[idx % items.length];
+    const cur = useTickerItems(items);
+    if (!cur) return null;
 
     return (
-        <div
-            className="w-full rounded-[12px] border px-3 py-2.5"
-            style={{
-                borderColor: "color-mix(in srgb, var(--accent) 28%, transparent)",
-                background: "color-mix(in srgb, var(--accent) 5%, white)",
-            }}
-        >
-            <div className="flex items-center gap-2">
-                <span
-                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px]"
-                    style={{ borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)" }}
-                >
-                    ✅
-                </span>
-                <span className="text-[13px] leading-snug text-[color:var(--fg)]">
-                    <span className="font-extrabold" style={{ color: "var(--accent)" }}>
-                        {cur.maskedName}
-                    </span>{" "}
-                    님이{" "}
-                    <span className="font-bold" style={{ color: "var(--accent)" }}>
-                        {formatAgo(cur.minutesAgo)}
-                    </span>{" "}
-                    <span className="font-bold" style={{ color: "var(--accent)" }}>
-                        {cur.qty}개
+        <div className="w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[color:var(--accent-soft)] text-[12px]">
+                        🛒
                     </span>
-                    를 주문했어요
-                </span>
+                    <div className="min-w-0 text-[14px] font-bold text-[color:var(--fg)]">
+                        <span className="truncate">
+                            <span className="font-extrabold">{cur.maskedName}</span> 님이{" "}
+                            <span className="text-[color:var(--accent)]">{tickerFormatAgo(cur.minutesAgo)}</span>{" "}
+                            <span className="text-[color:var(--accent)]">{cur.qty}개</span>를 주문했어요
+                        </span>
+                    </div>
+                </div>
+                <span className="shrink-0 text-[14px]">📈</span>
             </div>
         </div>
     );
