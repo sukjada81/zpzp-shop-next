@@ -151,6 +151,9 @@ export default function ProductEditForm({
     const [saleEndAt, setSaleEndAt] = useState<string>(
         product?.saleEndAt ? String(product.saleEndAt).slice(0, 16) : ""
     );
+    const [alwaysOnSale, setAlwaysOnSale] = useState<boolean>(
+        !product?.saleStartAt && !product?.saleEndAt
+    );
     const [sortOrder, setSortOrder] = useState<string>(String(product?.sortOrder ?? 0));
 
     const [qtyType, setQtyType] = useState<"0" | "1">(String(product?.qtyType ?? 0) === "1" ? "1" : "0");
@@ -363,10 +366,10 @@ export default function ProductEditForm({
                     maxQty: maxQty === "" ? null : safeNum(maxQty),
                     max_qty: maxQty === "" ? null : safeNum(maxQty),
 
-                    saleStartAt: saleStartAt || null,
-                    sale_start_at: saleStartAt || null,
-                    saleEndAt: saleEndAt || null,
-                    sale_end_at: saleEndAt || null,
+                    saleStartAt: alwaysOnSale ? null : (saleStartAt || null),
+                    sale_start_at: alwaysOnSale ? null : (saleStartAt || null),
+                    saleEndAt: alwaysOnSale ? null : (saleEndAt || null),
+                    sale_end_at: alwaysOnSale ? null : (saleEndAt || null),
 
                     sortOrder: safeNum(sortOrder),
                     sort_order: safeNum(sortOrder),
@@ -516,7 +519,19 @@ export default function ProductEditForm({
             <section className="dad-card space-y-5 p-5">
                 <div className="text-base font-extrabold text-[var(--dad-ink)]">기본 정보</div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <SettingToggleCard
+                        title="항시 판매"
+                        description="판매 기간 제한 없이 상시 판매합니다. 켜면 날짜 설정이 무시됩니다."
+                        checked={alwaysOnSale}
+                        onChange={(v) => {
+                            setAlwaysOnSale(v);
+                            if (v) {
+                                setSaleStartAt("");
+                                setSaleEndAt("");
+                            }
+                        }}
+                    />
                     <SettingToggleCard
                         title="픽업 전용"
                         description="배송 없이 매장 픽업 주문만 받습니다."
@@ -646,21 +661,33 @@ export default function ProductEditForm({
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">판매 시작일시</label>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">
+                            판매 시작일시
+                            {alwaysOnSale && (
+                                <span className="ml-2 text-[10px] font-bold text-[var(--dad-orange)]">항시 판매 중</span>
+                            )}
+                        </label>
                         <input
                             type="datetime-local"
-                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold disabled:opacity-40"
                             value={saleStartAt}
                             onChange={(e) => setSaleStartAt(e.target.value)}
+                            disabled={alwaysOnSale}
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">판매 종료일시</label>
+                        <label className="text-xs font-extrabold text-[var(--dad-muted)]">
+                            판매 종료일시
+                            {alwaysOnSale && (
+                                <span className="ml-2 text-[10px] font-bold text-[var(--dad-orange)]">항시 판매 중</span>
+                            )}
+                        </label>
                         <input
                             type="datetime-local"
-                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold"
+                            className="mt-2 w-full rounded-xl border border-[var(--dad-border)] bg-white/70 px-3 py-3 text-sm font-bold disabled:opacity-40"
                             value={saleEndAt}
                             onChange={(e) => setSaleEndAt(e.target.value)}
+                            disabled={alwaysOnSale}
                         />
                     </div>
                     <div>

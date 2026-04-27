@@ -31,6 +31,7 @@ export default function AdminProductNewClient() {
 
     const [saleStartAt, setSaleStartAt] = useState<string>("");
     const [saleEndAt, setSaleEndAt] = useState<string>("");
+    const [alwaysOnSale, setAlwaysOnSale] = useState<boolean>(false);
 
     const [description, setDescription] = useState("");
 
@@ -101,8 +102,8 @@ export default function AdminProductNewClient() {
                 pickupOnly,
                 minQty: minQty === "" ? null : Number(minQty),
                 maxQty: maxQty === "" ? null : Number(maxQty),
-                saleStartAt: saleStartAt || null,
-                saleEndAt: saleEndAt || null,
+                saleStartAt: alwaysOnSale ? null : (saleStartAt || null),
+                saleEndAt: alwaysOnSale ? null : (saleEndAt || null),
                 options: options
                     .map((o, idx) => ({ ...o, sortOrder: Number(o.sortOrder ?? idx) }))
                     .filter((o) => o.name.trim().length > 0),
@@ -245,13 +246,31 @@ export default function AdminProductNewClient() {
                         />
                     </div>
 
+                    <div className="lg:col-span-3 flex items-end gap-2">
+                        <label className="flex items-center gap-2 rounded-2xl border border-[var(--dad-border)] bg-white/70 px-4 py-3 text-sm font-extrabold text-[var(--dad-ink)]">
+                            <input
+                                type="checkbox"
+                                checked={alwaysOnSale}
+                                onChange={(e) => {
+                                    setAlwaysOnSale(e.target.checked);
+                                    if (e.target.checked) {
+                                        setSaleStartAt("");
+                                        setSaleEndAt("");
+                                    }
+                                }}
+                            />
+                            항시 판매 (날짜 제한 없음)
+                        </label>
+                    </div>
+
                     <div className="lg:col-span-3">
                         <label className="text-xs font-extrabold text-[var(--dad-muted)]">판매 시작</label>
                         <input
                             type="datetime-local"
                             value={saleStartAt}
                             onChange={(e) => setSaleStartAt(e.target.value)}
-                            className="mt-1 h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
+                            disabled={alwaysOnSale}
+                            className="mt-1 h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)] disabled:opacity-40"
                         />
                     </div>
 
@@ -261,7 +280,8 @@ export default function AdminProductNewClient() {
                             type="datetime-local"
                             value={saleEndAt}
                             onChange={(e) => setSaleEndAt(e.target.value)}
-                            className="mt-1 h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)]"
+                            disabled={alwaysOnSale}
+                            className="mt-1 h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-3 text-sm font-bold text-[var(--dad-ink)] disabled:opacity-40"
                         />
                     </div>
 

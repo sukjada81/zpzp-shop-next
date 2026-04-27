@@ -161,9 +161,12 @@ function buildPickupPeriodText(start?: string | null, end?: string | null) {
     const s = formatDateTime(start);
     const e = formatDateTime(end);
 
-    if (s && e) return `${s} ~ ${e}`;
-    if (s) return `${s}부터`;
-    if (e) return `${e}까지`;
+    if (s && e) {
+        if (s === e) return `${s}~`;
+        return `${s}~ ${e}`;
+    }
+    if (s) return `${s}~`;
+    if (e) return `~${e}`;
     return "";
 }
 

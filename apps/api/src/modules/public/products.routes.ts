@@ -305,9 +305,12 @@ function buildPickupBadgeText(input: {
     const startText = formatKoreanShortDate(input.pickupStartAt);
     const endText = formatKoreanShortDate(input.pickupEndAt);
 
-    if (startText && endText) return `픽업일: ${startText} ~ ${endText}`;
-    if (startText) return `픽업일: ${startText}부터`;
-    if (endText) return `픽업일: ${endText}까지`;
+    if (startText && endText) {
+        if (startText === endText) return `픽업일: ${startText}~`;
+        return `픽업일: ${startText}~ ${endText}`;
+    }
+    if (startText) return `픽업일: ${startText}~`;
+    if (endText) return `픽업일: ~${endText}`;
 
     if (input.pickupOnly) return "바로 픽업 가능";
 
