@@ -81,6 +81,26 @@ export function useTickerItems(
     return displayItems[index] ?? displayItems[0] ?? null;
 }
 
+function LiveDot() {
+    return (
+        <span className="shrink-0 flex items-center justify-center">
+            <span className="relative flex h-2.5 w-2.5">
+                <span
+                    className="absolute inline-flex h-full w-full rounded-full opacity-60"
+                    style={{
+                        background: "var(--accent)",
+                        animation: "ping-accent 1.4s cubic-bezier(0,0,0.2,1) infinite",
+                    }}
+                />
+                <span
+                    className="relative inline-flex h-2.5 w-2.5 rounded-full"
+                    style={{ background: "var(--accent)" }}
+                />
+            </span>
+        </span>
+    );
+}
+
 export default function RecentOrderTicker({
     items,
     rotateMs = 4000,
@@ -93,14 +113,20 @@ export default function RecentOrderTicker({
 
     return (
         <section className="mt-3">
-            <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-3 shadow-sm">
+            <div
+                className="rounded-2xl border border-[color:var(--border)] px-3 py-3 shadow-sm"
+                style={{ background: "color-mix(in srgb, var(--accent) 9%, white)" }}
+            >
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
                         <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[color:var(--accent-soft)] text-[12px]">
                             🛒
                         </span>
 
-                        <div className="min-w-0 text-[14px] font-bold text-[color:var(--fg)]">
+                        <div
+                            key={current.id}
+                            className="min-w-0 text-[14px] font-bold text-[color:var(--fg)] animate-ticker-in"
+                        >
                             <span className="truncate">
                                 <span className="font-extrabold">{current.maskedName}</span> 님이{" "}
                                 <span className="text-[color:var(--accent)]">{formatAgo(current.minutesAgo)}</span>{" "}
@@ -109,7 +135,7 @@ export default function RecentOrderTicker({
                         </div>
                     </div>
 
-                    <span className="shrink-0 text-[14px]">📈</span>
+                    <LiveDot />
                 </div>
             </div>
         </section>
