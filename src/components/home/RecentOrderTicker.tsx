@@ -87,23 +87,23 @@ export default function RecentOrderTicker({
 
     return (
         <section className="mt-3">
-            <div className="rounded-2xl border border-[#b7d8bc] bg-[#f4fbf5] px-3 py-3 shadow-sm">
+            <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-3 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
-                        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[#7eb889] bg-white text-[12px]">
-                            ✅
+                        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[color:var(--accent-soft)] text-[12px]">
+                            🛒
                         </span>
 
-                        <div className="min-w-0 text-[14px] font-bold text-[#3c5c42]">
+                        <div className="min-w-0 text-[14px] font-bold text-[color:var(--fg)]">
                             <span className="truncate">
                                 <span className="font-extrabold">{current.maskedName}</span> 님이{" "}
-                                <span className="text-[#3aa25a]">{formatAgo(current.minutesAgo)}</span>{" "}
-                                <span className="text-[#3aa25a]">{current.qty}개</span>를 주문했어요
+                                <span className="text-[color:var(--accent)]">{formatAgo(current.minutesAgo)}</span>{" "}
+                                <span className="text-[color:var(--accent)]">{current.qty}개</span>를 주문했어요
                             </span>
                         </div>
                     </div>
 
-                    <span className="shrink-0 text-[14px] text-[#ef7f3b]">📈</span>
+                    <span className="shrink-0 text-[14px]">📈</span>
                 </div>
             </div>
         </section>
