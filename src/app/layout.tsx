@@ -3,8 +3,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-    title: "Store Franchise",
-    description: "multi-tenant store",
+    title: "디스카운트올데이",
+    description: "지점별 공동구매 플랫폼",
+    icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
