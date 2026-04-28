@@ -86,7 +86,7 @@ export async function generateMetadata({
             url: canonicalUrl,
             siteName: "디스카운트 올데이",
             type: "website",
-            images: [{ url: "/logo_sq.jpg", width: 630, height: 630, alt: "디스카운트 올데이" }],
+            images: [{ url: "/og_image.jpg", width: 1200, height: 630, alt: "디스카운트 올데이" }],
         },
     };
 }
