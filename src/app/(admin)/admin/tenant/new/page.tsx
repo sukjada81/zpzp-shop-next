@@ -12,6 +12,7 @@ export default function AdminTenantNewPage() {
     const [primaryDomain, setPrimaryDomain] = useState("");
     const [timezone, setTimezone] = useState("Asia/Seoul");
     const [themeJson, setThemeJson] = useState<string>("{}");
+    const [openchatUrl, setOpenchatUrl] = useState<string>("");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +38,12 @@ export default function AdminTenantNewPage() {
                 />
                 <Field label="도메인" value={primaryDomain} onChange={setPrimaryDomain} placeholder="예) a.example.com" />
                 <Field label="타임존" value={timezone} onChange={setTimezone} placeholder="예) Asia/Seoul" />
+                <Field
+                    label="오픈채팅방 URL"
+                    value={openchatUrl}
+                    onChange={setOpenchatUrl}
+                    placeholder="https://open.kakao.com/o/..."
+                />
                 <TextArea
                     label="themeJson (JSON)"
                     value={themeJson}
@@ -69,7 +76,7 @@ export default function AdminTenantNewPage() {
                             if (!s) return setError("slug는 필수입니다.");
                             if (!n) return setError("이름은 필수입니다.");
 
-                            let theme: any = null;
+                            let theme: Record<string, any> = {};
                             const tj = themeJson.trim();
                             if (tj) {
                                 try {
@@ -77,6 +84,13 @@ export default function AdminTenantNewPage() {
                                 } catch {
                                     return setError("themeJson은 유효한 JSON이어야 합니다.");
                                 }
+                            }
+
+                            const urlVal = openchatUrl.trim();
+                            if (urlVal) {
+                                theme.openchatUrl = urlVal;
+                            } else {
+                                delete theme.openchatUrl;
                             }
 
                             setSaving(true);
@@ -91,7 +105,7 @@ export default function AdminTenantNewPage() {
                                         status,
                                         primaryDomain: primaryDomain.trim() || null,
                                         timezone: timezone.trim() || "Asia/Seoul",
-                                        themeJson: theme,
+                                        themeJson: Object.keys(theme).length > 0 ? theme : null,
                                     }),
                                 });
 

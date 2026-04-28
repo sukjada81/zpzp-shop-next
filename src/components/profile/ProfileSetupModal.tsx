@@ -14,11 +14,13 @@ export default function ProfileSetupModal({
                                               tenant,
                                               onClose,
                                               onSaved,
+                                              openchatUrl,
                                           }: {
     open: boolean;
     tenant: string;
     onClose: () => void;
     onSaved?: () => void;
+    openchatUrl?: string | null;
 }) {
     const [nickname, setNickname] = useState("");
     const [phone, setPhone] = useState("");
@@ -52,9 +54,8 @@ export default function ProfileSetupModal({
     }
 
     function handleOpenChat() {
-        const openChatUrl = process.env.NEXT_PUBLIC_OPENCHAT_URL || "";
-        if (openChatUrl) {
-            window.open(openChatUrl, "_blank", "noopener,noreferrer");
+        if (openchatUrl) {
+            window.open(openchatUrl, "_blank", "noopener,noreferrer");
             return;
         }
         showToast("오픈채팅 링크는 추후 연결 예정입니다.", "error");

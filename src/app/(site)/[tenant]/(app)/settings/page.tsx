@@ -33,6 +33,8 @@ export default function SettingsPage() {
     const [recommenderNickname, setRecommenderNickname] = useState("");
     const [savedAt, setSavedAt] = useState<number | null>(null);
 
+    const [openchatUrl, setOpenchatUrl] = useState<string | null>(null);
+
     const [toastOpen, setToastOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState("");
     const [toastTone, setToastTone] = useState<BottomToastTone>("success");
@@ -82,6 +84,14 @@ export default function SettingsPage() {
                     setNickname(String(profile.nickname ?? ""));
                     setPhone(String(profile.phone ?? ""));
                     setRecommenderNickname(String(profile.recommenderNickname ?? ""));
+                }
+
+                const tenantRes = await fetch(`/api/proxy/${tenant}/v1/public/tenant`, {
+                    cache: "no-store",
+                });
+                if (tenantRes.ok) {
+                    const tenantData = await tenantRes.json().catch(() => null);
+                    setOpenchatUrl(tenantData?.item?.openchatUrl ?? null);
                 }
 
                 setChecking(false);
@@ -135,9 +145,8 @@ export default function SettingsPage() {
     }
 
     function openChat() {
-        const openChatUrl = process.env.NEXT_PUBLIC_OPENCHAT_URL || "";
-        if (openChatUrl) {
-            window.open(openChatUrl, "_blank", "noopener,noreferrer");
+        if (openchatUrl) {
+            window.open(openchatUrl, "_blank", "noopener,noreferrer");
             return;
         }
         showToast("오픈채팅 링크는 추후 연결 예정입니다.", "error");

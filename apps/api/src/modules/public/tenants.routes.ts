@@ -7,6 +7,17 @@ function normalizeTenant(raw: unknown) {
     return t;
 }
 
+function extractOpenchatUrl(themeJson: string | null): string | null {
+    if (!themeJson) return null;
+    try {
+        const parsed = JSON.parse(themeJson);
+        const url = parsed?.openchatUrl;
+        return typeof url === "string" && url.trim() ? url.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
 export async function publicTenantRoutes(app: FastifyInstance) {
     app.get("/v1/public/tenant", async (req, reply) => {
         const params = req.params as { tenant?: string };
@@ -31,6 +42,7 @@ export async function publicTenantRoutes(app: FastifyInstance) {
                 primaryDomain: true,
                 timezone: true,
                 status: true,
+                themeJson: true,
             },
         });
 
@@ -50,6 +62,7 @@ export async function publicTenantRoutes(app: FastifyInstance) {
                 primaryDomain: row.primaryDomain ?? null,
                 timezone: row.timezone,
                 status: row.status,
+                openchatUrl: extractOpenchatUrl(row.themeJson),
             },
         };
     });

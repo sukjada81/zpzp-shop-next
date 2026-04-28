@@ -20,6 +20,7 @@ type AuthSession = {
 
 export default function HomeProfileGate({ tenant }: { tenant: string }) {
     const [open, setOpen] = useState(false);
+    const [openchatUrl, setOpenchatUrl] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -36,6 +37,14 @@ export default function HomeProfileGate({ tenant }: { tenant: string }) {
                 if (cancelled) return;
 
                 if (!data?.loggedIn) return;
+
+                const tenantRes = await fetch(`/api/proxy/${tenant}/v1/public/tenant`, {
+                    cache: "no-store",
+                });
+                if (!cancelled && tenantRes.ok) {
+                    const tenantData = await tenantRes.json().catch(() => null);
+                    setOpenchatUrl(tenantData?.item?.openchatUrl ?? null);
+                }
 
                 if (shouldOpenProfileSetupModal(tenant)) {
                     setOpen(true);
@@ -58,6 +67,7 @@ export default function HomeProfileGate({ tenant }: { tenant: string }) {
             tenant={tenant}
             onClose={() => setOpen(false)}
             onSaved={() => setOpen(false)}
+            openchatUrl={openchatUrl}
         />
     );
 }

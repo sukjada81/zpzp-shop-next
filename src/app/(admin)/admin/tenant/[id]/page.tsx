@@ -33,6 +33,7 @@ export default function AdminTenantEditPage() {
     const [primaryDomain, setPrimaryDomain] = useState("");
     const [timezone, setTimezone] = useState("Asia/Seoul");
     const [themeJsonText, setThemeJsonText] = useState<string>("{}");
+    const [openchatUrl, setOpenchatUrl] = useState<string>("");
 
     useEffect(() => {
         if (!id) return;
@@ -58,7 +59,9 @@ export default function AdminTenantEditPage() {
                 setStatus(t.status);
                 setPrimaryDomain(t.primaryDomain ?? "");
                 setTimezone(t.timezone ?? "Asia/Seoul");
-                setThemeJsonText(t.themeJson ? JSON.stringify(t.themeJson, null, 2) : "{}");
+                const parsedTheme = t.themeJson ?? {};
+                setThemeJsonText(JSON.stringify(parsedTheme, null, 2));
+                setOpenchatUrl(typeof parsedTheme?.openchatUrl === "string" ? parsedTheme.openchatUrl : "");
             } catch (e: any) {
                 if (alive) setError(e?.message || "불러오기 실패");
             } finally {
@@ -130,7 +133,28 @@ export default function AdminTenantEditPage() {
                 />
                 <Field label="도메인" value={primaryDomain} onChange={setPrimaryDomain} placeholder="예) a.example.com" />
                 <Field label="타임존" value={timezone} onChange={setTimezone} placeholder="예) Asia/Seoul" />
-                <TextArea label="themeJson (JSON)" value={themeJsonText} onChange={setThemeJsonText} mono />
+                <Field
+                    label="오픈채팅방 URL"
+                    value={openchatUrl}
+                    onChange={setOpenchatUrl}
+                    placeholder="https://open.kakao.com/o/..."
+                />
+                <TextArea
+                    label="themeJson (JSON)"
+                    value={themeJsonText}
+                    onChange={setThemeJsonText}
+                    mono
+                    onBlur={() => {
+                        try {
+                            const parsed = JSON.parse(themeJsonText);
+                            if (typeof parsed?.openchatUrl === "string") {
+                                setOpenchatUrl(parsed.openchatUrl);
+                            }
+                        } catch {
+                            // 편집 중일 수 있으므로 무시
+                        }
+                    }}
+                />
 
                 {error ? (
                     <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -150,7 +174,7 @@ export default function AdminTenantEditPage() {
                             if (!s) return setError("slug는 필수입니다.");
                             if (!n) return setError("이름은 필수입니다.");
 
-                            let theme: any = null;
+                            let theme: Record<string, any> = {};
                             const tj = themeJsonText.trim();
                             if (tj) {
                                 try {
@@ -158,6 +182,13 @@ export default function AdminTenantEditPage() {
                                 } catch {
                                     return setError("themeJson은 유효한 JSON이어야 합니다.");
                                 }
+                            }
+
+                            const urlVal = openchatUrl.trim();
+                            if (urlVal) {
+                                theme.openchatUrl = urlVal;
+                            } else {
+                                delete theme.openchatUrl;
                             }
 
                             setSaving(true);
@@ -259,12 +290,14 @@ function TextArea({
                       onChange,
                       placeholder,
                       mono,
+                      onBlur,
                   }: {
     label: string;
     value: string;
     onChange: (v: string) => void;
     placeholder?: string;
     mono?: boolean;
+    onBlur?: () => void;
 }) {
     return (
         <div className="space-y-1">
@@ -276,6 +309,7 @@ function TextArea({
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={placeholder}
+                onBlur={onBlur}
             />
         </div>
     );
