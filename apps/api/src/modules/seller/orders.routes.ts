@@ -71,8 +71,6 @@ function statusLabel(status: number) {
             return "현장결제완료";
         case 2:
             return "픽업준비완료";
-        case 3:
-            return "픽업예정";
         case 4:
             return "픽업완료";
         case 8:

@@ -45,31 +45,39 @@ async function fetchProducts(
         type?: "today" | "pickup" | "ongoing";
     }
 ) {
-    const origin = getInternalOrigin();
-    const path = endpoints.publicProducts(tenant, q);
-    const url = new URL(path, origin);
+    try {
+        const origin = getInternalOrigin();
+        const path = endpoints.publicProducts(tenant, q);
+        const url = new URL(path, origin);
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) return [] as PublicProductsResponse["items"];
+        const res = await fetch(url.toString(), { cache: "no-store" });
+        if (!res.ok) return [] as PublicProductsResponse["items"];
 
-    const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
-    if (!data?.ok) return [];
+        const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
+        if (!data?.ok) return [];
 
-    return data.items ?? [];
+        return data.items ?? [];
+    } catch {
+        return [] as PublicProductsResponse["items"];
+    }
 }
 
 async function fetchRecentOrders(tenant: string, take = 10): Promise<RecentOrderTickerItem[]> {
-    const origin = getInternalOrigin();
-    const path = endpoints.publicRecentOrders(tenant, { take });
-    const url = new URL(path, origin);
+    try {
+        const origin = getInternalOrigin();
+        const path = endpoints.publicRecentOrders(tenant, { take });
+        const url = new URL(path, origin);
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) return [];
+        const res = await fetch(url.toString(), { cache: "no-store" });
+        if (!res.ok) return [];
 
-    const data = (await res.json().catch(() => null)) as RecentOrdersResponse | null;
-    if (!data?.ok || !Array.isArray(data.items)) return [];
+        const data = (await res.json().catch(() => null)) as RecentOrdersResponse | null;
+        if (!data?.ok || !Array.isArray(data.items)) return [];
 
-    return data.items;
+        return data.items;
+    } catch {
+        return [];
+    }
 }
 
 async function fetchProductDetail(

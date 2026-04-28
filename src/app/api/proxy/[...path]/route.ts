@@ -223,24 +223,33 @@ async function handle(req: NextRequest, ctx: any) {
     const upstreamUrl = buildUpstreamUrl(path, req);
     const tenant = resolveTenant(req, path);
 
-    console.log("PROXY_BASE_API", baseApi());
-    console.log("PROXY_UPSTREAM_URL", upstreamUrl.toString());
-    console.log("PROXY_ORIGINAL_HOST", req.headers.get("host"));
-    console.log("PROXY_FORWARDED_HOST", req.headers.get("x-forwarded-host"));
-    console.log("PROXY_TENANT", tenant || "(empty)");
-    console.log("PROXY_PATH", path.join("/"));
-
     const method = req.method.toUpperCase();
     const hasBody = method !== "GET" && method !== "HEAD";
     const body = hasBody ? await req.arrayBuffer() : undefined;
 
-    const upstream = await fetch(upstreamUrl.toString(), {
-        method,
-        headers: toUpstreamHeaders(req, path),
-        body,
-        cache: "no-store",
-        redirect: "manual",
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
+    let upstream: Response;
+    try {
+        upstream = await fetch(upstreamUrl.toString(), {
+            method,
+            headers: toUpstreamHeaders(req, path),
+            body,
+            cache: "no-store",
+            redirect: "manual",
+            signal: controller.signal,
+        });
+    } catch (err: any) {
+        clearTimeout(timeout);
+        const isTimeout = err?.name === "AbortError";
+        return NextResponse.json(
+            { ok: false, error: isTimeout ? "API_TIMEOUT" : "API_UNREACHABLE" },
+            { status: 502 }
+        );
+    } finally {
+        clearTimeout(timeout);
+    }
 
     const buf = await upstream.arrayBuffer();
 

@@ -281,7 +281,7 @@ function buildOptionsFromTable(
         .filter((item) => !!item.name);
 }
 
-function formatKoreanShortDate(value?: Date | null) {
+function formatKoreanShortDate(value?: Date | null): string {
     if (!value) return "";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "";
@@ -294,7 +294,23 @@ function formatKoreanShortDate(value?: Date | null) {
     const dd = pad2(utc.getUTCDate());
     const dayKor = ["일", "월", "화", "수", "목", "금", "토"][utc.getUTCDay()] ?? "";
 
-    return `${mm}/${dd}(${dayKor})`;
+    return `${mm}월 ${dd}일 (${dayKor})`;
+}
+
+function formatKoreanSaleEndDate(value?: Date | null): string | undefined {
+    if (!value) return undefined;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return undefined;
+
+    const utc = new Date(
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds())
+    );
+
+    const mm = pad2(utc.getUTCMonth() + 1);
+    const dd = pad2(utc.getUTCDate());
+    const dayKor = ["일", "월", "화", "수", "목", "금", "토"][utc.getUTCDay()] ?? "";
+
+    return `~${mm}월${dd}일 (${dayKor})`;
 }
 
 function buildPickupBadgeText(input: {
@@ -302,18 +318,9 @@ function buildPickupBadgeText(input: {
     pickupStartAt?: Date | null;
     pickupEndAt?: Date | null;
 }) {
-    const startText = formatKoreanShortDate(input.pickupStartAt);
-    const endText = formatKoreanShortDate(input.pickupEndAt);
-
-    if (startText && endText) {
-        if (startText === endText) return `픽업일: ${startText}~`;
-        return `픽업일: ${startText}~ ${endText}`;
-    }
-    if (startText) return `픽업일: ${startText}~`;
-    if (endText) return `픽업일: ~${endText}`;
-
+    const dateText = formatKoreanShortDate(input.pickupStartAt) || formatKoreanShortDate(input.pickupEndAt);
+    if (dateText) return dateText;
     if (input.pickupOnly) return "바로 픽업 가능";
-
     return undefined;
 }
 
@@ -488,9 +495,9 @@ export async function publicProductRoutes(app: FastifyInstance) {
             const thumb = goodsImageUrl(r.image1);
             const hideScheduleMeta = isPickupReadyCate(r.cate);
 
-            const timeLeft = hideScheduleMeta
+            const saleEndDateText = hideScheduleMeta
                 ? undefined
-                : calcTimeLeftFromEnd(r.sale_end_at ?? null);
+                : formatKoreanSaleEndDate(r.sale_end_at ?? null);
 
             const pickupBadgeText = hideScheduleMeta
                 ? undefined
@@ -505,7 +512,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 title: String(r.name ?? ""),
                 price: toNumber(r.price, 0),
                 categoryLabel: categoryLabelFromCate(r.cate),
-                metaLeft: timeLeft,
+                metaLeft: saleEndDateText,
                 metaRight: pickupBadgeText,
                 thumbnailUrl: thumb || undefined,
                 sourceTenantId: r.tenant_id != null ? toId(r.tenant_id) : null,

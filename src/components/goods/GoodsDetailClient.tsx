@@ -157,17 +157,21 @@ function formatDateTime(value?: string | null) {
     return `${yyyy}. ${mm}. ${dd}.`;
 }
 
-function buildPickupPeriodText(start?: string | null, end?: string | null) {
-    const s = formatDateTime(start);
-    const e = formatDateTime(end);
+function formatPickupDate(value?: string | null) {
+    const parsed = parseDbDateTime(value);
+    if (!parsed) return "";
 
-    if (s && e) {
-        if (s === e) return `${s}~`;
-        return `${s}~ ${e}`;
-    }
-    if (s) return `${s}~`;
-    if (e) return `~${e}`;
-    return "";
+    const DAY_KOR = ["일", "월", "화", "수", "목", "금", "토"];
+    const date = new Date(parsed.year, parsed.month - 1, parsed.day);
+    const dayKor = DAY_KOR[date.getDay()] ?? "";
+    const mm = String(parsed.month).padStart(2, "0");
+    const dd = String(parsed.day).padStart(2, "0");
+
+    return `${mm}월 ${dd}일 (${dayKor})`;
+}
+
+function buildPickupPeriodText(start?: string | null, end?: string | null) {
+    return formatPickupDate(start) || formatPickupDate(end);
 }
 
 function formatAddPrice(addPrice?: number) {
@@ -694,12 +698,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             {pickupPeriodText ? (
                                 <MetaBadge
                                     icon={<Truck size={14} strokeWidth={2} />}
-                                    text={`픽업 기간 ${pickupPeriodText}`}
+                                    text={`픽업일 ${pickupPeriodText}`}
                                     tone="info"
                                 />
                             ) : null}
 
-                            {data.meta?.pickupNote ? (
+                            {data.meta?.pickupNote && !pickupPeriodText ? (
                                 <MetaBadge
                                     icon={<Info size={14} strokeWidth={2} />}
                                     text={data.meta.pickupNote}

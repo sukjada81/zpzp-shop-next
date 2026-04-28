@@ -229,8 +229,10 @@ function getFooterText(status: number, pickupAt: Date | null): string {
     return "주문이 접수되었습니다.";
 }
 
+const STATUS_PICKUP_READY = 2;
+
 function canCancel(status: number): boolean {
-    return status === STATUS_ORDERED;
+    return status === STATUS_ORDERED || status === STATUS_PICKUP_READY;
 }
 
 function getObject(value: unknown): Record<string, unknown> | null {
