@@ -230,6 +230,23 @@ async function hasAdminSession(req: NextRequest) {
     return res.ok;
 }
 
+function isOgCrawler(req: NextRequest): boolean {
+    const ua = (req.headers.get("user-agent") || "").toLowerCase();
+    return (
+        ua.includes("kakaotalk") ||
+        ua.includes("kakao") ||
+        ua.includes("facebookexternalhit") ||
+        ua.includes("twitterbot") ||
+        ua.includes("linkedinbot") ||
+        ua.includes("slackbot") ||
+        ua.includes("telegrambot") ||
+        ua.includes("whatsapp") ||
+        ua.includes("discordbot") ||
+        ua.includes("applebot") ||
+        ua.includes("googlebot")
+    );
+}
+
 async function hasUserSession(req: NextRequest) {
     const apiBase =
         process.env.API_BASE_URL ||
@@ -512,6 +529,7 @@ export async function middleware(req: NextRequest) {
 
     const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
     const mockLogin = false;
+    const crawler = isOgCrawler(req);
     const hasSession = bypassAuth ? true : await hasUserSession(req);
     const isProtected = needsAuth(internalPathname);
 
@@ -529,7 +547,7 @@ export async function middleware(req: NextRequest) {
         return res;
     };
 
-    if (!isProtected) {
+    if (!isProtected || mockLogin || hasSession || crawler) {
         if (internalPathname !== pathname) {
             return addDebug(
                 setSelectedTenantCookie(
@@ -537,29 +555,12 @@ export async function middleware(req: NextRequest) {
                     req,
                     subdomain
                 ),
-                "rewrite(unprotected)"
+                crawler ? "rewrite(crawler)" : !isProtected ? "rewrite(unprotected)" : "rewrite(protected OK)"
             );
         }
         return addDebug(
             setSelectedTenantCookie(NextResponse.next(), req, subdomain),
-            "next(unprotected)"
-        );
-    }
-
-    if (mockLogin || hasSession) {
-        if (internalPathname !== pathname) {
-            return addDebug(
-                setSelectedTenantCookie(
-                    NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search)),
-                    req,
-                    subdomain
-                ),
-                "rewrite(protected OK)"
-            );
-        }
-        return addDebug(
-            setSelectedTenantCookie(NextResponse.next(), req, subdomain),
-            "next(protected OK)"
+            crawler ? "next(crawler)" : !isProtected ? "next(unprotected)" : "next(protected OK)"
         );
     }
 
