@@ -72,18 +72,21 @@ export async function generateMetadata({
         ? `${tenantName} | 365일 초특가 할인매장`
         : "365일 초특가 할인매장";
     const metadataBase = buildMetadataBase(tenant, primaryDomain);
+    const canonicalUrl = metadataBase.origin + "/";
 
     return {
         metadataBase,
         title,
         description,
         icons: { icon: "/favicon.ico" },
+        alternates: { canonical: canonicalUrl },
         openGraph: {
             title,
             description,
-            siteName: "디스카운트올데이",
+            url: canonicalUrl,
+            siteName: "디스카운트 올데이",
             type: "website",
-            images: [{ url: "/logo.png", width: 400, height: 160, alt: "디스카운트올데이" }],
+            images: [{ url: "/logo.png", width: 400, height: 160, alt: "디스카운트 올데이" }],
         },
     };
 }
