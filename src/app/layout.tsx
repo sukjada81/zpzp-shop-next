@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-    title: "디스카운트올데이",
+    title: "디스카운트 올데이",
     description: "지점별 공동구매 플랫폼",
     icons: { icon: "/favicon.ico" },
 };

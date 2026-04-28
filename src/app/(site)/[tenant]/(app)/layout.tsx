@@ -67,7 +67,7 @@ export async function generateMetadata({
     const tenant = normalizeTenant(resolved?.tenant || "");
     const { name: tenantName, primaryDomain } = await fetchTenantInfo(tenant);
 
-    const title = tenantName ? `디스카운트올데이 ${tenantName}` : "디스카운트올데이";
+    const title = tenantName ? `디스카운트 올데이 - ${tenantName}` : "디스카운트 올데이";
     const description = tenantName
         ? `${tenantName} | 365일 초특가 할인매장`
         : "365일 초특가 할인매장";
