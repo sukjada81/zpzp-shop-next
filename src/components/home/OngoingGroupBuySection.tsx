@@ -140,25 +140,49 @@ function ItemNoticeTicker({ items }: { items: RecentOrderTickerItem[] }) {
 function ImageGallery({
     images,
     title,
+    href,
 }: {
     images: { key: string; label?: string }[];
     title: string;
+    href?: string;
 }) {
     const list = images?.length ? images : [{ key: "", label: "이미지 없음" }];
 
     return (
-        /*
-         * flex + overflow-x: auto 를 같은 요소에 두는 것이 핵심.
-         * 이렇게 해야 flex 자식의 flex-basis % 가 scroll 컨테이너 너비 기준으로 계산됨.
-         * flex: 0 0 85% → 한 장이 컨테이너의 85%, 나머지 15%에 다음 이미지가 살짝 노출.
-         */
         <div
             className="flex gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ scrollSnapType: "x mandatory", alignItems: "flex-start" }}
         >
             {list.map((img, i) => {
                 const url = toAbsUrl(img.key);
-                return (
+                const inner = url ? (
+                    <img
+                        src={url}
+                        alt={img.label || `${title} 이미지`}
+                        className="h-full w-full object-contain"
+                        style={{ background: "#ffffff" }}
+                        draggable={false}
+                    />
+                ) : (
+                    <div className="h-full w-full" />
+                );
+
+                return href ? (
+                    <Link
+                        key={`${img.key}_${i}`}
+                        href={href}
+                        className="overflow-hidden rounded-2xl"
+                        style={{
+                            flex: "0 0 38%",
+                            aspectRatio: "1 / 1",
+                            scrollSnapAlign: "start",
+                            background: "#ffffff",
+                            display: "block",
+                        }}
+                    >
+                        {inner}
+                    </Link>
+                ) : (
                     <div
                         key={`${img.key}_${i}`}
                         className="overflow-hidden rounded-2xl"
@@ -169,17 +193,7 @@ function ImageGallery({
                             background: "#ffffff",
                         }}
                     >
-                        {url ? (
-                            <img
-                                src={url}
-                                alt={img.label || `${title} 이미지`}
-                                className="h-full w-full object-contain"
-                                style={{ background: "#ffffff" }}
-                                draggable={false}
-                            />
-                        ) : (
-                            <div className="h-full w-full" />
-                        )}
+                        {inner}
                     </div>
                 );
             })}
@@ -298,7 +312,7 @@ function GroupBuyItemBlock({
 
             {/* 이미지 갤러리 */}
             <div className="mt-3">
-                <ImageGallery images={item.images} title={item.title} />
+                <ImageGallery images={item.images} title={item.title} href={item.href} />
             </div>
 
             {/* 제목 + 뱃지 */}

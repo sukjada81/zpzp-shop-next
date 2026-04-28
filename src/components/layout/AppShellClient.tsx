@@ -73,7 +73,7 @@ export default function AppShellClient({
                 ? pathname.slice(`/${tenant}`.length)
                 : pathname;
 
-        if (p === "" || p === "/") return "홈";
+        if (p === "" || p === "/") return BRAND_NAME;
         if (p.startsWith("/home")) return BRAND_NAME;
         if (p.startsWith("/groupbuys")) return "진행 중인 공구";
         if (p.startsWith("/goods")) return "상품";

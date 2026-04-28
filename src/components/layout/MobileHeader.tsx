@@ -69,7 +69,7 @@ export default function MobileHeader({
                                     aria-label={BRAND_NAME}
                                 >
                                     <Image
-                                        src="/logo.png"
+                                        src="/logo_top.png"
                                         alt={BRAND_NAME}
                                         width={LOGO_W}
                                         height={LOGO_H}

@@ -344,6 +344,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     }, [selectedLines]);
 
     const isActive = totalQty > 0;
+    const allSoldout = data.options.length > 0 && data.options.every((o) => !!o.soldout);
 
     useEffect(() => {
         if (!toastOpen) return;
@@ -735,6 +736,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                         </div>
                     )}
 
+                    {allSoldout && (
+                        <div className="mb-3 rounded-xl bg-slate-100 py-3 text-center text-sm font-bold text-slate-500">
+                            현재 품절된 상품입니다.
+                        </div>
+                    )}
+
                     <div className="space-y-3">
                         {data.options.map((option) => {
                             const optionQty = qty[option.id] ?? 0;
@@ -800,11 +807,11 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             <button
                                 type="button"
                                 onClick={submitCart}
-                                disabled={!isActive}
-                                className="h-12 flex-[2.2] rounded-[12px] border bg-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!isActive || allSoldout}
+                                className="h-12 flex-[2.2] rounded-[12px] border bg-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                                 style={{
-                                    borderColor: "var(--accent)",
-                                    color: "var(--accent)",
+                                    borderColor: allSoldout ? "var(--border)" : "var(--accent)",
+                                    color: allSoldout ? "var(--muted)" : "var(--accent)",
                                 }}
                                 aria-label="장바구니 담기"
                             >
@@ -816,16 +823,18 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             <button
                                 type="button"
                                 onClick={submitQuickOrder}
-                                disabled={!isActive || submitting}
-                                className="relative h-12 flex-[7.8] rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed"
+                                disabled={!isActive || allSoldout || submitting}
+                                className="relative h-12 flex-[7.8] rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                 style={{
-                                    background: isActive
+                                    background: isActive && !allSoldout
                                         ? "var(--accent)"
-                                        : "color-mix(in srgb, var(--accent) 55%, white)",
-                                    boxShadow: isActive
+                                        : allSoldout
+                                            ? "#b0b0b0"
+                                            : "color-mix(in srgb, var(--accent) 55%, white)",
+                                    boxShadow: isActive && !allSoldout
                                         ? "0 10px 22px color-mix(in srgb, var(--accent) 30%, transparent)"
                                         : "none",
-                                    opacity: isActive ? 1 : 0.75,
+                                    opacity: 1,
                                 }}
                             >
                                 <div className="relative flex w-full items-center justify-center">

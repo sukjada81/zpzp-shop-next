@@ -35,8 +35,8 @@ export default function Footer() {
                         <div className="mb-4">
                             <div className="relative h-8 w-[150px]">
                                 <Image
-                                    src="/logo.png"
-                                    alt="디스카운트 데일리"
+                                    src="/logo_top.png"
+                                    alt="디스카운트 올데이"
                                     fill
                                     sizes="150px"
                                     className="object-contain object-left"
