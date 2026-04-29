@@ -2,7 +2,6 @@
 import type { FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import session from "@fastify/session";
-import { createSessionPool, MySQLSessionStore } from "./mysqlSessionStore.js";
 
 function parseHost(appUrl?: string) {
     const raw = String(appUrl || "").trim();
@@ -52,11 +51,6 @@ export async function sessionPlugin(app: FastifyInstance) {
         throw new Error("SESSION_SECRET is missing or too short (min 16 chars).");
     }
 
-    const dbUrl = process.env.DATABASE_URL || "";
-    if (!dbUrl) throw new Error("DATABASE_URL is required for session store.");
-    const sessionPool = createSessionPool(dbUrl);
-    const store = new MySQLSessionStore(sessionPool);
-
     const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
 
     const appUrl =
@@ -85,7 +79,6 @@ export async function sessionPlugin(app: FastifyInstance) {
     await app.register(session, {
         secret,
         cookieName: "dad_admin_sid",
-        store,
         cookie: {
             path: "/",
             httpOnly: true,
