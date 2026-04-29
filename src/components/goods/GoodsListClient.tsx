@@ -242,9 +242,9 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
                 </div>
 
                 {(item.metaLeft || item.metaRight) && (
-                    <div className="mt-2 flex flex-col gap-1 text-[11px] font-semibold leading-[1.4] text-[color:var(--muted)] md:text-[12px]">
-                        {item.metaLeft ? <span>{item.metaLeft}</span> : null}
-                        {item.metaRight ? <span>{item.metaRight}</span> : null}
+                    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-semibold leading-[1.4] text-[color:var(--muted)] md:text-[12px]">
+                        {item.metaLeft ? <span className="whitespace-nowrap">{item.metaLeft}</span> : null}
+                        {item.metaRight ? <span className="whitespace-nowrap">{item.metaRight}</span> : null}
                     </div>
                 )}
 

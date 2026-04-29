@@ -297,10 +297,10 @@ function formatKoreanShortDate(value?: Date | null): string {
     return `${mm}월 ${dd}일 (${dayKor})`;
 }
 
-function formatKoreanSaleEndDate(value?: Date | null): string | undefined {
-    if (!value) return undefined;
+function formatMMDDDay(value?: Date | null): string {
+    if (!value) return "";
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return undefined;
+    if (Number.isNaN(d.getTime())) return "";
 
     const utc = new Date(
         Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds())
@@ -310,7 +310,13 @@ function formatKoreanSaleEndDate(value?: Date | null): string | undefined {
     const dd = pad2(utc.getUTCDate());
     const dayKor = ["일", "월", "화", "수", "목", "금", "토"][utc.getUTCDay()] ?? "";
 
-    return `~${mm}월${dd}일 (${dayKor})`;
+    return `${mm}.${dd}(${dayKor})`;
+}
+
+function formatKoreanSaleEndDate(value?: Date | null): string | undefined {
+    const text = formatMMDDDay(value);
+    if (!text) return undefined;
+    return `공구마감일: ${text}`;
 }
 
 function buildPickupBadgeText(input: {
@@ -318,9 +324,9 @@ function buildPickupBadgeText(input: {
     pickupStartAt?: Date | null;
     pickupEndAt?: Date | null;
 }) {
-    const dateText = formatKoreanShortDate(input.pickupStartAt) || formatKoreanShortDate(input.pickupEndAt);
-    if (dateText) return dateText;
-    if (input.pickupOnly) return "바로 픽업 가능";
+    const dateText = formatMMDDDay(input.pickupStartAt) || formatMMDDDay(input.pickupEndAt);
+    if (dateText) return `픽업일: ${dateText}~`;
+    if (input.pickupOnly) return "픽업일: 바로 픽업 가능";
     return undefined;
 }
 
