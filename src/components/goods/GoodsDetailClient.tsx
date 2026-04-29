@@ -734,9 +734,9 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 </section>
 
                 <section className="border-t border-[color:var(--border)] bg-white px-3 pb-4 pt-4">
-                    {recentOrders.length > 0 && (
+                    {recentOrders.length > 0 && !allSoldout && (
                         <div className="mb-4">
-                            <RecentOrderTicker items={recentOrders} isSoldOut={allSoldout} />
+                            <RecentOrderTicker items={recentOrders} />
                         </div>
                     )}
 

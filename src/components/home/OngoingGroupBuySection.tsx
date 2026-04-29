@@ -309,7 +309,7 @@ function GroupBuyItemBlock({
             }}
         >
             {/* 주문 알림 — 이미지 위 */}
-            <ItemNoticeTicker items={item.recentOrders} isSoldOut={allSoldout} />
+            {!allSoldout && <ItemNoticeTicker items={item.recentOrders} />}
 
             {/* 이미지 갤러리 */}
             <div className="mt-3">
