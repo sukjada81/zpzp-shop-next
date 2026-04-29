@@ -90,8 +90,8 @@ function toAbsUrl(key?: string) {
 
 // ─── Per-item rolling notice ticker ──────────────────────────────────────────
 
-function ItemNoticeTicker({ items }: { items: RecentOrderTickerItem[] }) {
-    const cur = useTickerItems(items);
+function ItemNoticeTicker({ items, isSoldOut = false }: { items: RecentOrderTickerItem[]; isSoldOut?: boolean }) {
+    const cur = useTickerItems(items, 4000, isSoldOut);
     if (!cur) return null;
 
     return (
@@ -295,6 +295,7 @@ function GroupBuyItemBlock({
         return [{ id: `base_${item.id}`, name: item.title, price: item.price, soldout: false, rawOptionId: 0 }];
     }, [item]);
 
+    const allSoldout = options.length > 0 && options.every((o) => !!o.soldout);
     const deadlineText = useCountdown(item.meta?.deadlineAt, item.meta?.timeLeft);
     const pickupText = item.meta?.pickup?.trim() || "";
 
@@ -308,7 +309,7 @@ function GroupBuyItemBlock({
             }}
         >
             {/* 주문 알림 — 이미지 위 */}
-            <ItemNoticeTicker items={item.recentOrders} />
+            <ItemNoticeTicker items={item.recentOrders} isSoldOut={allSoldout} />
 
             {/* 이미지 갤러리 */}
             <div className="mt-3">
@@ -324,10 +325,13 @@ function GroupBuyItemBlock({
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span
                         className="inline-flex h-[26px] items-center gap-1 rounded-full border px-3 text-[12px] font-semibold"
-                        style={{ borderColor: "var(--border-danger, #ffd6d6)", background: "var(--surface-danger, #fff5f5)", color: "var(--fg-danger, #e53e3e)" }}
+                        style={allSoldout
+                            ? { borderColor: "var(--border, #e2e8f0)", background: "#f1f5f9", color: "#94a3b8" }
+                            : { borderColor: "var(--border-danger, #ffd6d6)", background: "var(--surface-danger, #fff5f5)", color: "var(--fg-danger, #e53e3e)" }
+                        }
                     >
                         <Clock3 size={13} strokeWidth={2} />
-                        <span>{deadlineText}</span>
+                        <span>{allSoldout ? "품절" : deadlineText}</span>
                     </span>
 
                     {pickupText ? (
