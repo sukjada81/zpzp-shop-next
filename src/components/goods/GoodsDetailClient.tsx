@@ -690,8 +690,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             {data.meta?.timeLeft ? (
                                 <MetaBadge
                                     icon={<Clock3 size={14} strokeWidth={2} />}
-                                    text={data.meta.timeLeft}
-                                    tone="danger"
+                                    text={allSoldout ? "품절" : data.meta.timeLeft}
+                                    tone={allSoldout ? "default" : "danger"}
                                 />
                             ) : null}
 
@@ -736,7 +736,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                 <section className="border-t border-[color:var(--border)] bg-white px-3 pb-4 pt-4">
                     {recentOrders.length > 0 && (
                         <div className="mb-4">
-                            <RecentOrderTicker items={recentOrders} />
+                            <RecentOrderTicker items={recentOrders} isSoldOut={allSoldout} />
                         </div>
                     )}
 

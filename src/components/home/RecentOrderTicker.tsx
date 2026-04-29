@@ -54,6 +54,7 @@ function generateFakeItems(count: number): RecentOrderTickerItem[] {
 export function useTickerItems(
     items: RecentOrderTickerItem[],
     rotateMs = 4000,
+    isSoldOut = false,
 ): RecentOrderTickerItem | null {
     const [displayItems, setDisplayItems] = useState<RecentOrderTickerItem[]>([]);
     const [index, setIndex] = useState(0);
@@ -72,11 +73,12 @@ export function useTickerItems(
 
     useEffect(() => {
         if (displayItems.length <= 1) return;
+        if (isSoldOut) return;
         const timer = window.setInterval(() => {
             setIndex((prev) => (prev + 1) % displayItems.length);
         }, rotateMs);
         return () => window.clearInterval(timer);
-    }, [displayItems.length, rotateMs]);
+    }, [displayItems.length, rotateMs, isSoldOut]);
 
     return displayItems[index] ?? displayItems[0] ?? null;
 }
@@ -104,11 +106,13 @@ function LiveDot() {
 export default function RecentOrderTicker({
     items,
     rotateMs = 4000,
+    isSoldOut = false,
 }: {
     items: RecentOrderTickerItem[];
     rotateMs?: number;
+    isSoldOut?: boolean;
 }) {
-    const current = useTickerItems(items, rotateMs);
+    const current = useTickerItems(items, rotateMs, isSoldOut);
     if (!current) return null;
 
     return (
