@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import session from "@fastify/session";
+import { PrismaSessionStore } from "./prismaSessionStore.js";
 
 function parseHost(appUrl?: string) {
     const raw = String(appUrl || "").trim();
@@ -51,6 +52,13 @@ export async function sessionPlugin(app: FastifyInstance) {
         throw new Error("SESSION_SECRET is missing or too short (min 16 chars).");
     }
 
+    if (!app.prisma) {
+        throw new Error("prismaPlugin must be registered before sessionPlugin.");
+    }
+
+    const store = new PrismaSessionStore(app.prisma);
+    await store.init();
+
     const cookieDomain = process.env.COOKIE_DOMAIN || ".discountallday.kr";
 
     const appUrl =
@@ -79,6 +87,7 @@ export async function sessionPlugin(app: FastifyInstance) {
     await app.register(session, {
         secret,
         cookieName: "dad_admin_sid",
+        store,
         cookie: {
             path: "/",
             httpOnly: true,
