@@ -94,7 +94,7 @@ export async function sessionPlugin(app: FastifyInstance) {
             domain: shareDomain && !localHost ? cookieDomain : undefined,
             sameSite,
             secure,
-            maxAge: 60 * 60 * 24 * 7,
+            maxAge: 7 * 24 * 60 * 60 * 1000,
         },
         saveUninitialized: false,
     });
