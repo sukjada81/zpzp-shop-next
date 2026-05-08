@@ -56,14 +56,19 @@ function formatDbDateTime(value?: Date | null): string | null {
 
 function calcTimeLeftFromEnd(end?: Date | null): string | undefined {
     if (!end) return undefined;
-    const diff = end.getTime() - getDbNow().getTime();
+    const now = getDbNow();
+    const diff = end.getTime() - now.getTime();
     if (diff <= 0) return "마감";
+
+    // 날짜 단위 D-day (시간 무관, 같은 날이면 시간으로 fallback)
+    const nowDateMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const endDateMs = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+    const days = Math.round((endDateMs - nowDateMs) / (24 * 60 * 60 * 1000));
+
+    if (days >= 1) return `D-${days}`;
 
     const mins = Math.floor(diff / 60000);
     const hrs = Math.floor(mins / 60);
-    const days = Math.floor(hrs / 24);
-
-    if (days >= 1) return `D-${days}`;
     if (hrs >= 1) return `${hrs}시간 뒤 마감`;
     return `${mins}분 뒤 마감`;
 }
