@@ -1,7 +1,7 @@
 // src/app/(site)/[tenant]/(app)/settings/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import BottomToast, { BottomToastTone } from "@/components/ui/BottomToast";
 import {
@@ -22,6 +22,8 @@ type AuthSession = {
     } | null;
 };
 
+type NicknameCheckState = "idle" | "checking" | "ok" | "notfound";
+
 export default function SettingsPage() {
     const { tenant } = useParams<{ tenant: string }>();
     const router = useRouter();
@@ -38,6 +40,9 @@ export default function SettingsPage() {
     const [toastOpen, setToastOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState("");
     const [toastTone, setToastTone] = useState<BottomToastTone>("success");
+
+    const [nicknameCheckState, setNicknameCheckState] = useState<NicknameCheckState>("idle");
+    const checkAbortRef = useRef<AbortController | null>(null);
 
     const helper = useMemo(() => {
         return {
@@ -84,6 +89,9 @@ export default function SettingsPage() {
                     setNickname(String(profile.nickname ?? ""));
                     setPhone(String(profile.phone ?? ""));
                     setRecommenderNickname(String(profile.recommenderNickname ?? ""));
+                    if (profile.recommenderNickname?.trim()) {
+                        setNicknameCheckState("ok");
+                    }
                 }
 
                 const tenantRes = await fetch(`/api/proxy/${tenant}/v1/public/tenant`, {
@@ -114,7 +122,35 @@ export default function SettingsPage() {
         };
     }, [tenant]);
 
-    function save() {
+    async function checkRecommenderNickname(value: string) {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            setNicknameCheckState("idle");
+            return;
+        }
+
+        if (checkAbortRef.current) {
+            checkAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        checkAbortRef.current = controller;
+
+        setNicknameCheckState("checking");
+        try {
+            const res = await fetch(
+                `/api/proxy/v1/public/member/check-nickname?nickname=${encodeURIComponent(trimmed)}`,
+                { cache: "no-store", signal: controller.signal }
+            );
+            const data = await res.json().catch(() => null);
+            setNicknameCheckState(data?.exists ? "ok" : "notfound");
+        } catch {
+            if (!controller.signal.aborted) {
+                setNicknameCheckState("idle");
+            }
+        }
+    }
+
+    async function save() {
         const normalizedNickname = nickname.trim();
         const normalizedPhone = normalizePhone(phone);
 
@@ -128,12 +164,24 @@ export default function SettingsPage() {
             return;
         }
 
+        if (recommenderNickname.trim() && nicknameCheckState === "notfound") {
+            showToast("존재하지 않는 추천인 닉네임입니다. 비워두거나 올바른 닉네임을 입력해 주세요.", "error");
+            return;
+        }
+
         try {
             saveQuickOrderProfile(tenant, {
                 nickname: normalizedNickname,
                 phone: normalizedPhone,
                 recommenderNickname: recommenderNickname.trim(),
             });
+
+            await fetch("/api/proxy/v1/public/member/reference", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reference: recommenderNickname.trim() }),
+            }).catch(() => null);
+
             setSavedAt(Date.now());
             showToast("저장 되었습니다.");
             window.setTimeout(() => {
@@ -204,11 +252,32 @@ export default function SettingsPage() {
                     </div>
                     <input
                         value={recommenderNickname}
-                        onChange={(e) => setRecommenderNickname(e.target.value)}
+                        onChange={(e) => {
+                            setRecommenderNickname(e.target.value);
+                            setNicknameCheckState("idle");
+                        }}
+                        onBlur={(e) => checkRecommenderNickname(e.target.value)}
                         placeholder="추천해준 친구의 닉네임"
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[14px] outline-none focus:border-slate-300"
+                        className={`mt-2 w-full rounded-xl border px-3 py-3 text-[14px] outline-none focus:border-slate-300 ${
+                            nicknameCheckState === "notfound"
+                                ? "border-rose-300 bg-rose-50"
+                                : nicknameCheckState === "ok"
+                                    ? "border-emerald-300 bg-emerald-50"
+                                    : "border-slate-200 bg-white"
+                        }`}
                     />
-                    <div className="mt-2 text-[12px] leading-5 text-slate-500">• {helper.recommender}</div>
+                    {nicknameCheckState === "checking" && (
+                        <div className="mt-1.5 text-[12px] text-slate-400">확인 중...</div>
+                    )}
+                    {nicknameCheckState === "ok" && (
+                        <div className="mt-1.5 text-[12px] font-medium text-emerald-600">✓ 확인된 회원입니다.</div>
+                    )}
+                    {nicknameCheckState === "notfound" && (
+                        <div className="mt-1.5 text-[12px] font-medium text-rose-500">등록되지 않은 닉네임입니다.</div>
+                    )}
+                    {nicknameCheckState === "idle" && (
+                        <div className="mt-2 text-[12px] leading-5 text-slate-500">• {helper.recommender}</div>
+                    )}
 
                     <button
                         type="button"
