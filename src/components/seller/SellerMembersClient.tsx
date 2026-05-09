@@ -22,6 +22,7 @@ export type SellerMemberItem = {
     email: string;
     status: string;
     primaryRole: string;
+    referrer?: string;
     joinedAt: string;
     lastLoginAt: string;
 };
@@ -163,6 +164,7 @@ export default function SellerMembersClient({
                             <th className="px-4 py-3 text-left">아이디</th>
                             <th className="px-4 py-3 text-left">전화번호</th>
                             <th className="px-4 py-3 text-left">이메일</th>
+                            <th className="px-4 py-3 text-left">추천인</th>
                             <th className="px-4 py-3 text-left">가입일</th>
                             <th className="px-4 py-3 text-left">최근 로그인</th>
                             <th className="px-4 py-3 text-left">상태</th>
@@ -184,6 +186,7 @@ export default function SellerMembersClient({
                                 <td className="px-4 py-3 text-slate-700">{m.loginId || "-"}</td>
                                 <td className="px-4 py-3 text-slate-700">{m.phone || "-"}</td>
                                 <td className="px-4 py-3 text-slate-700">{m.email || "-"}</td>
+                                <td className="px-4 py-3 text-slate-700">{m.referrer || "-"}</td>
                                 <td className="px-4 py-3 text-slate-700">{formatDateTime(m.joinedAt)}</td>
                                 <td className="px-4 py-3 text-slate-700">{formatDateTime(m.lastLoginAt)}</td>
                                 <td className="px-4 py-3 text-slate-700">{m.status || "-"}</td>

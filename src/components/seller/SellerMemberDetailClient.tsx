@@ -13,6 +13,7 @@ export type SellerMemberDetail = {
     address1?: string;
     address2?: string;
     memo?: string;
+    referrer?: string;
     status: string;
     primaryRole?: string;
     joinedAt: string;
@@ -73,6 +74,9 @@ export default function SellerMemberDetailClient({
                 <div>
                     <span className="font-semibold">주소</span> :{" "}
                     {[item.address1, item.address2].filter(Boolean).join(" ") || "-"}
+                </div>
+                <div>
+                    <span className="font-semibold">추천인</span> : {item.referrer || "-"}
                 </div>
                 <div>
                     <span className="font-semibold">대표 역할</span> : {item.primaryRole || "-"}

@@ -201,6 +201,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                         email: true,
                         status: true,
                         primary_role: true,
+                        reference: true,
                         created_at_dt: true,
                         last_login_at_dt: true,
                         login_time: true,
@@ -227,6 +228,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                         primaryRole: String(
                             m.primary_role ?? ms.role_code ?? TENANT_CONSUMER_ROLE
                         ),
+                        referrer: String(m.reference ?? ""),
                         joinedAt:
                             dateToIso(ms.joined_at) ||
                             dateToIso(m.created_at_dt ?? null) ||
@@ -330,6 +332,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                     memo: true,
                     status: true,
                     primary_role: true,
+                    reference: true,
                     created_at_dt: true,
                     last_login_at_dt: true,
                     login_time: true,
@@ -356,6 +359,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                     address1: String(member.address1 ?? ""),
                     address2: String(member.address2 ?? ""),
                     memo: String(member.memo ?? ""),
+                    referrer: String(member.reference ?? ""),
                     status: String(member.status ?? membership.status ?? "active"),
                     primaryRole: String(
                         member.primary_role ?? membership.role_code ?? TENANT_CONSUMER_ROLE

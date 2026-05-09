@@ -39,7 +39,7 @@ export async function GET(
         );
     }
 
-    const result = await fetchBackend(request, tenant, `/seller/members/${encodeURIComponent(id)}`);
+    const result = await fetchBackend(request, tenant, `/v1/seller/members/${encodeURIComponent(id)}`);
 
     return NextResponse.json(result.data ?? {
         ok: false,
