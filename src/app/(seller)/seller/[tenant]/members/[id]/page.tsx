@@ -37,5 +37,5 @@ export default async function SellerMemberDetailPage({
 
     if (!result.data.item) notFound();
 
-    return <SellerMemberDetailClient item={result.data.item} />;
+    return <SellerMemberDetailClient item={result.data.item} tenant={tenant} />;
 }

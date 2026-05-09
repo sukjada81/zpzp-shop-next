@@ -27,6 +27,16 @@ export type SellerMemberItem = {
     lastLoginAt: string;
 };
 
+function memberStatusBadge(status: string) {
+    if (status === "active") {
+        return { label: "활성", cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" };
+    }
+    if (status === "inactive" || status === "banned") {
+        return { label: "비활성", cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200" };
+    }
+    return { label: status || "-", cls: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" };
+}
+
 function formatDateTime(value: string) {
     if (!value) return "-";
 
@@ -92,7 +102,7 @@ export default function SellerMembersClient({
         <div className="space-y-4 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
                 <div>
-                    <div className="text-2xl font-extrabold text-slate-900">회원 관리</div>
+                    <div className="text-2xl font-extrabold tracking-[-0.04em] text-slate-900">회원 관리</div>
                     <div className="text-sm text-slate-500">
                         지점 가입 회원 현황과 상세 정보를 확인합니다.
                     </div>
@@ -134,7 +144,7 @@ export default function SellerMembersClient({
             <form
                 action={`/${tenant}/members`}
                 method="get"
-                className="flex items-center gap-2 rounded-xl border px-3 py-2"
+                className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
             >
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
@@ -189,7 +199,16 @@ export default function SellerMembersClient({
                                 <td className="px-4 py-3 text-slate-700">{m.referrer || "-"}</td>
                                 <td className="px-4 py-3 text-slate-700">{formatDateTime(m.joinedAt)}</td>
                                 <td className="px-4 py-3 text-slate-700">{formatDateTime(m.lastLoginAt)}</td>
-                                <td className="px-4 py-3 text-slate-700">{m.status || "-"}</td>
+                                <td className="px-4 py-3">
+                                    {(() => {
+                                        const b = memberStatusBadge(m.status);
+                                        return (
+                                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${b.cls}`}>
+                                                {b.label}
+                                            </span>
+                                        );
+                                    })()}
+                                </td>
                             </tr>
                         ))}
                         </tbody>
