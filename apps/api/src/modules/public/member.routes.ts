@@ -30,17 +30,23 @@ export async function publicMemberRoutes(app: FastifyInstance) {
                 return reply.send({ ok: true, exists: false });
             }
 
-            const member = await app.prisma.mallRN_member.findFirst({
+            const memberships = await app.prisma.mallRN_member_membership.findMany({
                 where: {
-                    name: nickname,
-                    mallRN_member_membership: {
-                        some: {
-                            scope_type: "tenant",
-                            scope_id: tenantId,
-                            status: "active",
-                        },
-                    },
+                    scope_type: "tenant",
+                    scope_id: tenantId,
+                    status: "active",
                 },
+                select: { member_uid: true },
+            });
+
+            const memberUids = memberships.map((m) => Number(m.member_uid)).filter((n) => n > 0);
+
+            if (memberUids.length === 0) {
+                return reply.send({ ok: true, exists: false });
+            }
+
+            const member = await app.prisma.mallRN_member.findFirst({
+                where: { uid: { in: memberUids }, name: nickname },
                 select: { uid: true },
             });
 
