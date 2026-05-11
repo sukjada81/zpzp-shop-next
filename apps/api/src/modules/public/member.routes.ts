@@ -64,16 +64,27 @@ export async function publicMemberRoutes(app: FastifyInstance) {
             }
 
             const body = z
-                .object({ reference: z.string().max(50) })
+                .object({
+                    reference: z.string().max(50).optional(),
+                    phone: z.string().max(30).optional(),
+                })
                 .safeParse(req.body ?? {});
 
             if (!body.success) {
                 return reply.code(400).send({ ok: false, message: "invalid body" });
             }
 
+            const data: Record<string, string> = {};
+            if (body.data.reference !== undefined) data.reference = body.data.reference.trim();
+            if (body.data.phone !== undefined) data.cell = body.data.phone.replace(/[^\d]/g, "");
+
+            if (Object.keys(data).length === 0) {
+                return reply.send({ ok: true });
+            }
+
             await app.prisma.mallRN_member.update({
                 where: { uid: memberUid },
-                data: { reference: body.data.reference.trim() },
+                data,
             });
 
             return reply.send({ ok: true });

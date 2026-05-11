@@ -179,7 +179,10 @@ export default function SettingsPage() {
             await fetch("/api/proxy/v1/public/member/reference", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ reference: recommenderNickname.trim() }),
+                body: JSON.stringify({
+                    reference: recommenderNickname.trim(),
+                    phone: normalizedPhone,
+                }),
             }).catch(() => null);
 
             setSavedAt(Date.now());
