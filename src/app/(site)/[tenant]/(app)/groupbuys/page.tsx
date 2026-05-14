@@ -6,75 +6,6 @@ import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/h
 import type { RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import type { PublicProductsResponse, PublicProductListItem, PublicProductDetailResponse } from "@/lib/types/goods";
 
-// ─── 더미 데이터 (API 연동 전 개발/테스트용) ─────────────────────────────────
-// TODO: 아래 DUMMY_ITEMS를 제거하고 fetchOngoingItems()의 실데이터로 교체
-const DUMMY_ITEMS: Omit<OngoingGroupBuyItem, "tenant">[] = [
-    {
-        id: "demo-1",
-        title: "[4/22] 니생강 캡슐티",
-        price: 12500,
-        href: undefined,
-        images: [
-            { key: "https://picsum.photos/seed/ginger1/400/400", label: "니생강 캡슐티 1" },
-            { key: "https://picsum.photos/seed/ginger2/400/400", label: "니생강 캡슐티 2" },
-            { key: "https://picsum.photos/seed/ginger3/400/400", label: "니생강 캡슐티 3" },
-        ],
-        options: [
-            {
-                id: "opt-1-1",
-                name: "니생강 캡슐티",
-                price: 12500,
-                soldout: false,
-                rawOptionId: 0,
-                stockNote: "전량 한정! 조기 마감될 수 있습니다.",
-            },
-        ],
-        meta: {
-            deadlineAt: new Date(Date.now() + 13 * 60 * 60 * 1000).toISOString(),
-            pickup: "픽업일: 04/28(화) ~ 04/29(수)",
-        },
-        recentOrders: [
-            { id: "r1", maskedName: "매****6", minutesAgo: 1, qty: 1 },
-            { id: "r2", maskedName: "김****1", minutesAgo: 8, qty: 2 },
-            { id: "r3", maskedName: "박****3", minutesAgo: 15, qty: 3 },
-        ],
-    },
-    {
-        id: "demo-2",
-        title: "[4/23] Stain Remover 얼룩 제거제",
-        price: 3200,
-        href: undefined,
-        images: [
-            { key: "https://picsum.photos/seed/stain1/400/400", label: "Stain Remover 1" },
-            { key: "https://picsum.photos/seed/stain2/400/400", label: "Stain Remover 2" },
-        ],
-        options: [
-            {
-                id: "opt-2-1",
-                name: "Stain Remover 300ml",
-                price: 3200,
-                soldout: false,
-                rawOptionId: 0,
-            },
-            {
-                id: "opt-2-2",
-                name: "Stain Remover 500ml",
-                price: 4800,
-                soldout: false,
-                rawOptionId: 0,
-            },
-        ],
-        meta: {
-            deadlineAt: new Date(Date.now() + 27 * 60 * 60 * 1000).toISOString(),
-            pickup: "픽업일: 04/29(수) ~ 04/30(목)",
-        },
-        recentOrders: [
-            { id: "r4", maskedName: "중****7", minutesAgo: 13, qty: 2 },
-            { id: "r5", maskedName: "이****9", minutesAgo: 22, qty: 1 },
-        ],
-    },
-];
-
 // ─── Data fetching ────────────────────────────────────────────────────────────
 
 function getInternalOrigin() {
@@ -93,14 +24,6 @@ async function fetchRecentOrders(tenant: string): Promise<RecentOrderTickerItem[
     } catch {
         return [];
     }
-}
-
-function toAbsUrl(key?: string) {
-    const k = String(key ?? "").trim();
-    if (!k) return "";
-    if (/^https?:\/\//i.test(k)) return k;
-    const base = (process.env.NEXT_PUBLIC_ASSET_ORIGIN || "").replace(/\/$/, "");
-    return base ? `${base}${k.startsWith("/") ? "" : "/"}${k}` : k.startsWith("/") ? k : `/${k}`;
 }
 
 async function fetchProductDetail(
@@ -134,10 +57,10 @@ function mapProductToItem(
                 : null;
 
     const images = rawImages
-        ? rawImages.map((img) => ({ key: toAbsUrl(img.key), label: img.label }))
+        ? rawImages.map((img) => ({ key: img.key, label: img.label }))
         : p.thumbnailUrl
-            ? [{ key: toAbsUrl(p.thumbnailUrl), label: p.title }]
-            : [{ key: "", label: "이미지 없음" }];
+            ? [{ key: p.thumbnailUrl, label: p.title }]
+            : [];
 
     // 옵션: 상세 API > 목록 API 순으로 폴백
     const rawOptions =
@@ -179,16 +102,15 @@ function mapProductToItem(
     };
 }
 
-async function fetchOngoingItems(tenant: string): Promise<OngoingGroupBuyItem[] | null> {
-    // TODO: API가 ongoing 타입을 지원하면 실데이터 반환, 아직 미지원이면 null 반환 → 더미 데이터 표시
+async function fetchOngoingItems(tenant: string): Promise<OngoingGroupBuyItem[]> {
     try {
         const origin = getInternalOrigin();
         const url = new URL(endpoints.publicOngoingProducts(tenant, { take: 20 }), origin);
         const res = await fetch(url.toString(), { cache: "no-store" });
-        if (!res.ok) return null;
+        if (!res.ok) return [];
 
         const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
-        if (!data?.ok || !Array.isArray(data.items) || !data.items.length) return null;
+        if (!data?.ok || !Array.isArray(data.items) || !data.items.length) return [];
 
         const [recentOrders, details] = await Promise.all([
             fetchRecentOrders(tenant),
@@ -197,7 +119,7 @@ async function fetchOngoingItems(tenant: string): Promise<OngoingGroupBuyItem[] 
 
         return data.items.map((p, i) => mapProductToItem(p, tenant, recentOrders, details[i] ?? null));
     } catch {
-        return null;
+        return [];
     }
 }
 
@@ -212,15 +134,7 @@ export default async function GroupBuysPage({
     const tenant = normalizeTenant(resolved?.tenant);
     if (!tenant) notFound();
 
-    // 실 API 먼저 시도 → 결과 없으면 더미 데이터 사용
-    const apiItems = await fetchOngoingItems(tenant);
-    const items: OngoingGroupBuyItem[] =
-        apiItems ??
-        DUMMY_ITEMS.map((item) => ({
-            ...item,
-            tenant,
-            href: item.href ?? `/${tenant}/goods/${item.id}`,
-        }));
+    const items = await fetchOngoingItems(tenant);
 
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 pb-28 pt-4">
