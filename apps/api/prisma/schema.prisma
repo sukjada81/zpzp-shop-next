@@ -2134,6 +2134,28 @@ model mallRN_order_goods {
   @@map("mallRN_order_goods")
 }
 
+model dad_order_action_log {
+  uid              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenant_id        BigInt   @default(0) @db.UnsignedBigInt
+  event_type       String   @default("") @db.VarChar(32)
+  order_num        String   @default("") @db.VarChar(32)
+  order_goods_uid  Int?     @db.UnsignedInt
+  actor_role       String   @default("") @db.VarChar(20)
+  actor_member_uid BigInt?  @db.UnsignedBigInt
+  actor_nickname   String   @default("") @db.VarChar(100)
+  before_status    Int?     @db.UnsignedTinyInt
+  after_status     Int?     @db.UnsignedTinyInt
+  reason           String?  @db.VarChar(255)
+  meta_json        String?  @db.Text
+  created_at       DateTime @default(now()) @db.DateTime(0)
+
+  @@index([order_num], map: "idx_dad_order_action_log_order_num")
+  @@index([tenant_id, event_type, created_at], map: "idx_dad_order_action_log_tenant_event")
+  @@index([actor_member_uid, created_at], map: "idx_dad_order_action_log_actor")
+  @@index([order_goods_uid], map: "idx_dad_order_action_log_goods")
+  @@map("dad_order_action_log")
+}
+
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model mallRN_order_info {
   uid            Int                          @id @default(autoincrement()) @db.UnsignedInt

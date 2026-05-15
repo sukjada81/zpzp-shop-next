@@ -42,12 +42,16 @@ type SellerOrderItem = {
     buyerName: string;
     amount: number;
     status: number;
+    canCancel?: boolean;
     createdAtText: string;
     itemSummary?: string;
     orderSummary?: string;
     productName?: string;
     goodsName?: string;
     itemNames?: string[];
+    saleEndAtText?: string | null;
+    pickupStartAtText?: string | null;
+    pickupEndAtText?: string | null;
     items?: SellerOrderLine[];
 };
 
@@ -245,6 +249,36 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
         }
     }
 
+    async function handleCancel(orderId: string) {
+        if (!window.confirm("이 주문을 취소 처리하시겠습니까?")) return;
+
+        try {
+            setSavingId(orderId);
+
+            const res = await fetch(`/api/seller/${tenant}/orders/${orderId}/status`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    accept: "application/json",
+                },
+                body: JSON.stringify({ status: 9 }),
+            });
+
+            const json = await res.json().catch(() => null);
+
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "주문 취소에 실패했습니다.");
+            }
+
+            await load();
+        } catch (e: any) {
+            alert(e?.message || "주문 취소에 실패했습니다.");
+        } finally {
+            setSavingId(null);
+        }
+    }
+
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return items;
@@ -374,6 +408,25 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                             </div>
                                         ) : null}
 
+                                        {(item.saleEndAtText || item.pickupStartAtText || item.pickupEndAtText) ? (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {item.saleEndAtText ? (
+                                                    <span className="inline-flex items-center gap-1 rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+                                                        <CalendarDays className="h-3.5 w-3.5" />
+                                                        공구 마감 {item.saleEndAtText}
+                                                    </span>
+                                                ) : null}
+                                                {(item.pickupStartAtText || item.pickupEndAtText) ? (
+                                                    <span className="inline-flex items-center gap-1 rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">
+                                                        <CalendarDays className="h-3.5 w-3.5" />
+                                                        픽업 {item.pickupStartAtText && item.pickupEndAtText && item.pickupStartAtText !== item.pickupEndAtText
+                                                            ? `${item.pickupStartAtText} ~ ${item.pickupEndAtText}`
+                                                            : (item.pickupStartAtText || item.pickupEndAtText)}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        ) : null}
+
                                         <div className="mt-2 text-xs text-slate-400">
                                             {item.createdAtText}
                                         </div>
@@ -391,7 +444,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                             </span>
                                         </div>
 
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <Link
                                                 href={getSellerHref(tenant, `/orders/${item.id}`)}
                                                 className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
@@ -411,6 +464,15 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                                     <CheckCircle2 className="h-4 w-4" />
                                                 )}
                                                 {isDone ? "픽업완료" : isCanceled ? "취소주문" : "확인"}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCancel(item.id)}
+                                                disabled={isCanceled || isSaving || !(item.canCancel ?? !isCanceled)}
+                                                className="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                                            >
+                                                {isCanceled ? "취소됨" : "취소"}
                                             </button>
                                         </div>
                                     </div>

@@ -196,8 +196,69 @@ function buildOrderSummary(goods: any[]) {
     return `${firstName} 외 ${goods.length - 1}건`;
 }
 
-function buildOrderListItem(info: any, goods: any[]) {
+type GoodsMetaRow = {
+    uid: number;
+    sale_end_at: Date | null;
+    pickup_start_at: Date | null;
+    pickup_end_at: Date | null;
+};
+
+function formatDateTimeIsoToText(value?: Date | null) {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+function pickStrictestSaleEnd(rows: GoodsMetaRow[]): Date | null {
+    let earliest: Date | null = null;
+    for (const r of rows) {
+        if (!r.sale_end_at) continue;
+        const end = r.sale_end_at instanceof Date ? r.sale_end_at : new Date(r.sale_end_at);
+        if (Number.isNaN(end.getTime())) continue;
+        if (!earliest || end.getTime() < earliest.getTime()) earliest = end;
+    }
+    return earliest;
+}
+
+function pickEarliestPickupStart(rows: GoodsMetaRow[]): Date | null {
+    let earliest: Date | null = null;
+    for (const r of rows) {
+        if (!r.pickup_start_at) continue;
+        const t = r.pickup_start_at instanceof Date ? r.pickup_start_at : new Date(r.pickup_start_at);
+        if (Number.isNaN(t.getTime())) continue;
+        if (!earliest || t.getTime() < earliest.getTime()) earliest = t;
+    }
+    return earliest;
+}
+
+function pickLatestPickupEnd(rows: GoodsMetaRow[]): Date | null {
+    let latest: Date | null = null;
+    for (const r of rows) {
+        if (!r.pickup_end_at) continue;
+        const t = r.pickup_end_at instanceof Date ? r.pickup_end_at : new Date(r.pickup_end_at);
+        if (Number.isNaN(t.getTime())) continue;
+        if (!latest || t.getTime() > latest.getTime()) latest = t;
+    }
+    return latest;
+}
+
+function canSellerCancel(status: number): boolean {
+    return status !== 9;
+}
+
+function buildOrderListItem(info: any, goods: any[], goodsMeta: GoodsMetaRow[]) {
     const currentStatus = goods[0] ? Number(goods[0].status ?? 0) : 0;
+    const saleEndAt = pickStrictestSaleEnd(goodsMeta);
+    const pickupStart = pickEarliestPickupStart(goodsMeta);
+    const pickupEnd = pickLatestPickupEnd(goodsMeta);
 
     return {
         id: String(info.uid),
@@ -206,12 +267,19 @@ function buildOrderListItem(info: any, goods: any[]) {
         amount: Number(info.pay_total ?? 0),
         status: currentStatus,
         statusLabel: statusLabel(currentStatus),
+        canCancel: canSellerCancel(currentStatus),
         createdAt: unixToIso(info.signdate),
         createdAtText: formatDateTimeText(info.signdate),
         phone: info.cell ?? "",
         memo: info.memo ?? "",
         address: [info.address1 ?? "", info.address2 ?? ""].filter(Boolean).join(" ").trim(),
         itemSummary: buildOrderSummary(goods),
+        saleEndAt: saleEndAt ? saleEndAt.toISOString() : null,
+        saleEndAtText: formatDateTimeIsoToText(saleEndAt),
+        pickupStartAt: pickupStart ? pickupStart.toISOString() : null,
+        pickupStartAtText: formatDateTimeIsoToText(pickupStart),
+        pickupEndAt: pickupEnd ? pickupEnd.toISOString() : null,
+        pickupEndAtText: formatDateTimeIsoToText(pickupEnd),
         items: goods.map((row: any) => ({
             id: String(row.uid),
             productId: String(row.g_uid ?? 0),
@@ -226,8 +294,11 @@ function buildOrderListItem(info: any, goods: any[]) {
     };
 }
 
-function buildOrderDetailItem(info: any, goods: any[]) {
+function buildOrderDetailItem(info: any, goods: any[], goodsMeta: GoodsMetaRow[]) {
     const currentStatus = goods[0] ? Number(goods[0].status ?? 0) : 0;
+    const saleEndAt = pickStrictestSaleEnd(goodsMeta);
+    const pickupStart = pickEarliestPickupStart(goodsMeta);
+    const pickupEnd = pickLatestPickupEnd(goodsMeta);
 
     return {
         id: String(info.uid),
@@ -236,6 +307,7 @@ function buildOrderDetailItem(info: any, goods: any[]) {
         amount: Number(info.pay_total ?? 0),
         status: currentStatus,
         statusLabel: statusLabel(currentStatus),
+        canCancel: canSellerCancel(currentStatus),
         createdAt: unixToIso(info.signdate),
         createdAtText: formatDateTimeText(info.signdate),
         phone: info.cell ?? "",
@@ -244,6 +316,12 @@ function buildOrderDetailItem(info: any, goods: any[]) {
         message: info.message ?? "",
         receiverName: info.name2 ?? "",
         receiverPhone: info.cell2 ?? "",
+        saleEndAt: saleEndAt ? saleEndAt.toISOString() : null,
+        saleEndAtText: formatDateTimeIsoToText(saleEndAt),
+        pickupStartAt: pickupStart ? pickupStart.toISOString() : null,
+        pickupStartAtText: formatDateTimeIsoToText(pickupStart),
+        pickupEndAt: pickupEnd ? pickupEnd.toISOString() : null,
+        pickupEndAtText: formatDateTimeIsoToText(pickupEnd),
         items: goods.map((row: any) => ({
             id: String(row.uid),
             productId: String(row.g_uid ?? 0),
@@ -259,6 +337,58 @@ function buildOrderDetailItem(info: any, goods: any[]) {
             createdAt: unixToIso(row.signdate),
         })),
     };
+}
+
+async function loadGoodsMetaForOrders(
+    app: FastifyInstance,
+    orderNums: string[],
+    tenantId: bigint
+) {
+    if (!orderNums.length) {
+        return {
+            byOrderNum: new Map<string, GoodsMetaRow[]>(),
+        };
+    }
+
+    const orderGoods = await app.prisma.mallRN_order_goods.findMany({
+        where: {
+            order_num: { in: orderNums },
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+        },
+        select: { order_num: true, g_uid: true },
+    });
+
+    const uids = Array.from(
+        new Set(orderGoods.map((r: any) => Number(r.g_uid)).filter((n: number) => n > 0))
+    );
+
+    const products: GoodsMetaRow[] = uids.length
+        ? await app.prisma.mallRN_goods.findMany({
+            where: { uid: { in: uids } },
+            select: {
+                uid: true,
+                sale_end_at: true,
+                pickup_start_at: true,
+                pickup_end_at: true,
+            },
+        })
+        : [];
+
+    const productByUid = new Map<number, GoodsMetaRow>();
+    for (const p of products) productByUid.set(Number(p.uid), p);
+
+    const byOrderNum = new Map<string, GoodsMetaRow[]>();
+    for (const row of orderGoods) {
+        const key = String(row.order_num ?? "");
+        const meta = productByUid.get(Number(row.g_uid));
+        if (!meta) continue;
+        const list = byOrderNum.get(key) ?? [];
+        list.push(meta);
+        byOrderNum.set(key, list);
+    }
+
+    return { byOrderNum };
 }
 
 export async function sellerOrderRoutes(app: FastifyInstance) {
@@ -347,10 +477,17 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             goodsMap.set(key, list);
         }
 
+        const { byOrderNum: metaByOrderNum } = await loadGoodsMetaForOrders(
+            app,
+            orderNums,
+            tenantId
+        );
+
         let items = rows.map((row: any) => {
             const orderNum = String(row.order_num ?? "");
             const goods = goodsMap.get(orderNum) ?? [];
-            return buildOrderListItem(row, goods);
+            const meta = metaByOrderNum.get(orderNum) ?? [];
+            return buildOrderListItem(row, goods, meta);
         });
 
         const searchText = normalizeText(q.query).toLowerCase();
@@ -461,10 +598,17 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             },
         });
 
+        const { byOrderNum: metaByOrderNum } = await loadGoodsMetaForOrders(
+            app,
+            [String(info.order_num ?? "")],
+            tenantId
+        );
+        const meta = metaByOrderNum.get(String(info.order_num ?? "")) ?? [];
+
         return reply.send({
             ok: true,
             tenant: tenantSlug,
-            item: buildOrderDetailItem(info, goods),
+            item: buildOrderDetailItem(info, goods, meta),
             actor: {
                 role: actorResult.actor.grantedRole,
                 scopeType: actorResult.actor.grantedScopeType,
@@ -539,7 +683,19 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             return reply.code(404).send({ ok: false, message: "order goods not found" });
         }
 
+        const currentStatus = Number(goods[0]?.status ?? 0);
+
+        // 취소된 주문은 상태 변경 불가 (셀러도 9 → 어떤 상태로도 못 바꿈)
+        if (currentStatus === 9) {
+            return reply.code(400).send({
+                ok: false,
+                error: "already_canceled",
+                message: "이미 취소된 주문은 상태를 변경할 수 없습니다.",
+            });
+        }
+
         const now = toUnixNow();
+        const actorNickname = normalizeText(actor.actorName) || String(actor.memberUid);
 
         await app.prisma.$transaction(async (tx: any) => {
             await tx.mallRN_order_info.update({
@@ -574,6 +730,28 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
                         signdate: now,
                     },
                 });
+            }
+
+            // 분쟁용 액션 로그: 취소(9), 픽업확인(4) 시 닉네임 포함하여 기록
+            if (body.status === 9 || body.status === 4) {
+                const eventType: "cancel" | "pickup_confirm" =
+                    body.status === 9 ? "cancel" : "pickup_confirm";
+
+                for (const row of goods) {
+                    await tx.dad_order_action_log.create({
+                        data: {
+                            tenant_id: tenantId,
+                            event_type: eventType,
+                            order_num: String(info.order_num ?? ""),
+                            order_goods_uid: Number(row.uid),
+                            actor_role: "seller",
+                            actor_member_uid: BigInt(actor.memberUid),
+                            actor_nickname: actorNickname.slice(0, 100),
+                            before_status: Number(row.status ?? 0),
+                            after_status: body.status,
+                        },
+                    });
+                }
             }
         });
 

@@ -230,9 +230,92 @@ function getFooterText(status: number, pickupAt: Date | null): string {
 }
 
 const STATUS_PICKUP_READY = 2;
+const STATUS_PICKUP_DONE = 4;
 
-function canCancel(status: number): boolean {
-    return status === STATUS_ORDERED || status === STATUS_PICKUP_READY;
+// 고객 취소 가능 조건:
+//   - 픽업완료(4) 이전 상태 (status < 4)
+//   - 공구 마감(sale_end_at) 이전. saleEndAt이 null이면 마감 없음으로 간주
+function canCustomerCancel(status: number, saleEndAt: Date | null): boolean {
+    if (status >= STATUS_PICKUP_DONE) return false;
+    if (status === STATUS_CANCELED) return false;
+    if (saleEndAt && saleEndAt.getTime() <= Date.now()) return false;
+    return true;
+}
+
+// 셀러 취소 가능 조건: 이미 취소된 게 아니면 항상 허용
+function canSellerCancel(status: number): boolean {
+    return status !== STATUS_CANCELED;
+}
+
+async function getStrictestSaleEndAt(
+    prisma: FastifyInstance["prisma"],
+    tenantId: bigint,
+    orderNum: string
+): Promise<Date | null> {
+    const goodsLinks = await prisma.mallRN_order_goods.findMany({
+        where: {
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+            order_num: orderNum,
+        },
+        select: { g_uid: true },
+    });
+
+    const uids = Array.from(
+        new Set(goodsLinks.map((r) => Number(r.g_uid)).filter((n) => n > 0))
+    );
+    if (!uids.length) return null;
+
+    const products = await prisma.mallRN_goods.findMany({
+        where: { uid: { in: uids } },
+        select: { sale_end_at: true },
+    });
+
+    let earliest: Date | null = null;
+    for (const p of products) {
+        const end = p.sale_end_at ? new Date(p.sale_end_at) : null;
+        if (!end) continue;
+        if (!earliest || end.getTime() < earliest.getTime()) earliest = end;
+    }
+    return earliest;
+}
+
+type OrderActionLogInput = {
+    tenantId: bigint;
+    eventType: "cancel" | "pickup_confirm";
+    orderNum: string;
+    orderGoodsUid?: number | null;
+    actorRole: "member" | "guest" | "seller" | "admin" | "hq";
+    actorMemberUid?: bigint | number | null;
+    actorNickname: string;
+    beforeStatus?: number | null;
+    afterStatus?: number | null;
+    reason?: string | null;
+    metaJson?: string | null;
+};
+
+async function writeOrderActionLog(
+    client: { dad_order_action_log: FastifyInstance["prisma"]["dad_order_action_log"] },
+    input: OrderActionLogInput
+) {
+    await client.dad_order_action_log.create({
+        data: {
+            tenant_id: input.tenantId,
+            event_type: input.eventType,
+            order_num: input.orderNum,
+            order_goods_uid: input.orderGoodsUid ?? null,
+            actor_role: input.actorRole,
+            actor_member_uid:
+                input.actorMemberUid != null
+                    ? BigInt(String(input.actorMemberUid))
+                    : null,
+            actor_nickname: input.actorNickname.slice(0, 100),
+            before_status: input.beforeStatus ?? null,
+            after_status: input.afterStatus ?? null,
+            reason: input.reason ?? null,
+            meta_json: input.metaJson ?? null,
+        },
+    });
 }
 
 function getObject(value: unknown): Record<string, unknown> | null {
@@ -349,6 +432,8 @@ async function serializeOrder(
     );
     const totalAmount = toInt(info.pay_total, goodsTotal);
 
+    const saleEndAt = await getStrictestSaleEndAt(prisma, tenantId, orderNum);
+
     return {
         id: orderNum,
         orderNum,
@@ -370,7 +455,8 @@ async function serializeOrder(
         displayStatus: getStatusLabel(status),
         badgeText: formatPickupBadge(info.pickup_at),
         footerText: getFooterText(status, info.pickup_at),
-        canCancel: canCancel(status),
+        canCancel: canCustomerCancel(status, saleEndAt),
+        saleEndAt: saleEndAt ? saleEndAt.toISOString() : null,
         createdAt: toIsoDate(info.signdate),
         statusDate: toIsoDate(info.status_date),
         items,
@@ -1153,17 +1239,21 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 });
 
                 const currentStatus = toInt(goodsRows[0]?.status2 ?? goodsRows[0]?.status, 0);
+                const saleEndAt = await getStrictestSaleEndAt(prisma, tenantId, orderNum);
 
-                if (!canCancel(currentStatus)) {
+                if (!canCustomerCancel(currentStatus, saleEndAt)) {
+                    const expired = !!(saleEndAt && saleEndAt.getTime() <= Date.now());
                     return reply.code(400).send({
                         ok: false,
-                        error: "cannot_cancel",
-                        message: "현재 상태에서는 주문취소가 불가능합니다.",
+                        error: expired ? "groupbuy_closed" : "cannot_cancel",
+                        message: expired
+                            ? "공구가 마감되어 주문취소가 불가능합니다."
+                            : "현재 상태에서는 주문취소가 불가능합니다.",
                     });
                 }
 
-                await prisma.$transaction([
-                    prisma.mallRN_order_info.updateMany({
+                await prisma.$transaction(async (tx: any) => {
+                    await tx.mallRN_order_info.updateMany({
                         where: {
                             tenant_id: tenantId,
                             platform_type: PLATFORM_TYPE,
@@ -1172,8 +1262,9 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         data: {
                             status_date: now,
                         },
-                    }),
-                    prisma.mallRN_order_goods.updateMany({
+                    });
+
+                    await tx.mallRN_order_goods.updateMany({
                         where: {
                             tenant_id: tenantId,
                             platform_type: PLATFORM_TYPE,
@@ -1184,8 +1275,19 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             status2: STATUS_CANCELED,
                             status_date: now,
                         },
-                    }),
-                ]);
+                    });
+
+                    await writeOrderActionLog(tx, {
+                        tenantId,
+                        eventType: "cancel",
+                        orderNum,
+                        actorRole: "guest",
+                        actorMemberUid: null,
+                        actorNickname: toSafeString(row.name, "비회원"),
+                        beforeStatus: currentStatus,
+                        afterStatus: STATUS_CANCELED,
+                    });
+                });
 
                 return reply.send({
                     ok: true,
@@ -1275,17 +1377,30 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 });
 
                 const currentStatus = toInt(goodsRows[0]?.status2 ?? goodsRows[0]?.status, 0);
+                const saleEndAt = await getStrictestSaleEndAt(prisma, tenantId, orderNum);
 
-                if (!canCancel(currentStatus)) {
+                if (!canCustomerCancel(currentStatus, saleEndAt)) {
+                    const expired = !!(saleEndAt && saleEndAt.getTime() <= Date.now());
                     return reply.code(400).send({
                         ok: false,
-                        error: "cannot_cancel",
-                        message: "현재 상태에서는 주문취소가 불가능합니다.",
+                        error: expired ? "groupbuy_closed" : "cannot_cancel",
+                        message: expired
+                            ? "공구가 마감되어 주문취소가 불가능합니다."
+                            : "현재 상태에서는 주문취소가 불가능합니다.",
                     });
                 }
 
-                await prisma.$transaction([
-                    prisma.mallRN_order_info.updateMany({
+                const memberRow = await prisma.mallRN_member.findFirst({
+                    where: { uid: Number(memberUid) },
+                    select: { name: true },
+                });
+                const actorNickname = toSafeString(
+                    memberRow?.name || rawOrder.name,
+                    "회원"
+                );
+
+                await prisma.$transaction(async (tx: any) => {
+                    await tx.mallRN_order_info.updateMany({
                         where: {
                             tenant_id: tenantId,
                             platform_type: PLATFORM_TYPE,
@@ -1295,8 +1410,9 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         data: {
                             status_date: now,
                         },
-                    }),
-                    prisma.mallRN_order_goods.updateMany({
+                    });
+
+                    await tx.mallRN_order_goods.updateMany({
                         where: {
                             tenant_id: tenantId,
                             platform_type: PLATFORM_TYPE,
@@ -1307,8 +1423,19 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             status2: STATUS_CANCELED,
                             status_date: now,
                         },
-                    }),
-                ]);
+                    });
+
+                    await writeOrderActionLog(tx, {
+                        tenantId,
+                        eventType: "cancel",
+                        orderNum,
+                        actorRole: "member",
+                        actorMemberUid: memberUid,
+                        actorNickname,
+                        beforeStatus: currentStatus,
+                        afterStatus: STATUS_CANCELED,
+                    });
+                });
 
                 return reply.send({
                     ok: true,

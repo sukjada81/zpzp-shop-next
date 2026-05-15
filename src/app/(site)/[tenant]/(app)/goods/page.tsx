@@ -53,6 +53,9 @@ async function fetchProducts(
         thumbnailUrl: p.thumbnailUrl,
         cate: p.cate ?? null,
         categoryLabel: (p as any).categoryLabel ?? undefined,
+        saleEndAt: p.saleEndAt ?? null,
+        pickupStartAt: p.pickupStartAt ?? null,
+        pickupEndAt: p.pickupEndAt ?? null,
     }));
 }
 

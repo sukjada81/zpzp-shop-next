@@ -44,6 +44,8 @@ type OrderItem = {
     buyerName: string;
     amount: number;
     status: number;
+    statusLabel?: string;
+    canCancel?: boolean;
     createdAtText: string;
     phone?: string;
     memo?: string;
@@ -52,6 +54,12 @@ type OrderItem = {
     orderSummary?: string;
     productName?: string;
     goodsName?: string;
+    saleEndAt?: string | null;
+    saleEndAtText?: string | null;
+    pickupStartAt?: string | null;
+    pickupStartAtText?: string | null;
+    pickupEndAt?: string | null;
+    pickupEndAtText?: string | null;
     items?: OrderLine[];
 };
 
@@ -219,6 +227,39 @@ export default function SellerOrderDetailClient({
         }
     }
 
+    async function handleCancel() {
+        if (!loaded || loaded.status === 9) return;
+        if (!window.confirm("이 주문을 취소 처리하시겠습니까?")) return;
+
+        try {
+            setSaving(true);
+            setError("");
+
+            const res = await fetch(`/api/seller/${tenant}/orders/${id}/status`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    accept: "application/json",
+                },
+                body: JSON.stringify({ status: 9 }),
+            });
+
+            const json = await res.json().catch(() => null);
+
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "주문 취소에 실패했습니다.");
+            }
+
+            await load();
+            alert("주문이 취소되었습니다.");
+        } catch (e: any) {
+            setError(e?.message || "주문 취소에 실패했습니다.");
+        } finally {
+            setSaving(false);
+        }
+    }
+
     const firstItem = loaded?.items?.[0];
 
     const badges = useMemo(() => {
@@ -264,6 +305,8 @@ export default function SellerOrderDetailClient({
     const isDone = currentStatus === 4;
     const isCanceled = currentStatus === 9;
     const actionDisabled = saving || isDone || isCanceled;
+    const canCancel = loaded?.canCancel ?? (currentStatus !== 9);
+    const cancelDisabled = saving || isCanceled || !canCancel;
     const pickupDate = getPickupDate(firstItem);
 
     return (
@@ -301,6 +344,15 @@ export default function SellerOrderDetailClient({
                             <CheckCircle2 className="h-4 w-4" />
                         )}
                         {isDone ? "픽업완료" : isCanceled ? "취소 주문" : saving ? "처리 중..." : "확인"}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleCancel}
+                        disabled={cancelDisabled}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                    >
+                        {isCanceled ? "취소됨" : "주문 취소"}
                     </button>
                 </div>
             </div>
@@ -360,6 +412,24 @@ export default function SellerOrderDetailClient({
                                 <div className="text-sm font-semibold text-slate-500">주문일시</div>
                                 <div className="mt-2 text-base font-semibold text-slate-900">
                                     {loaded?.createdAtText || "-"}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-sm font-semibold text-slate-500">공구 마감일</div>
+                                <div className="mt-2 text-base font-semibold text-slate-900">
+                                    {loaded?.saleEndAtText || "-"}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-sm font-semibold text-slate-500">픽업일</div>
+                                <div className="mt-2 text-base font-semibold text-slate-900">
+                                    {loaded?.pickupStartAtText
+                                        ? loaded?.pickupEndAtText && loaded.pickupEndAtText !== loaded.pickupStartAtText
+                                            ? `${loaded.pickupStartAtText} ~ ${loaded.pickupEndAtText}`
+                                            : loaded.pickupStartAtText
+                                        : loaded?.pickupEndAtText || "-"}
                                 </div>
                             </div>
 
