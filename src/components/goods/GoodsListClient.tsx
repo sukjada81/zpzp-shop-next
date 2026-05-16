@@ -16,33 +16,7 @@ export type GoodsListItem = {
     thumbnailUrl?: string;
     cate?: string | null;
     categoryLabel?: string;
-    saleEndAt?: string | null;
-    pickupStartAt?: string | null;
-    pickupEndAt?: string | null;
 };
-
-const WEEKDAY_KOR = ["일", "월", "화", "수", "목", "금", "토"];
-
-function formatDateTimeKr(value?: string | null): string {
-    if (!value) return "";
-    const d = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-    if (Number.isNaN(d.getTime())) return "";
-
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const day = WEEKDAY_KOR[d.getDay()] ?? "";
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-
-    return `${mm}.${dd}(${day}) ${hh}:${mi}`;
-}
-
-function formatPickupRange(startAt?: string | null, endAt?: string | null): string {
-    const s = formatDateTimeKr(startAt);
-    const e = formatDateTimeKr(endAt);
-    if (s && e && s !== e) return `${s} ~ ${e}`;
-    return s || e || "";
-}
 
 const TABS = [
     { key: "today", label: "오늘의 공구" },
@@ -267,29 +241,12 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
                     {Number(item.price ?? 0).toLocaleString()}원
                 </div>
 
-                {(() => {
-                    const saleEndText = formatDateTimeKr(item.saleEndAt);
-                    const pickupText = formatPickupRange(item.pickupStartAt, item.pickupEndAt);
-
-                    if (!saleEndText && !pickupText) return null;
-
-                    return (
-                        <div className="mt-2 space-y-1 text-[11px] font-semibold leading-[1.4] text-[color:var(--muted)] md:text-[12px]">
-                            {saleEndText ? (
-                                <div className="flex items-center gap-1">
-                                    <span className="shrink-0 text-rose-500">⏰</span>
-                                    <span className="break-keep">공구 마감 {saleEndText}</span>
-                                </div>
-                            ) : null}
-                            {pickupText ? (
-                                <div className="flex items-center gap-1">
-                                    <span className="shrink-0 text-sky-500">📦</span>
-                                    <span className="break-keep">픽업 {pickupText}</span>
-                                </div>
-                            ) : null}
-                        </div>
-                    );
-                })()}
+                {(item.metaLeft || item.metaRight) && (
+                    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-semibold leading-[1.4] text-[color:var(--muted)] md:text-[12px]">
+                        {item.metaLeft ? <span className="whitespace-nowrap">{item.metaLeft}</span> : null}
+                        {item.metaRight ? <span className="whitespace-nowrap">{item.metaRight}</span> : null}
+                    </div>
+                )}
 
                 <div className="mt-3 rounded-xl border border-[color:var(--border)] bg-white px-3 py-2 text-center text-xs font-bold text-[color:var(--brand)] transition group-hover:bg-[color:var(--accent-soft)] md:py-3 md:text-sm">
                     자세히 보기 →
