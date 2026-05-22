@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
 
 const TENANT_CONSUMER_ROLE = "consumer";
-const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff"] as const;
+const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
 const TENANT_ALLOWED_ROLES = ["seller_owner", "seller_staff"] as const;
 
 type MemberSession = {
