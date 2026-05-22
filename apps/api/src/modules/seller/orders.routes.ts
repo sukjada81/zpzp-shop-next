@@ -394,9 +394,7 @@ async function loadGoodsMetaForOrders(
 }
 
 export async function sellerOrderRoutes(app: FastifyInstance) {
-    app.addHook("preHandler", requireTenant());
-
-    app.get("/v1/seller/orders", async (req: any, reply) => {
+    app.get("/v1/seller/orders", { preHandler: requireTenant() }, async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
 
@@ -528,7 +526,7 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
         });
     });
 
-    app.get("/v1/seller/orders/:id", async (req: any, reply) => {
+    app.get("/v1/seller/orders/:id", { preHandler: requireTenant() }, async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
 
@@ -618,7 +616,7 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
         });
     });
 
-    app.patch("/v1/seller/orders/:id/status", async (req: any, reply) => {
+    app.patch("/v1/seller/orders/:id/status", { preHandler: requireTenant() }, async (req: any, reply) => {
         const tenantSlug: string | undefined = req.tenantSlug;
         const tenantId = req.tenantId as bigint;
 
