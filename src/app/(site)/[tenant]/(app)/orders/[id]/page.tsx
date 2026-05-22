@@ -432,7 +432,7 @@ export default function OrderDetailPage() {
                                     {item.title}
                                 </div>
 
-                                {item.optionName ? (
+                                {item.optionName && item.optionName.trim() !== item.title.trim() ? (
                                     <div className="mt-1 text-[12px] font-semibold text-slate-500">
                                         옵션: {item.optionName}
                                     </div>

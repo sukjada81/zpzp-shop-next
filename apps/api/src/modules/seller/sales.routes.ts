@@ -184,8 +184,10 @@ function buildOrderSummary(goods: any[]) {
     if (baseGoods.length === 1) {
         const qty = toInt(first?.qty, 0);
         const optionName = String(first?.option_name ?? "").trim();
-        if (optionName && qty > 0) return `${firstName} / ${optionName} × ${qty}`;
-        if (optionName) return `${firstName} / ${optionName}`;
+        // 옵션없는 상품은 option_name 에 상품명이 그대로 저장돼 있어 상품명이 두 번 보인다 → 동일하면 옵션 생략
+        const showOption = optionName !== "" && optionName !== firstName;
+        if (showOption && qty > 0) return `${firstName} / ${optionName} × ${qty}`;
+        if (showOption) return `${firstName} / ${optionName}`;
         if (qty > 0) return `${firstName} × ${qty}`;
         return firstName;
     }
@@ -589,7 +591,9 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 if (isCanceledOrder(row)) continue;
 
                 const productName = normalizeText(row.g_name) || "상품명 없음";
-                const optionName = normalizeText(row.option_name) || "옵션없음";
+                // 옵션없는 상품은 option_name 에 상품명이 그대로 저장돼 있어 옵션이 상품명으로 중복된다 → "옵션없음" 으로 정규화
+                const rawOption = normalizeText(row.option_name);
+                const optionName = rawOption && rawOption !== productName ? rawOption : "옵션없음";
                 const groupKey = productName.toLowerCase();
 
                 const matchedOrder = matchedOrderMap.get(orderNo);

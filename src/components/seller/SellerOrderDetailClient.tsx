@@ -112,7 +112,10 @@ function getLineName(line: OrderLine) {
 }
 
 function getLineOption(line: OrderLine) {
-    return normalizeText(line.optionName) || normalizeText(line.optionValue);
+    const option = normalizeText(line.optionName) || normalizeText(line.optionValue);
+    // 옵션없는 상품은 option_name 에 상품명이 그대로 저장돼 있어 중복 표시된다 → 상품명과 같으면 숨김
+    if (option && option === getLineName(line)) return "";
+    return option;
 }
 
 function getLineQty(line: OrderLine) {

@@ -103,8 +103,11 @@ function getLineLabel(line: SellerOrderLine) {
 
     if (!name) return "";
 
-    if (option && qty > 0) return `${name} / ${option} × ${qty}`;
-    if (option) return `${name} / ${option}`;
+    // 옵션없는 상품은 option_name 에 상품명이 그대로 저장돼 있어 중복된다 → 상품명과 같으면 옵션 생략
+    const showOption = option !== "" && option !== name;
+
+    if (showOption && qty > 0) return `${name} / ${option} × ${qty}`;
+    if (showOption) return `${name} / ${option}`;
     if (qty > 0) return `${name} × ${qty}`;
     return name;
 }

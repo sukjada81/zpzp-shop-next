@@ -187,8 +187,10 @@ function buildOrderSummary(goods: any[]) {
     if (goods.length === 1) {
         const qty = toInt(first?.qty, 0);
         const optionName = normalizeText(first?.option_name);
-        if (optionName && qty > 0) return `${firstName} / ${optionName} × ${qty}`;
-        if (optionName) return `${firstName} / ${optionName}`;
+        // 옵션없는 상품은 option_name 에 상품명이 그대로 저장돼 있어 상품명이 두 번 보인다 → 동일하면 옵션 생략
+        const showOption = optionName !== "" && optionName !== firstName;
+        if (showOption && qty > 0) return `${firstName} / ${optionName} × ${qty}`;
+        if (showOption) return `${firstName} / ${optionName}`;
         if (qty > 0) return `${firstName} × ${qty}`;
         return firstName;
     }

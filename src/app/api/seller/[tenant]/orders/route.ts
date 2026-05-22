@@ -53,10 +53,13 @@ function buildSummaryFromItems(items: AnyObj[]) {
 
     if (!firstName) return "";
 
+    // 옵션없는 상품은 option_name 에 상품명이 그대로 저장돼 있어 중복된다 → 상품명과 같으면 옵션 생략
+    const showOption = optionName !== "" && optionName !== firstName;
+
     const firstLabel =
-        optionName && qty > 0
+        showOption && qty > 0
             ? `${firstName} / ${optionName} × ${qty}`
-            : optionName
+            : showOption
                 ? `${firstName} / ${optionName}`
                 : qty > 0
                     ? `${firstName} × ${qty}`
