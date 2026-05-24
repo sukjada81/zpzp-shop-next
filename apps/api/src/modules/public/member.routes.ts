@@ -65,6 +65,7 @@ export async function publicMemberRoutes(app: FastifyInstance) {
 
             const body = z
                 .object({
+                    nickname: z.string().max(50).optional(),
                     reference: z.string().max(50).optional(),
                     phone: z.string().max(30).optional(),
                 })
@@ -75,6 +76,11 @@ export async function publicMemberRoutes(app: FastifyInstance) {
             }
 
             const data: Record<string, string> = {};
+            // 주문 프로필 닉네임을 member.name 에 저장 (빈 값으로는 덮어쓰지 않음)
+            if (body.data.nickname !== undefined) {
+                const nn = body.data.nickname.trim();
+                if (nn) data.name = nn;
+            }
             if (body.data.reference !== undefined) data.reference = body.data.reference.trim();
             if (body.data.phone !== undefined) data.cell = body.data.phone.replace(/[^\d]/g, "");
 

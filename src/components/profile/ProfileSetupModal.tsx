@@ -81,6 +81,17 @@ export default function ProfileSetupModal({
             recommenderNickname: recommenderNickname.trim(),
         });
 
+        // 닉네임/전화번호/추천인을 DB(member)에도 저장 (다른 기기/브라우저에서도 유지)
+        fetch("/api/proxy/v1/public/member/reference", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                nickname: normalizedNickname,
+                phone: normalizedPhone,
+                reference: recommenderNickname.trim(),
+            }),
+        }).catch(() => null);
+
         showToast("저장 되었습니다.");
         window.setTimeout(() => {
             setToastOpen(false);

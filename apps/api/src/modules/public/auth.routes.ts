@@ -299,7 +299,8 @@ export async function publicAuthRoutes(app: FastifyInstance) {
                 await app.prisma.mallRN_member.update({
                     where: { uid: memberUid },
                     data: {
-                        name: displayName || undefined,
+                        // name(주문 프로필 닉네임)은 사용자가 설정에서 바꾸므로 재로그인 시 덮어쓰지 않는다.
+                        // 카카오 닉네임은 sns_name 에만 최신값으로 반영한다.
                         email: email || undefined,
                         cell: phone || undefined,
                         sns_type: "kakao",

@@ -85,11 +85,16 @@ export default function SettingsPage() {
                 }
 
                 const profile = readQuickOrderProfile(tenant);
-                if (profile) {
-                    setNickname(String(profile.nickname ?? ""));
-                    setPhone(String(profile.phone ?? ""));
+                // 닉네임/전화번호는 로컬 저장값 우선, 없으면 DB(세션)에서 불러온다 (다른 기기/브라우저 대응)
+                const sessName = String(data.member?.name ?? "").trim();
+                const sessPhone = String(data.member?.phone ?? "").replace(/[^\d]/g, "");
+                const lsNick = String(profile?.nickname ?? "").trim();
+                const lsPhone = String(profile?.phone ?? "").trim();
+                setNickname(lsNick || sessName);
+                setPhone(lsPhone || sessPhone);
+                if (profile?.recommenderNickname) {
                     setRecommenderNickname(String(profile.recommenderNickname ?? ""));
-                    if (profile.recommenderNickname?.trim()) {
+                    if (profile.recommenderNickname.trim()) {
                         setNicknameCheckState("ok");
                     }
                 }
@@ -180,6 +185,7 @@ export default function SettingsPage() {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    nickname: normalizedNickname,
                     reference: recommenderNickname.trim(),
                     phone: normalizedPhone,
                 }),
