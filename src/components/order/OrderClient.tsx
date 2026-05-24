@@ -150,6 +150,45 @@ export default function OrderClient(props: {
         }
     }, [tenant]);
 
+    // 로컬 저장값이 없으면 DB(세션)에서 주문자명/연락처를 채운다 (다른 기기/브라우저 대응)
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetch("/auth/session", { cache: "no-store" });
+                const data = await res.json().catch(() => null);
+                if (cancelled || !data?.loggedIn || !data?.member) return;
+
+                const name = String(data.member.name ?? "").trim();
+                const phone = onlyDigits(String(data.member.phone ?? ""));
+
+                if (name) {
+                    setBuyerName((prev) => prev || name);
+                    setReceiverName((prev) => prev || name);
+                }
+
+                if (phone.length >= 10) {
+                    const a = phone.slice(0, 3);
+                    const b = phone.length === 10 ? phone.slice(3, 6) : phone.slice(3, 7);
+                    const c = phone.length === 10 ? phone.slice(6, 10) : phone.slice(7, 11);
+
+                    setBuyerPhoneA((prev) => prev || a || "010");
+                    setBuyerPhoneB((prev) => prev || b);
+                    setBuyerPhoneC((prev) => prev || c);
+
+                    setReceiverPhoneA((prev) => prev || a || "010");
+                    setReceiverPhoneB((prev) => prev || b);
+                    setReceiverPhoneC((prev) => prev || c);
+                }
+            } catch {
+                // 세션 조회 실패 시 무시 (로컬값/수동입력 사용)
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [tenant]);
+
     const items = useMemo<OrderItem[]>(() => {
         if (initialItems.length > 0) {
             return initialItems;
