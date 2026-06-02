@@ -14,6 +14,7 @@ import {
     X,
     ShieldCheck,
     ChevronsUpDown,
+    Building2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -98,6 +99,7 @@ export default function SellerShell({
     const ordersHref = `/${tenant}/orders`;
     const membersHref = `/${tenant}/members`;
     const applicationsHref = `/${tenant}/applications`;
+    const tenantsHref = `/${tenant}/tenants`;
 
     const isDashboardActive = pathname === `/${tenant}` || pathname === `/seller/${tenant}`;
     const isSalesActive =
@@ -112,6 +114,8 @@ export default function SellerShell({
     const isApplicationsActive =
         pathname.startsWith(`/${tenant}/applications`) ||
         pathname.startsWith(`/seller/${tenant}/applications`);
+    const isTenantsActive =
+        pathname === tenantsHref || pathname.startsWith(`${tenantsHref}/`);
 
     useEffect(() => {
         let alive = true;
@@ -321,6 +325,16 @@ export default function SellerShell({
                         active={isApplicationsActive}
                         onClick={closeMobileMenu}
                         highlight={!isApplicationsActive}
+                    />
+                ) : null}
+                {isSuperAdmin ? (
+                    <NavItem
+                        href={tenantsHref}
+                        label="지점 관리"
+                        icon={Building2}
+                        active={isTenantsActive}
+                        onClick={closeMobileMenu}
+                        highlight={!isTenantsActive}
                     />
                 ) : null}
             </div>
