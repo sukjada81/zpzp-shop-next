@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# markdown — 로컬에서만 관리 (git 추적 제외)
+*.md
