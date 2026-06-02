@@ -280,6 +280,69 @@ async function getStrictestSaleEndAt(
     return earliest;
 }
 
+function pad2Pickup(n: number): string {
+    return String(n).padStart(2, "0");
+}
+
+// 상품 등록 정보(mallRN_goods)의 픽업일을 사람이 읽기 쉬운 텍스트로 변환.
+// 날짜는 .000Z(한국시간 리터럴)로 저장되므로 getUTC* 로 그대로 읽는다.
+function formatPickupDateText(value: Date | null): string {
+    if (!value) return "";
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const mm = pad2Pickup(d.getUTCMonth() + 1);
+    const dd = pad2Pickup(d.getUTCDate());
+    const dayKor = ["일", "월", "화", "수", "목", "금", "토"][d.getUTCDay()] ?? "";
+    return `${mm}.${dd}(${dayKor})`;
+}
+
+// 주문에 포함된 상품들의 "상품 등록 시 입력한 픽업일"을 노출용 텍스트로 반환.
+// pickup_note(픽업 안내문)가 있으면 우선 사용하고, 없으면 가장 이른
+// pickup_start_at 을 "MM.DD(요일)~" 로 표기한다.
+async function getOrderPickupText(
+    prisma: FastifyInstance["prisma"],
+    tenantId: bigint,
+    orderNum: string
+): Promise<string> {
+    const goodsLinks = await prisma.mallRN_order_goods.findMany({
+        where: {
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+            order_num: orderNum,
+        },
+        select: { g_uid: true },
+    });
+
+    const uids = Array.from(
+        new Set(goodsLinks.map((r) => Number(r.g_uid)).filter((n) => n > 0))
+    );
+    if (!uids.length) return "";
+
+    const products = await prisma.mallRN_goods.findMany({
+        where: { uid: { in: uids } },
+        select: { pickup_start_at: true, pickup_note: true },
+    });
+
+    let earliest: Date | null = null;
+    let noteForEarliest = "";
+    let anyNote = "";
+    for (const p of products) {
+        const note = toSafeString(p.pickup_note, "").trim();
+        if (note && !anyNote) anyNote = note;
+        const start = p.pickup_start_at ? new Date(p.pickup_start_at) : null;
+        if (!start || Number.isNaN(start.getTime())) continue;
+        if (!earliest || start.getTime() < earliest.getTime()) {
+            earliest = start;
+            noteForEarliest = note;
+        }
+    }
+
+    if (noteForEarliest) return noteForEarliest;
+    const dateText = formatPickupDateText(earliest);
+    if (dateText) return `${dateText}~`;
+    return anyNote;
+}
+
 type OrderActionLogInput = {
     tenantId: bigint;
     eventType: "cancel" | "pickup_confirm";
@@ -433,6 +496,7 @@ async function serializeOrder(
     const totalAmount = toInt(info.pay_total, goodsTotal);
 
     const saleEndAt = await getStrictestSaleEndAt(prisma, tenantId, orderNum);
+    const pickupDateText = await getOrderPickupText(prisma, tenantId, orderNum);
 
     return {
         id: orderNum,
@@ -450,6 +514,7 @@ async function serializeOrder(
         payType: "offline",
         payStatus: "pending",
         pickupAt: info.pickup_at ? toIsoDate(info.pickup_at) : null,
+        pickupDateText,
         status,
         statusLabel: getStatusLabel(status),
         displayStatus: getStatusLabel(status),

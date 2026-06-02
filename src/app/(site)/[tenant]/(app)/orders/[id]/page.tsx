@@ -41,6 +41,7 @@ type OrderDetailResponse = {
         payType: string;
         payStatus: string;
         pickupAt?: string | null;
+        pickupDateText?: string | null;
         status: number;
         statusLabel: string;
         displayStatus?: string;
@@ -325,9 +326,11 @@ export default function OrderDetailPage() {
                     </div>
 
                     <div className="flex justify-between gap-4">
-                        <span className="font-semibold text-slate-500">픽업 예정일시</span>
+                        <span className="font-semibold text-slate-500">픽업 일자</span>
                         <span className="text-right font-bold text-slate-900">
-                            {formatDateTime(order.pickupAt)}
+                            {order.pickupDateText && order.pickupDateText.trim()
+                                ? order.pickupDateText
+                                : "-"}
                         </span>
                     </div>
 
