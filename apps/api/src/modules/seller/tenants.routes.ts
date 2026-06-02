@@ -189,4 +189,63 @@ export async function sellerTenantsRoutes(app: FastifyInstance) {
             },
         });
     });
+
+    // POST 신규 등록 — hq_super 전용
+    app.post("/v1/seller/tenants", async (req: any, reply) => {
+        if (!(await requireHqSuper(app, req, reply))) return;
+
+        const body = (req.body ?? {}) as any;
+        const slug = String(body.slug ?? "").trim();
+        const name = String(body.name ?? "").trim();
+        const rawStatus = String(body.status ?? "active").trim();
+        const primaryDomain = String(body.primaryDomain ?? "").trim();
+        const openchatUrl =
+            body.openchatUrl !== undefined ? String(body.openchatUrl).trim() : undefined;
+
+        if (!slug) return reply.code(400).send({ ok: false, message: "SLUG_REQUIRED" });
+        if (!name) return reply.code(400).send({ ok: false, message: "NAME_REQUIRED" });
+
+        const validStatuses = ["active", "inactive", "draft"];
+        if (!validStatuses.includes(rawStatus)) {
+            return reply.code(400).send({ ok: false, message: "INVALID_STATUS" });
+        }
+
+        const dupSlug = await app.prisma.tenant.findFirst({ where: { slug } });
+        if (dupSlug) {
+            return reply.code(409).send({ ok: false, message: "SLUG_ALREADY_EXISTS" });
+        }
+
+        if (primaryDomain) {
+            const dupDomain = await app.prisma.tenant.findFirst({ where: { primaryDomain } });
+            if (dupDomain) {
+                return reply.code(409).send({ ok: false, message: "PRIMARY_DOMAIN_ALREADY_EXISTS" });
+            }
+        }
+
+        const themeJson = mergeOpenchatUrl(null, openchatUrl);
+
+        const created = await app.prisma.tenant.create({
+            data: {
+                slug,
+                name,
+                status: rawStatus,
+                primaryDomain: primaryDomain || null,
+                timezone: "Asia/Seoul",
+                themeJson,
+            },
+        });
+
+        return reply.send({
+            ok: true,
+            tenant: {
+                id: Number(created.id),
+                slug: created.slug,
+                name: created.name,
+                status: created.status,
+                primaryDomain: created.primaryDomain,
+                timezone: created.timezone,
+                openchatUrl: parseOpenchatUrl(created.themeJson),
+            },
+        });
+    });
 }
