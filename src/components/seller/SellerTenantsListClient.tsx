@@ -13,6 +13,12 @@ type TenantItem = {
     openchatUrl: string | null;
 };
 
+const STATUS_LABELS: Record<string, string> = {
+    active: "운영중",
+    inactive: "운영중지",
+    draft: "준비중",
+};
+
 function StatusBadge({ status }: { status: string }) {
     const cls =
         status === "active"
@@ -22,7 +28,7 @@ function StatusBadge({ status }: { status: string }) {
                 : "bg-slate-100 text-slate-600 ring-1 ring-slate-200";
     return (
         <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
-            {status}
+            {STATUS_LABELS[status] ?? status}
         </span>
     );
 }
@@ -35,9 +41,6 @@ export default function SellerTenantsListClient({ items }: { items: TenantItem[]
                     <h1 className="text-2xl font-extrabold tracking-[-0.04em] text-slate-900">
                         지점 관리
                     </h1>
-                    <p className="mt-1 text-sm text-slate-500">
-                        최고권한자 전용 — 지점 추가·수정·비활성화
-                    </p>
                 </div>
                 <Link
                     href="/__all__/tenants/new"
@@ -58,7 +61,7 @@ export default function SellerTenantsListClient({ items }: { items: TenantItem[]
                         <thead>
                             <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                                 <th className="px-3 py-2">이름</th>
-                                <th className="px-3 py-2">slug</th>
+                                <th className="px-3 py-2">지점 코드</th>
                                 <th className="px-3 py-2">상태</th>
                                 <th className="px-3 py-2">도메인</th>
                                 <th className="px-3 py-2 text-right">&nbsp;</th>

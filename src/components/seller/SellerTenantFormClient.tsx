@@ -20,10 +20,10 @@ const ERROR_MAP: Record<string, string> = {
     "super admin required": "최고권한자만 변경할 수 있습니다.",
     "admin permission required": "권한이 없습니다.",
     "INVALID_ID": "잘못된 요청입니다.",
-    "SLUG_REQUIRED": "slug는 필수입니다.",
+    "SLUG_REQUIRED": "지점 코드는 필수입니다.",
     "NAME_REQUIRED": "이름은 필수입니다.",
     "INVALID_STATUS": "상태값이 올바르지 않습니다.",
-    "SLUG_ALREADY_EXISTS": "이미 사용 중인 slug 입니다.",
+    "SLUG_ALREADY_EXISTS": "이미 사용 중인 지점 코드입니다.",
     "PRIMARY_DOMAIN_ALREADY_EXISTS": "이미 사용 중인 도메인입니다.",
     "TENANT_NOT_FOUND": "지점을 찾을 수 없습니다.",
 };
@@ -59,7 +59,7 @@ export default function SellerTenantFormClient({
         const trimmedSlug = slug.trim();
         const trimmedName = name.trim();
         if (!isEdit && !trimmedSlug) {
-            setError("slug는 필수입니다.");
+            setError("지점 코드는 필수입니다.");
             return;
         }
         if (!trimmedName) {
@@ -112,7 +112,7 @@ export default function SellerTenantFormClient({
         if (!isEdit || !tenant) return;
         if (
             !window.confirm(
-                "이 지점을 비활성화하시겠습니까? 사이트 접근이 차단되지만 데이터는 보존됩니다."
+                "이 지점을 운영 중지하시겠습니까? 사이트 접근이 차단되지만 데이터는 보존됩니다."
             )
         )
             return;
@@ -150,8 +150,8 @@ export default function SellerTenantFormClient({
             </h1>
             <p className="mt-1 text-sm text-slate-500">
                 {isEdit
-                    ? "지점 정보를 수정합니다. slug는 변경할 수 없습니다."
-                    : "새 지점을 등록합니다. slug는 생성 후 변경할 수 없습니다."}
+                    ? "지점 정보를 수정합니다. 지점 코드는 변경할 수 없습니다."
+                    : "새 지점을 등록합니다. 지점 코드는 생성 후 변경할 수 없습니다."}
             </p>
 
             {error ? (
@@ -163,7 +163,7 @@ export default function SellerTenantFormClient({
             <div className="mt-6 space-y-4">
                 <div>
                     <label className="text-xs font-semibold text-slate-500">
-                        slug{isEdit ? " (수정 불가)" : ""}
+                        지점 코드{isEdit ? " (수정 불가)" : ""}
                     </label>
                     <input
                         type="text"
@@ -173,6 +173,9 @@ export default function SellerTenantFormClient({
                         disabled={isEdit}
                         placeholder="예) a"
                     />
+                    <p className="mt-1 text-xs text-slate-400">
+                        사이트 주소에 사용됩니다. 예) 입력값이 a 이면 a.discountallday.kr · 영문 소문자/숫자만
+                    </p>
                 </div>
                 <div>
                     <label className="text-xs font-semibold text-slate-500">이름</label>
@@ -191,9 +194,9 @@ export default function SellerTenantFormClient({
                         value={status}
                         onChange={(e) => setStatus(e.target.value)}
                     >
-                        <option value="active">active</option>
-                        <option value="inactive">inactive</option>
-                        <option value="draft">draft</option>
+                        <option value="active">운영중</option>
+                        <option value="inactive">운영중지</option>
+                        <option value="draft">준비중</option>
                     </select>
                 </div>
                 <div>
@@ -234,7 +237,7 @@ export default function SellerTenantFormClient({
                         disabled={saving || deactivating}
                         className="inline-flex h-10 items-center justify-center rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
                     >
-                        {deactivating ? "비활성화 중..." : "이 지점 비활성화"}
+                        {deactivating ? "처리 중..." : "이 지점 운영 중지"}
                     </button>
                 ) : null}
                 <button
