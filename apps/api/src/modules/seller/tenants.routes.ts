@@ -248,4 +248,69 @@ export async function sellerTenantsRoutes(app: FastifyInstance) {
             },
         });
     });
+
+    // PUT 수정 — hq_super 전용. slug 변경 불가, status='inactive' = soft delete.
+    app.put("/v1/seller/tenants/:id", async (req: any, reply) => {
+        if (!(await requireHqSuper(app, req, reply))) return;
+
+        const idRaw = String((req.params as any)?.id ?? "");
+        if (!/^\d+$/.test(idRaw)) {
+            return reply.code(400).send({ ok: false, message: "INVALID_ID" });
+        }
+        const id = BigInt(idRaw);
+
+        const current = await app.prisma.tenant.findUnique({ where: { id } });
+        if (!current) return reply.code(404).send({ ok: false, message: "TENANT_NOT_FOUND" });
+
+        const body = (req.body ?? {}) as any;
+        const data: any = {};
+
+        if (body.name !== undefined) {
+            const n = String(body.name).trim();
+            if (!n) return reply.code(400).send({ ok: false, message: "NAME_REQUIRED" });
+            data.name = n;
+        }
+
+        if (body.status !== undefined) {
+            const s = String(body.status).trim();
+            const validStatuses = ["active", "inactive", "draft"];
+            if (!validStatuses.includes(s)) {
+                return reply.code(400).send({ ok: false, message: "INVALID_STATUS" });
+            }
+            data.status = s;
+        }
+
+        if (body.primaryDomain !== undefined) {
+            const d = String(body.primaryDomain).trim();
+            if (d && d !== (current.primaryDomain ?? "")) {
+                const dupDomain = await app.prisma.tenant.findFirst({
+                    where: { primaryDomain: d, id: { not: id } },
+                });
+                if (dupDomain) {
+                    return reply.code(409).send({ ok: false, message: "PRIMARY_DOMAIN_ALREADY_EXISTS" });
+                }
+            }
+            data.primaryDomain = d || null;
+        }
+
+        if (body.openchatUrl !== undefined) {
+            const openchatUrl = String(body.openchatUrl ?? "").trim();
+            data.themeJson = mergeOpenchatUrl(current.themeJson ?? null, openchatUrl);
+        }
+
+        const updated = await app.prisma.tenant.update({ where: { id }, data });
+
+        return reply.send({
+            ok: true,
+            tenant: {
+                id: Number(updated.id),
+                slug: updated.slug,
+                name: updated.name,
+                status: updated.status,
+                primaryDomain: updated.primaryDomain,
+                timezone: updated.timezone,
+                openchatUrl: parseOpenchatUrl(updated.themeJson),
+            },
+        });
+    });
 }
