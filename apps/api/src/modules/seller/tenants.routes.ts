@@ -143,4 +143,50 @@ export async function sellerTenantsRoutes(app: FastifyInstance) {
             })),
         });
     });
+
+    // GET 상세 — hq_admin / hq_staff / hq_super
+    app.get("/v1/seller/tenants/:id", async (req: any, reply) => {
+        const member = getSessionMember(req);
+        if (!member?.uid) {
+            return reply.code(401).send({ ok: false, message: "login required" });
+        }
+        const memberUid = toInt(member.uid, 0);
+        if (memberUid <= 0) {
+            return reply.code(401).send({ ok: false, message: "invalid session" });
+        }
+        const globalMs = await app.prisma.mallRN_member_membership.findFirst({
+            where: {
+                member_uid: memberUid,
+                status: "active",
+                scope_type: "global",
+                role_code: { in: [...GLOBAL_ADMIN_ROLES] },
+            },
+            select: { role_code: true },
+        });
+        if (!globalMs) {
+            return reply.code(403).send({ ok: false, message: "admin permission required" });
+        }
+
+        const idRaw = String((req.params as any)?.id ?? "");
+        if (!/^\d+$/.test(idRaw)) {
+            return reply.code(400).send({ ok: false, message: "INVALID_ID" });
+        }
+        const id = BigInt(idRaw);
+
+        const t = await app.prisma.tenant.findUnique({ where: { id } });
+        if (!t) return reply.code(404).send({ ok: false, message: "TENANT_NOT_FOUND" });
+
+        return reply.send({
+            ok: true,
+            tenant: {
+                id: Number(t.id),
+                slug: t.slug,
+                name: t.name,
+                status: t.status,
+                primaryDomain: t.primaryDomain,
+                timezone: t.timezone,
+                openchatUrl: parseOpenchatUrl(t.themeJson),
+            },
+        });
+    });
 }
