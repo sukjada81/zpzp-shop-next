@@ -42,7 +42,7 @@ function isLikelyLocalHost(host: string) {
 function cookieDomainForShare(req: NextRequest) {
     const host = (getForwardedHost(req) || "").split(",")[0].trim();
     if (isLikelyLocalHost(host)) return undefined;
-    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
+    return process.env.COOKIE_DOMAIN || ".zpzp.kr";
 }
 
 function parseSessionCookieName(rawSetCookie: string | null) {

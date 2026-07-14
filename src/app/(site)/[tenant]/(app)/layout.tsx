@@ -51,7 +51,7 @@ function buildMetadataBase(tenant: string, primaryDomain: string | null): URL {
     if (primaryDomain) {
         return new URL(`https://${primaryDomain}`);
     }
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "zpzp.kr";
     const isDev = process.env.NODE_ENV === "development";
     const port = isDev ? `:${process.env.NEXT_PUBLIC_LOCAL_TENANT_PORT || "3000"}` : "";
     const protocol = isDev ? "http" : "https";

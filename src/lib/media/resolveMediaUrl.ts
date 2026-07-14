@@ -9,7 +9,7 @@
  * - "https://specialoffer.kr/data/editor/....jpg"
  *
  * 출력:
- * - (ASSET_ORIGIN이 있으면) "https://discountallday.kr/image/goods/img2/1/10351.png?t=123"
+ * - (ASSET_ORIGIN이 있으면) "https://zpzp.kr/image/goods/img2/1/10351.png?t=123"
  * - 없으면 "/image/goods/img2/1/10351.png?t=123"
  */
 export function resolveMediaUrl(raw?: string) {

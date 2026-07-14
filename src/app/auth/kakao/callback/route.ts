@@ -77,7 +77,7 @@ function isLikelyLocalHost(host: string) {
 function cookieDomainForShare(req: NextRequest) {
     const host = (getForwardedHost(req) || "").split(",")[0].trim();
     if (isLikelyLocalHost(host)) return undefined;
-    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
+    return process.env.COOKIE_DOMAIN || ".zpzp.kr";
 }
 
 function safeTenantSlug(raw: string) {
@@ -88,7 +88,7 @@ function safeTenantSlug(raw: string) {
 }
 
 function buildTenantOrigin(req: NextRequest, tenant: string) {
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "zpzp.kr";
     const dev = isDevHttp(req);
     const proto = dev ? "http" : "https";
     const localPort =

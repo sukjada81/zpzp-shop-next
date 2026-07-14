@@ -39,11 +39,11 @@ function cookieDomainForShare(req: NextRequest) {
         .split(",")[0]
         .trim();
     if (isLikelyLocalHost(host)) return undefined;
-    return process.env.COOKIE_DOMAIN || ".discountallday.kr";
+    return process.env.COOKIE_DOMAIN || ".zpzp.kr";
 }
 
 function buildTenantHomeAbs(tenant: string) {
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "zpzp.kr";
     return `https://${tenant}.${baseDomain}/home`;
 }
 

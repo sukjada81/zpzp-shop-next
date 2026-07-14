@@ -118,7 +118,7 @@ export async function GET(
                 cookie: request.headers.get("cookie") || "",
                 "x-tenant-slug": tenant,
                 "x-forwarded-host":
-                    request.headers.get("host") || `${tenant}.discountallday.kr:3000`,
+                    request.headers.get("host") || `${tenant}.zpzp.kr:3000`,
                 "x-forwarded-proto": request.nextUrl.protocol.replace(":", "") || "http",
             },
             cache: "no-store",

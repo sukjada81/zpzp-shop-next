@@ -11,13 +11,13 @@ export default function TenantLoginPage() {
     const tenant = (params?.tenant as string) || "";
     const returnToParam = sp.get("returnTo");
 
-    const AUTH_ORIGIN = process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+    const AUTH_ORIGIN = process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.zpzp.kr";
 
     useEffect(() => {
         const origin =
             typeof window !== "undefined"
                 ? window.location.origin
-                : `https://${tenant}.discountallday.kr`;
+                : `https://${tenant}.zpzp.kr`;
 
         const defaultReturnTo = tenant ? new URL("/home", origin).toString() : origin;
         const returnTo = returnToParam || defaultReturnTo;

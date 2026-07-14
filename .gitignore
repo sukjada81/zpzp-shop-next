@@ -30,8 +30,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-#.env*
+# env files — 실제 시크릿은 추적하지 않음(값은 팀에 요청). 템플릿 .env.example 만 커밋.
+.env.local
+.env.production
+apps/api/.env
+# 템플릿은 추적 대상으로 유지
+!.env.example
+!apps/api/.env.example
 
 # vercel
 .vercel

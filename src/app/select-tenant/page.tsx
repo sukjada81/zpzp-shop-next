@@ -30,8 +30,8 @@ async function getSessionFromApi() {
 }
 
 export default async function SelectTenantPage() {
-    const AUTH_ORIGIN = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
-    const SELECT_TENANT_ORIGIN = process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
+    const AUTH_ORIGIN = process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.zpzp.kr";
+    const SELECT_TENANT_ORIGIN = process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.zpzp.kr";
 
     // ✅ 로그인 여부는 API로 판별 (쿠키 domain/samesite 이슈로 루프 방지)
     const sess = await getSessionFromApi();

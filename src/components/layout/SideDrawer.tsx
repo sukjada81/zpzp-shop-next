@@ -41,7 +41,7 @@ const HIDE_AUTH_BUTTON = false;
 
 function resolveAuthOrigin() {
     if (typeof window === "undefined") {
-        return process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+        return process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.zpzp.kr";
     }
 
     const envOrigin = process.env.NEXT_PUBLIC_AUTH_ORIGIN;
@@ -55,11 +55,11 @@ function resolveAuthOrigin() {
         return `${protocol}//localhost${port}`;
     }
 
-    if (hostWithoutPort.endsWith(".discountallday.kr")) {
-        return `${protocol}//auth.discountallday.kr${port}`;
+    if (hostWithoutPort.endsWith(".zpzp.kr")) {
+        return `${protocol}//auth.zpzp.kr${port}`;
     }
 
-    return `${protocol}//auth.discountallday.kr${port}`;
+    return `${protocol}//auth.zpzp.kr${port}`;
 }
 
 export default function SideDrawer({
@@ -150,7 +150,7 @@ export default function SideDrawer({
         const returnTo =
             typeof window !== "undefined"
                 ? window.location.href
-                : `http://${tenant}.discountallday.kr:3000/home`;
+                : `http://${tenant}.zpzp.kr:3000/home`;
 
         const url = new URL("/login", authOrigin);
         if (tenant) url.searchParams.set("tenant", tenant);

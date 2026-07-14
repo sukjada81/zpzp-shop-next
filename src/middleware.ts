@@ -93,7 +93,7 @@ function isLikelyLocalHost(host: string) {
 }
 
 function getBaseDomain() {
-    return process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    return process.env.TENANT_BASE_DOMAIN || "zpzp.kr";
 }
 
 function getSubdomain(host: string) {
@@ -138,10 +138,10 @@ function isSelectTenantHost(host: string) {
 
 function getEnvOrigin(kind: "AUTH" | "SITE" | "SELECT_TENANT" | "SELLER") {
     if (kind === "AUTH") {
-        return process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
+        return process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.zpzp.kr";
     }
     if (kind === "SELECT_TENANT") {
-        return process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
+        return process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.zpzp.kr";
     }
     if (kind === "SELLER") {
         return process.env.SELLER_ORIGIN || `https://seller.${getBaseDomain()}`;
@@ -201,7 +201,7 @@ function getTenantCookieOptions(req: NextRequest) {
 
     return {
         ...base,
-        domain: process.env.COOKIE_DOMAIN || ".discountallday.kr",
+        domain: process.env.COOKIE_DOMAIN || ".zpzp.kr",
     } as const;
 }
 

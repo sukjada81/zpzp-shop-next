@@ -174,7 +174,7 @@ export default function SellerTenantFormClient({
                         placeholder="예) a"
                     />
                     <p className="mt-1 text-xs text-slate-400">
-                        사이트 주소에 사용됩니다. 예) 입력값이 a 이면 a.discountallday.kr · 영문 소문자/숫자만
+                        사이트 주소에 사용됩니다. 예) 입력값이 a 이면 a.zpzp.kr · 영문 소문자/숫자만
                     </p>
                 </div>
                 <div>
@@ -206,7 +206,7 @@ export default function SellerTenantFormClient({
                         className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                         value={primaryDomain}
                         onChange={(e) => setPrimaryDomain(e.target.value)}
-                        placeholder="예) a.discountallday.kr"
+                        placeholder="예) a.zpzp.kr"
                     />
                 </div>
                 <div>

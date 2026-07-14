@@ -27,7 +27,7 @@ function safeTenantSlug(raw: string) {
 }
 
 function buildTenantHome(originProtocol: string, tenant: string) {
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "discountallday.kr";
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "zpzp.kr";
     const port =
         process.env.NEXT_PUBLIC_LOCAL_TENANT_PORT ||
         process.env.LOCAL_TENANT_PORT ||

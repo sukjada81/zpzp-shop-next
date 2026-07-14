@@ -56,12 +56,12 @@ function isNonTenantServiceHost(hostOnly: string) {
     return (
         h === "localhost" ||
         h === "127.0.0.1" ||
-        h === "auth.discountallday.kr" ||
-        h === "select-tenant.discountallday.kr" ||
-        h === "seller.discountallday.kr" ||
-        h === "admin.discountallday.kr" ||
-        h === "api.discountallday.kr" ||
-        h === "www.discountallday.kr"
+        h === "auth.zpzp.kr" ||
+        h === "select-tenant.zpzp.kr" ||
+        h === "seller.zpzp.kr" ||
+        h === "admin.zpzp.kr" ||
+        h === "api.zpzp.kr" ||
+        h === "www.zpzp.kr"
     );
 }
 
@@ -73,7 +73,7 @@ function resolveTenantFromHost(hostOnly: string) {
         return "";
     }
 
-    const baseDomain = (process.env.TENANT_BASE_DOMAIN || "discountallday.kr")
+    const baseDomain = (process.env.TENANT_BASE_DOMAIN || "zpzp.kr")
         .toLowerCase()
         .trim();
 

@@ -27,7 +27,7 @@ export default function PointsPage() {
 
                 if (!data.loggedIn) {
                     const authOrigin =
-                        process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+                        process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.zpzp.kr";
                     const returnTo = window.location.href;
                     const loginUrl = new URL("/login", authOrigin);
                     if (tenant) loginUrl.searchParams.set("tenant", tenant);
@@ -40,7 +40,7 @@ export default function PointsPage() {
             } catch {
                 if (cancelled) return;
                 const authOrigin =
-                    process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.discountallday.kr";
+                    process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.zpzp.kr";
                 const returnTo = window.location.href;
                 const loginUrl = new URL("/login", authOrigin);
                 if (tenant) loginUrl.searchParams.set("tenant", tenant);

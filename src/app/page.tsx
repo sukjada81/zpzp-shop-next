@@ -35,9 +35,9 @@ export default async function RootPage() {
       .join("; ");
 
   const AUTH_ORIGIN =
-      process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.discountallday.kr";
+      process.env.AUTH_ORIGIN || process.env.MAIN_ORIGIN || "https://auth.zpzp.kr";
   const SELECT_TENANT_ORIGIN =
-      process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.discountallday.kr";
+      process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.zpzp.kr";
 
   const loggedIn = await hasUserSession(cookieHeader);
 
