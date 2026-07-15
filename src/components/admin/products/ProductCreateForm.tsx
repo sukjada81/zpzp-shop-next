@@ -142,7 +142,7 @@ export default function ProductCreateForm({ tenants }: Props) {
         origPrice: 0,
         consumerPrice: 0,
 
-        pickupOnly: true,
+        pickupOnly: false,
         displayUse: true,
         saleUse: true,
 

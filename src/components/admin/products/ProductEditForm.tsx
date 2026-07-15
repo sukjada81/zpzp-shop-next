@@ -129,7 +129,7 @@ export default function ProductEditForm({
     const [origPrice, setOrigPrice] = useState<number>(Number(product?.origPrice ?? 0));
     const [consumerPrice, setConsumerPrice] = useState<number>(Number(product?.consumerPrice ?? 0));
 
-    const [pickupOnly, setPickupOnly] = useState<boolean>(Boolean(product?.pickupOnly ?? true));
+    const [pickupOnly, setPickupOnly] = useState<boolean>(Boolean(product?.pickupOnly ?? false));
     const [displayUse, setDisplayUse] = useState<boolean>(Boolean(product?.displayUse ?? true));
     const [saleUse, setSaleUse] = useState<boolean>(Boolean(product?.saleUse ?? true));
 

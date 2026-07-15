@@ -22,7 +22,7 @@ export default function AdminProductNewClient() {
     const [title, setTitle] = useState("");
     const [status, setStatus] = useState("draft");
     const [basePrice, setBasePrice] = useState<number>(0);
-    const [pickupOnly, setPickupOnly] = useState(true);
+    const [pickupOnly, setPickupOnly] = useState(false);
     const [minQty, setMinQty] = useState<string>("");
     const [maxQty, setMaxQty] = useState<string>("");
 
