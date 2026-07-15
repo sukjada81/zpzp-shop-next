@@ -334,6 +334,15 @@ export async function GET(req: NextRequest) {
         console.log("KAKAO_COMPLETE_SET_COOKIE", completeRes.headers.get("set-cookie"));
 
         if (!completeRes.ok) {
+            // [줍줍] 미가입 카카오 유저는 자동생성하지 않고 본사(zpzp.kr) 가입/로그인으로 유도
+            if (completeData?.code === "NOT_REGISTERED") {
+                const hqLoginUrl =
+                    process.env.HQ_LOGIN_URL || "https://zpzp.kr/php/login.php";
+                const notReg = new Headers();
+                notReg.set("Location", hqLoginUrl);
+                console.log("KAKAO_NOT_REGISTERED_REDIRECT", hqLoginUrl);
+                return new Response(null, { status: 302, headers: notReg });
+            }
             return Response.json(
                 {
                     ok: false,

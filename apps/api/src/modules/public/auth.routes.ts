@@ -225,76 +225,13 @@ export async function publicAuthRoutes(app: FastifyInstance) {
             }
 
             if (!memberUid) {
-                const preferredLoginId = await generateUniqueMemberId(
-                    app,
-                    email ? email.split("@")[0] : "kakao"
-                );
-
-                console.log("KAKAO_CREATE_MEMBER_LOGIN_ID", preferredLoginId);
-
-                const created = await app.prisma.mallRN_member.create({
-                    data: {
-                        id: preferredLoginId,
-                        name: displayName,
-                        passwd: "",
-                        tel: "",
-                        cell: phone,
-                        postcode: "",
-                        address1: "",
-                        address2: "",
-                        email,
-                        birth: "",
-                        hobby: "",
-                        job: "",
-                        comp: "",
-                        comp_owner: "",
-                        comp_num: "",
-                        comp_postcode: "",
-                        comp_address1: "",
-                        comp_address2: "",
-                        comp_type: "",
-                        comp_item: "",
-                        comp_name: "",
-                        comp_email: "",
-                        comp_tel: "",
-                        comp_fax: "",
-                        cont_name: "",
-                        cont_cell: "",
-                        cont_email: "",
-                        cont_part: "",
-                        cont_position: "",
-                        add1: "",
-                        add2: "",
-                        add3: "",
-                        add4: "",
-                        add5: "",
-                        memo: "",
-                        image1: "",
-                        sns_type: "kakao",
-                        sns_id: providerUserId,
-                        sns_name: displayName,
-                        dup_info: "",
-                        mobile: "Y",
-                        auth: "Y",
-                        status: "active",
-                        primary_role: "consumer",
-                        default_tenant_id: tenant.id,
-                        last_selected_tenant_id: tenant.id,
-                        created_at_dt: now,
-                        updated_at_dt: now,
-                        last_login_at_dt: now,
-                        login_time: nowTs,
-                        signdate: nowTs,
-                        reference: "",
-                        auth_code: "",
-                    },
-                    select: {
-                        uid: true,
-                    },
-                });
-
-                memberUid = Number(created.uid);
-                console.log("KAKAO_CREATED_MEMBER_UID", memberUid);
+                // [줍줍] 미가입 카카오 유저는 자동생성하지 않는다. (정책 2026-07-11)
+                // 셀러/스토어프론트 서브도메인의 카카오 로그인은 신규 계정을 만들지 않고,
+                // 본사(zpzp.kr) 카카오 간편가입으로 유도한다. Next 콜백이 NOT_REGISTERED를
+                // 받아 본사 로그인/가입으로 302 리다이렉트한다.
+                // (generateUniqueMemberId 헬퍼는 정책 복원 대비 남겨둠)
+                console.log("KAKAO_NOT_REGISTERED", { providerUserId, email, phone });
+                return reply.code(409).send({ ok: false, code: "NOT_REGISTERED" });
             } else {
                 await app.prisma.mallRN_member.update({
                     where: { uid: memberUid },
