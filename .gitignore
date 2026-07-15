@@ -47,3 +47,5 @@ next-env.d.ts
 
 # markdown — 로컬에서만 관리 (git 추적 제외)
 *.md
+# CLAUDE.md 는 프로젝트 컨텍스트 문서라 예외로 추적
+!CLAUDE.md
