@@ -225,6 +225,15 @@ function setSelectedTenantCookie(
     if (!value) return res;
 
     res.cookies.set("selectedTenant", value, getTenantCookieOptions(req));
+
+    const sub = getSubdomain(getHost(req));
+    if (sub && sub.toLowerCase() === value) {
+        const refValue = resolveRefCookie(req.cookies.get("zpzp_ref")?.value, sub);
+        if (refValue) {
+            res.cookies.set("zpzp_ref", refValue, getRefCookieOptions(req));
+        }
+    }
+
     res.headers.set("X-Dad-Debug-SelectedTenant", value);
     return res;
 }
@@ -516,12 +525,7 @@ export async function middleware(req: NextRequest) {
         pathname === "/select-tenant" ||
         pathname.startsWith("/select-tenant/")
     ) {
-        const res = setSelectedTenantCookie(NextResponse.next(), req, subdomain);
-        const refValue = resolveRefCookie(req.cookies.get("zpzp_ref")?.value, subdomain);
-        if (refValue) {
-            res.cookies.set("zpzp_ref", refValue, getRefCookieOptions(req));
-        }
-        return res;
+        return setSelectedTenantCookie(NextResponse.next(), req, subdomain);
     }
 
     const externalPath = pathname === "/" ? "/home" : pathname;
