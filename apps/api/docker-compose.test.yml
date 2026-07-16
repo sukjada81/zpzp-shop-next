@@ -1,0 +1,17 @@
+# 로컬 테스트 전용 MySQL — referral-attribution 유예 테스트 실행용.
+# 운영과 무관, 로컬 localhost 전용. 정리: docker compose -f docker-compose.test.yml down -v
+services:
+  mysql-test:
+    image: mysql:8.0
+    container_name: zpzp-mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: zpzptest
+      MYSQL_DATABASE: b2bdb_test
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "127.0.0.1:3399:3306"   # 호스트 3306/3307 이미 사용중 → 3399로 매핑, localhost 바인딩만
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pzpzptest"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
