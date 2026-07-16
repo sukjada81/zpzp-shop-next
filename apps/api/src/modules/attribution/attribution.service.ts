@@ -45,3 +45,32 @@ export async function ensureAttribution(
     throw e;
   }
 }
+
+export type ConfirmResult = "confirmed" | "noop";
+export type RevokeResult = "revoked" | "noop";
+
+/** 첫 확정/재인정: crew_status=confirmed, crew_confirmed_at 갱신. revoked_at은 보존. */
+export async function confirmCrew(
+  prisma: PrismaClient,
+  memberUid: number,
+  confirmedAt: Date
+): Promise<ConfirmResult> {
+  const res = await prisma.zpzp_referral_attribution.updateMany({
+    where: { member_uid: memberUid },
+    data: { crew_status: "confirmed", crew_confirmed_at: confirmedAt },
+  });
+  return res.count > 0 ? "confirmed" : "noop";
+}
+
+/** void: crew_status=revoked, crew_revoked_at 스탬프. crew_confirmed_at은 보존(NULL 금지). */
+export async function revokeCrew(
+  prisma: PrismaClient,
+  memberUid: number,
+  revokedAt: Date
+): Promise<RevokeResult> {
+  const res = await prisma.zpzp_referral_attribution.updateMany({
+    where: { member_uid: memberUid, crew_status: "confirmed" },
+    data: { crew_status: "revoked", crew_revoked_at: revokedAt },
+  });
+  return res.count > 0 ? "revoked" : "noop";
+}
