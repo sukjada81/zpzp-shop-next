@@ -1,6 +1,7 @@
 // apps/api/src/modules/public/auth.routes.ts
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { captureRefFromRequest } from "../attribution/capture";
 
 console.log("AUTH_ROUTES_LOADED_20260316_DEBUG");
 
@@ -323,6 +324,8 @@ export async function publicAuthRoutes(app: FastifyInstance) {
                     updated_at: now,
                 },
             });
+
+            await captureRefFromRequest(app.prisma, memberUid, (req as any).cookies ?? {});
 
             console.log("KAKAO_MEMBERSHIP_UPSERT_DONE", {
                 memberUid,
