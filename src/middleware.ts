@@ -1,5 +1,6 @@
 // src/middleware.ts
 import { NextRequest, NextResponse } from "next/server";
+import { resolveRefCookie } from "./lib/ref-cookie";
 
 const RESERVED_SUBDOMAINS = new Set([
     "www",
@@ -205,6 +206,16 @@ function getTenantCookieOptions(req: NextRequest) {
     } as const;
 }
 
+function getRefCookieOptions(req: NextRequest) {
+    return {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax" as const,
+        domain: process.env.COOKIE_DOMAIN || ".zpzp.kr",
+        maxAge: 60 * 60 * 24 * 90, // 90일 (spec R3.1)
+    };
+}
+
 function setSelectedTenantCookie(
     res: NextResponse,
     req: NextRequest,
@@ -214,6 +225,15 @@ function setSelectedTenantCookie(
     if (!value) return res;
 
     res.cookies.set("selectedTenant", value, getTenantCookieOptions(req));
+
+    const sub = getSubdomain(getHost(req));
+    if (sub && sub.toLowerCase() === value) {
+        const refValue = resolveRefCookie(req.cookies.get("zpzp_ref")?.value, sub);
+        if (refValue) {
+            res.cookies.set("zpzp_ref", refValue, getRefCookieOptions(req));
+        }
+    }
+
     res.headers.set("X-Dad-Debug-SelectedTenant", value);
     return res;
 }

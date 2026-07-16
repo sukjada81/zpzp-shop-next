@@ -10,7 +10,10 @@
     "prisma:gen": "prisma generate",
     "prisma:introspect": "prisma db pull",
     "prisma:push": "prisma db push",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:test:push": "dotenv -e .env.test -- node scripts/db-test-push.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "9.4.0",
@@ -26,8 +29,10 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "dotenv-cli": "^7.4.4",
     "prisma": "^6.0.0",
     "tsx": "^4.16.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
   }
 }

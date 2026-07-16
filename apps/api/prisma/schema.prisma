@@ -3263,3 +3263,54 @@ enum mallRN_order_info_mobile {
   Y
   N
 }
+
+enum zpzp_linker_status {
+  pending
+  active
+  suspended
+}
+
+enum zpzp_attribution_source {
+  subdomain
+  manual
+}
+
+enum zpzp_crew_status {
+  prospect
+  confirmed
+  revoked
+}
+
+model zpzp_linker {
+  uid          Int                          @id @default(autoincrement())
+  member_uid   Int                          @unique(map: "uq_zpzp_linker_member") @db.UnsignedInt
+  shop_slug    String                       @unique(map: "uq_zpzp_linker_slug") @db.VarChar(64)
+  shop_name    String                       @default("") @db.VarChar(191)
+  tenant_id    BigInt?
+  status       zpzp_linker_status           @default(pending)
+  approved_at  DateTime?                    @db.DateTime(0)
+  created_at   DateTime                     @default(now()) @db.DateTime(0)
+  updated_at   DateTime                     @updatedAt @db.DateTime(0)
+  attributions zpzp_referral_attribution[]
+
+  @@index([status], map: "ix_zpzp_linker_status")
+  @@map("zpzp_linker")
+}
+
+model zpzp_referral_attribution {
+  uid               Int                     @id @default(autoincrement())
+  member_uid        Int                     @unique(map: "uq_zpzp_attr_member") @db.UnsignedInt
+  linker_id         Int
+  attributed_at     DateTime                @default(now()) @db.DateTime(0)
+  landing_slug      String?                 @db.VarChar(64)
+  source            zpzp_attribution_source @default(subdomain)
+  crew_status       zpzp_crew_status        @default(prospect)
+  crew_confirmed_at DateTime?               @db.DateTime(0)
+  crew_revoked_at   DateTime?               @db.DateTime(0)
+  created_at        DateTime                @default(now()) @db.DateTime(0)
+  updated_at        DateTime                @updatedAt @db.DateTime(0)
+  linker            zpzp_linker             @relation(fields: [linker_id], references: [uid])
+
+  @@index([linker_id, crew_status, crew_confirmed_at], map: "ix_zpzp_attr_count")
+  @@map("zpzp_referral_attribution")
+}

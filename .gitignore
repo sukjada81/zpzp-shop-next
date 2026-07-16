@@ -33,7 +33,9 @@ yarn-error.log*
 # env files — 실제 시크릿은 추적하지 않음(값은 팀에 요청). 템플릿 .env.example 만 커밋.
 .env.local
 .env.production
+.env.test
 apps/api/.env
+apps/api/.env.test
 # 템플릿은 추적 대상으로 유지
 !.env.example
 !apps/api/.env.example

@@ -1,5 +1,6 @@
 // apps/api/src/modules/public/orders.routes.ts
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { captureRefFromRequest } from "../attribution/capture";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -649,6 +650,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     message: "로그인 해야 주문이 가능합니다.",
                 });
             }
+
+            // 2차 귀속 캡처(안전망): 로그인 시점에 놓친 zpzp_ref 쿠키를 주문 직전에 보정.
+            // 헬퍼가 예외를 삼키므로 실패해도 주문 흐름을 막지 않는다.
+            await captureRefFromRequest(fastify.prisma, Number(memberUid), (request as any).cookies ?? {});
 
             if (!body?.items || body.items.length === 0) {
                 return reply.send({
