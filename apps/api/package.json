@@ -13,7 +13,7 @@
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:test:push": "dotenv -e .env.test -- prisma db push --force-reset --skip-generate"
+    "db:test:push": "dotenv -e .env.test -- node scripts/db-test-push.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "9.4.0",
