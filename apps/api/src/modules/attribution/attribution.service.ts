@@ -74,3 +74,25 @@ export async function revokeCrew(
   });
   return res.count > 0 ? "revoked" : "noop";
 }
+
+export interface CrewCountRow {
+  linkerId: number;
+  crewCount: number;
+}
+
+/**
+ * 등급 배치용 정규 카운트. cutoff = 당월 1일 00:00:00 (= 전월 말일 24시).
+ * member_uid UNIQUE라 행 수 = DISTINCT 회원 수.
+ */
+export async function crewCountByLinker(
+  prisma: PrismaClient,
+  cutoff: Date
+): Promise<CrewCountRow[]> {
+  const grouped = await prisma.zpzp_referral_attribution.groupBy({
+    by: ["linker_id"],
+    where: { crew_status: "confirmed", crew_confirmed_at: { lt: cutoff } },
+    _count: { member_uid: true },
+    orderBy: { linker_id: "asc" },
+  });
+  return grouped.map((g) => ({ linkerId: g.linker_id, crewCount: g._count.member_uid }));
+}
