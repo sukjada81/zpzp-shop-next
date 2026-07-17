@@ -19,5 +19,7 @@ export async function resetZpzpTables(prisma: PrismaClient): Promise<void> {
   await prisma.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
   await prisma.$executeRawUnsafe("TRUNCATE TABLE zpzp_referral_attribution");
   await prisma.$executeRawUnsafe("TRUNCATE TABLE zpzp_linker");
+  await prisma.$executeRawUnsafe("TRUNCATE TABLE zpzp_confirmation_timer_event");
+  await prisma.$executeRawUnsafe("TRUNCATE TABLE zpzp_order_confirmation");
   await prisma.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1");
 }

@@ -3314,3 +3314,62 @@ model zpzp_referral_attribution {
   @@index([linker_id, crew_status, crew_confirmed_at], map: "ix_zpzp_attr_count")
   @@map("zpzp_referral_attribution")
 }
+
+enum zpzp_confirm_method {
+  direct
+  auto_d7
+  admin
+}
+
+enum zpzp_timer_state {
+  running
+  paused
+  confirmed
+  void
+}
+
+enum zpzp_timer_event_type {
+  pause
+  resume
+}
+
+enum zpzp_timer_reason {
+  exchange
+  return
+  cancel
+  other
+}
+
+model zpzp_order_confirmation {
+  uid                   Int                  @id @default(autoincrement())
+  order_goods_uid       Int                  @unique(map: "uq_zpzp_oc_og") @db.UnsignedInt
+  order_num             String               @db.VarChar(50)
+  member_uid            Int?                 @db.UnsignedInt
+  tenant_id             BigInt?              @db.UnsignedBigInt
+  confirmed_at          DateTime?            @db.DateTime(0)
+  confirm_method        zpzp_confirm_method?
+  delivery_completed_at DateTime?            @db.DateTime(0)
+  auto_confirm_due_at   DateTime?            @db.DateTime(0)
+  timer_state           zpzp_timer_state     @default(running)
+  paused_total_seconds  Int                  @default(0)
+  is_crew_trigger       Boolean              @default(false)
+  created_at            DateTime             @default(now()) @db.DateTime(0)
+  updated_at            DateTime             @updatedAt @db.DateTime(0)
+  @@index([member_uid, confirmed_at], map: "ix_zpzp_oc_member")
+  @@index([timer_state, auto_confirm_due_at], map: "ix_zpzp_oc_due")
+  @@map("zpzp_order_confirmation")
+}
+
+model zpzp_confirmation_timer_event {
+  uid                     Int                    @id @default(autoincrement())
+  order_confirmation_uid  Int
+  order_goods_uid         Int                    @db.UnsignedInt
+  event_type              zpzp_timer_event_type
+  reason                  zpzp_timer_reason      @default(other)
+  reason_text             String?                @db.VarChar(191)
+  effective_at            DateTime               @default(now()) @db.DateTime(0)
+  created_at              DateTime               @default(now()) @db.DateTime(0)
+  @@index([order_confirmation_uid], map: "ix_zpzp_te_oc")
+  @@index([order_goods_uid], map: "ix_zpzp_te_og")
+  @@map("zpzp_confirmation_timer_event")
+}
