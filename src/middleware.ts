@@ -1,6 +1,13 @@
 // src/middleware.ts
 import { NextRequest, NextResponse } from "next/server";
 import { resolveRefCookie } from "./lib/ref-cookie";
+import { getSlugResolution } from "./lib/slug-resolve";
+
+const API_BASE_URL = (
+    process.env.API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://127.0.0.1:4000"
+).replace(/\/+$/, "");
 
 const RESERVED_SUBDOMAINS = new Set([
     "www",
@@ -219,15 +226,20 @@ function getRefCookieOptions(req: NextRequest) {
 function setSelectedTenantCookie(
     res: NextResponse,
     req: NextRequest,
-    tenant: string | null | undefined
+    tenant: string | null | undefined,
+    refSlug?: string
 ) {
     const value = String(tenant || "").trim().toLowerCase();
     if (!value) return res;
 
     res.cookies.set("selectedTenant", value, getTenantCookieOptions(req));
 
-    const sub = getSubdomain(getHost(req));
-    if (sub && sub.toLowerCase() === value) {
+    // refSlug(원래 방문 서브도메인/링커 slug)가 명시되면 그 값으로 zpzp_ref를 스탬프한다
+    // (selectedTenant=점포 slug와 달라질 수 있는 링커 방문 케이스). 없으면 기존처럼
+    // 현재 호스트의 서브도메인이 tenant 값과 일치할 때만 스탬프.
+    const sub = refSlug ?? getSubdomain(getHost(req));
+    const shouldStampRef = !!refSlug || sub?.toLowerCase() === value;
+    if (sub && shouldStampRef) {
         const refValue = resolveRefCookie(req.cookies.get("zpzp_ref")?.value, sub);
         if (refValue) {
             res.cookies.set("zpzp_ref", refValue, getRefCookieOptions(req));
@@ -519,19 +531,25 @@ export async function middleware(req: NextRequest) {
 
     if (!subdomain) return NextResponse.next();
 
+    const resolution = await getSlugResolution(subdomain, API_BASE_URL, Date.now());
+    if (resolution.kind === "none") {
+        return NextResponse.redirect(getEnvOrigin("SITE")); // 미등록 slug → 본사
+    }
+    const effectiveTenant = resolution.tenantSlug || subdomain;
+
     if (
         pathname === "/login" ||
         pathname.startsWith("/login/") ||
         pathname === "/select-tenant" ||
         pathname.startsWith("/select-tenant/")
     ) {
-        return setSelectedTenantCookie(NextResponse.next(), req, subdomain);
+        return setSelectedTenantCookie(NextResponse.next(), req, effectiveTenant, subdomain);
     }
 
     const externalPath = pathname === "/" ? "/home" : pathname;
 
     const firstSeg = externalPath.split("/").filter(Boolean)[0] || "";
-    const alreadyPrefixed = firstSeg === subdomain;
+    const alreadyPrefixed = firstSeg === effectiveTenant;
 
     const bypass =
         externalPath.startsWith("/seller/") ||
@@ -543,9 +561,9 @@ export async function middleware(req: NextRequest) {
         externalPath === "/favicon.ico";
 
     const internalPathname =
-        !alreadyPrefixed && !bypass ? `/${subdomain}${externalPath}` : externalPath;
+        !alreadyPrefixed && !bypass ? `/${effectiveTenant}${externalPath}` : externalPath;
 
-    if (isPublicPath(pathname)) return setSelectedTenantCookie(NextResponse.next(), req, subdomain);
+    if (isPublicPath(pathname)) return setSelectedTenantCookie(NextResponse.next(), req, effectiveTenant, subdomain);
 
     const mockLoginCookie = req.cookies.get("mockLogin")?.value === "1";
     const mockLogin = false;
@@ -573,24 +591,26 @@ export async function middleware(req: NextRequest) {
                 setSelectedTenantCookie(
                     NextResponse.rewrite(makeInternalRewriteUrl(req, internalPathname, search)),
                     req,
+                    effectiveTenant,
                     subdomain
                 ),
                 crawler ? "rewrite(crawler)" : !isProtected ? "rewrite(unprotected)" : "rewrite(protected OK)"
             );
         }
         return addDebug(
-            setSelectedTenantCookie(NextResponse.next(), req, subdomain),
+            setSelectedTenantCookie(NextResponse.next(), req, effectiveTenant, subdomain),
             crawler ? "next(crawler)" : !isProtected ? "next(unprotected)" : "next(protected OK)"
         );
     }
 
     const authOrigin = getEnvOrigin("AUTH");
     const loginUrl = new URL("/login", authOrigin);
+    // 원래 방문 서브도메인(호스트)을 유지 — 로그인 후 사용자가 자기 샵 URL로 돌아와야 함
     loginUrl.searchParams.set("tenant", subdomain);
     loginUrl.searchParams.set("returnTo", buildTenantHomeAbs(req, subdomain));
 
     return addDebug(
-        setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, subdomain),
+        setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, effectiveTenant, subdomain),
         "redirect(tenant protected -> auth/login)"
     );
 }
