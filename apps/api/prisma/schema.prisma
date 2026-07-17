@@ -3338,6 +3338,8 @@ enum zpzp_timer_reason {
   return
   cancel
   other
+  reject
+  withdraw
 }
 
 model zpzp_order_confirmation {
