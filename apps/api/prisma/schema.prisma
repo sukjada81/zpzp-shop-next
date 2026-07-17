@@ -823,7 +823,6 @@ model mallRN_configuration {
   order_auto_completed1         Int                                               @default(0) @db.UnsignedInt
   order_auto_completed2         Int                                               @default(0) @db.UnsignedInt
   order_auto_completed3         Int                                               @default(0) @db.UnsignedInt
-  linker_default_tenant_id      Int                                               @default(0) @db.UnsignedInt
   order_tracker_yn              mallRN_configuration_order_tracker_yn             @default(N)
   order_tracker_key             String                                            @default("") @db.VarChar(50)
   sms_yn                        mallRN_configuration_sms_yn                       @default(Y)
@@ -3380,4 +3379,12 @@ model zpzp_confirmation_timer_event {
   @@index([order_confirmation_uid], map: "ix_zpzp_te_oc")
   @@index([order_goods_uid], map: "ix_zpzp_te_og")
   @@map("zpzp_confirmation_timer_event")
+}
+
+model zpzp_setting {
+  name       String   @id @db.VarChar(64)
+  value      String   @default("") @db.VarChar(255)
+  updated_at DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@map("zpzp_setting")
 }
