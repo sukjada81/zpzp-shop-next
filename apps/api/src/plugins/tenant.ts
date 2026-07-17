@@ -86,7 +86,8 @@ function shouldBypassTenant(url: string, hostOnly: string) {
     if (
         path.startsWith("/admin") ||
         path.startsWith("/health") ||
-        path.startsWith("/v1/auth")
+        path.startsWith("/v1/auth") ||
+        path.startsWith("/v1/resolve-slug")
     ) {
         return true;
     }

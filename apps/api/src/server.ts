@@ -28,6 +28,7 @@ import { sellerApplicationsRoutes } from "./modules/seller/applications.routes.j
 import { sellerGlobalRoutes } from "./modules/seller/global.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { publicMemberRoutes } from "./modules/public/member.routes.js";
+import { publicResolveRoutes } from "./modules/public/resolve.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 
 const app = Fastify({
@@ -69,6 +70,7 @@ await adminUploadsRoutes(app);
 await adminRoutes(app);
 await publicAuthRoutes(app);
 await publicMemberRoutes(app);
+await publicResolveRoutes(app);
 
 await sellerAccessCheckRoutes(app);
 await sellerTenantsRoutes(app);
