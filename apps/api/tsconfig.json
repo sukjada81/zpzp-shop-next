@@ -12,5 +12,6 @@
   },
   "include": ["src/**/*.ts",
     "../../../apps/api/prisma/**/*.ts"
-  ]
+  ],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "test"]
 }
