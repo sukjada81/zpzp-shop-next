@@ -1,7 +1,7 @@
 // apps/api/src/modules/admin/tenants.routes.ts
 import type { FastifyInstance } from "fastify";
-import { requireAdmin } from "../../common/guard";
-import { jsonSafe } from "../../common/jsonSafe";
+import { requireAdmin } from "../../common/guard.js";
+import { jsonSafe } from "../../common/jsonSafe.js";
 
 /**
  * Tenants (지점) 관리

@@ -1,6 +1,6 @@
 // apps/api/src/modules/attribution/capture.ts
 import type { PrismaClient } from "@prisma/client";
-import { ensureAttribution } from "./attribution.service";
+import { ensureAttribution } from "./attribution.service.js";
 
 /** 요청 쿠키의 zpzp_ref(slug)로 멱등 귀속. 로그인/주문 흐름을 절대 막지 않는다. */
 export async function captureRefFromRequest(

@@ -1,7 +1,7 @@
 // apps/api/src/modules/public/auth.routes.ts
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { captureRefFromRequest } from "../attribution/capture";
+import { captureRefFromRequest } from "../attribution/capture.js";
 
 console.log("AUTH_ROUTES_LOADED_20260316_DEBUG");
 

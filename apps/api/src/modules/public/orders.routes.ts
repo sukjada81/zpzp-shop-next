@@ -1,6 +1,6 @@
 // apps/api/src/modules/public/orders.routes.ts
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { captureRefFromRequest } from "../attribution/capture";
+import { captureRefFromRequest } from "../attribution/capture.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
