@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { getTestPrisma, resetZpzpTables } from "../../../test/setup";
-import { resolveSlug } from "./resolve.routes";
+import { resolveSlug, HQ_STOREFRONT_SLUG } from "./resolve.routes";
 const prisma = getTestPrisma();
 describe("resolveSlug", () => {
   beforeEach(async () => {
@@ -11,12 +11,13 @@ describe("resolveSlug", () => {
   it("tenant slug", async () => {
     expect(await resolveSlug(prisma, "funcher")).toEqual({ kind: "tenant", tenantSlug: "funcher" });
   });
-  it("active linker → 점포 slug 파생", async () => {
-    await prisma.zpzp_linker.create({ data: { member_uid: 9001, shop_slug: "myshop", shop_name: "M", status: "active", tenant_id: 91 } });
-    expect(await resolveSlug(prisma, "myshop")).toEqual({ kind: "linker", tenantSlug: "funcher" });
+  it("active linker → 단일 본사몰(hq) 컨텍스트 (소속 점포 무관)", async () => {
+    // tenant_id 는 이제 무의미(NULL 방치). active 면 무조건 'hq' 로 resolve.
+    await prisma.zpzp_linker.create({ data: { member_uid: 9001, shop_slug: "myshop", shop_name: "M", status: "active", tenant_id: null } });
+    expect(await resolveSlug(prisma, "myshop")).toEqual({ kind: "linker", tenantSlug: HQ_STOREFRONT_SLUG });
   });
   it("non-active linker → none", async () => {
-    await prisma.zpzp_linker.create({ data: { member_uid: 9002, shop_slug: "pend", shop_name: "P", status: "pending", tenant_id: 91 } });
+    await prisma.zpzp_linker.create({ data: { member_uid: 9002, shop_slug: "pend", shop_name: "P", status: "pending", tenant_id: null } });
     expect(await resolveSlug(prisma, "pend")).toEqual({ kind: "none", tenantSlug: null });
   });
   it("unknown → none", async () => {
