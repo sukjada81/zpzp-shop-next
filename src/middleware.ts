@@ -16,6 +16,7 @@ const RESERVED_SUBDOMAINS = new Set([
     "api",
     "select-tenant",
     "seller",
+    "hq", // 본사몰 컨텍스트(링커 rewrite 대상). hq.zpzp.kr 직접접속을 tenant 로 취급하지 않음. 링커→/hq 내부 rewrite 는 무영향(경로 기반).
 ]);
 
 function isPublicAsset(pathname: string) {
