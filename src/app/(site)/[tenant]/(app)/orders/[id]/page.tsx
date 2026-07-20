@@ -325,6 +325,7 @@ export default function OrderDetailPage() {
                         </span>
                     </div>
 
+                    {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — "픽업 일자" 행 노출 중단
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">픽업 일자</span>
                         <span className="text-right font-bold text-slate-900">
@@ -333,6 +334,7 @@ export default function OrderDetailPage() {
                                 : "-"}
                         </span>
                     </div>
+                    */}
 
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">상태 변경일시</span>

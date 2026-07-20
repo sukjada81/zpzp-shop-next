@@ -13,6 +13,7 @@ import {
     readQuickOrderProfile,
 } from "@/lib/profile/quickOrderProfile";
 import { useTickerItems, formatAgo as tickerFormatAgo, type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
+import { formatDisplayPrice } from "@/lib/price";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,9 @@ export type OngoingGroupBuyItem = {
     id: string;
     tenant: string;
     title: string;
-    price: number;
+    // 비회원 마스킹(§8): 비로그인이면 서버가 price=null + masked=true 로 내림
+    price: number | null;
+    masked?: boolean;
     href?: string;
     images: { key: string; label?: string }[];
     options: OptionItem[];
@@ -297,7 +300,8 @@ function GroupBuyItemBlock({
 
     const allSoldout = options.length > 0 && options.every((o) => !!o.soldout);
     const deadlineText = useCountdown(item.meta?.deadlineAt, item.meta?.timeLeft);
-    const pickupText = item.meta?.pickup?.trim() || "";
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 배지 텍스트 노출 중단
+    // const pickupText = item.meta?.pickup?.trim() || "";
 
     return (
         <article
@@ -334,6 +338,7 @@ function GroupBuyItemBlock({
                         <span>{allSoldout ? "품절" : deadlineText}</span>
                     </span>
 
+                    {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 배지 노출 중단
                     {pickupText ? (
                         <span
                             className="inline-flex min-h-[26px] items-center gap-1 rounded-full border px-3 py-0.5 text-[12px] font-semibold"
@@ -343,6 +348,7 @@ function GroupBuyItemBlock({
                             <span>{pickupText}</span>
                         </span>
                     ) : null}
+                    */}
                 </div>
             </Link>
 
@@ -351,7 +357,8 @@ function GroupBuyItemBlock({
                 {options.map((option) => {
                     const key = buildOptionKey(item.id, option.id);
                     const qty = qtyMap[key] ?? 0;
-                    const price = Number(option.price ?? item.price ?? 0);
+                    // 비회원 마스킹(§8): null 보존 — 헬퍼가 "?????원"으로 표시
+                    const price = option.price ?? item.price;
                     const soldout = !!option.soldout;
                     // TODO(2026-04-24): 한정수량 상품 도입 시 stockText 뱃지 재활성화
                     const maxQty = getMaxSelectableQty(option);
@@ -376,7 +383,7 @@ function GroupBuyItemBlock({
                                     ) : null}
                                 </div>
                                 <div className="mt-1 text-[14px] text-[color:var(--muted)]">
-                                    {price.toLocaleString()}원
+                                    {formatDisplayPrice(price, item.masked)}
                                 </div>
                             </div>
 
@@ -472,6 +479,9 @@ export default function OngoingGroupBuySection({
         }
         return map;
     }, [displayItems]);
+
+    // 비회원 마스킹(§8): 한 건이라도 마스킹이면 합계 금액도 "?????원"으로 표시
+    const anyMasked = useMemo(() => displayItems.some((i) => i.masked), [displayItems]);
 
     const selectedEntries = useMemo(
         () => Object.entries(qtyMap).filter(([k, q]) => q > 0 && optionMetaMap.has(k)),
@@ -619,7 +629,9 @@ export default function OngoingGroupBuySection({
                                     {isActive ? (
                                         <span className="absolute inset-y-0 right-4 flex flex-col items-end justify-center text-right">
                                             <span className="text-[12px] opacity-90">총 {totalQty}개</span>
-                                            <span className="text-[12px] opacity-90">{totalPrice.toLocaleString()}원</span>
+                                            <span className="text-[12px] opacity-90">
+                                                {formatDisplayPrice(anyMasked ? null : totalPrice, anyMasked)}
+                                            </span>
                                         </span>
                                     ) : null}
                                 </div>

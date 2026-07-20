@@ -4,11 +4,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { formatDisplayPrice } from "@/lib/price";
 
 export type GoodsListItem = {
     id: string;
     title: string;
-    price: number;
+    // 비회원 마스킹(§8): 비로그인이면 서버가 price=null + masked=true 로 내림
+    price: number | null;
+    masked?: boolean;
     badgeLeft?: string;
     badgeRight?: string;
     metaLeft?: string;
@@ -18,9 +21,10 @@ export type GoodsListItem = {
     categoryLabel?: string;
 };
 
+// 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 노출만 제거(필터 로직·타입은 유지)
 const TABS = [
     { key: "today", label: "오늘의 공구" },
-    { key: "pickup", label: "바로 픽업 가능" },
+    // { key: "pickup", label: "바로 픽업 가능" },
     { key: "ongoing", label: "진행 중인 공구" },
 ] as const;
 
@@ -32,6 +36,8 @@ function isTabKey(x: string | null): x is TabKey {
 
 function displayCategoryLabel(label?: string) {
     if (label === "오늘의 공구") return "오늘의 공구";
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — "바로 픽업 가능" 카테고리 배지는 노출하지 않음
+    if (label === "바로 픽업 가능") return undefined;
     return label;
 }
 
@@ -70,9 +76,10 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
                 return cate === "100000" || categoryLabel === "오늘의 공구";
             }
 
-            if (tab === "pickup") {
-                return cate === "100001" || categoryLabel === "바로 픽업 가능";
-            }
+            // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 필터 비활성
+            // if (tab === "pickup") {
+            //     return cate === "100001" || categoryLabel === "바로 픽업 가능";
+            // }
 
             if (tab === "ongoing") {
                 return true;
@@ -86,19 +93,13 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
             .filter((it) => (qq ? (it.title ?? "").toLowerCase().includes(qq) : true));
     }, [initialItems, q, tab]);
 
-    const headerTitle =
-        tab === "today"
-            ? "오늘의 공구"
-            : tab === "pickup"
-                ? "바로 픽업 가능"
-                : "진행 중인 공구";
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 제거로 픽업 헤더 문구 분기도 비활성
+    const headerTitle = tab === "today" ? "오늘의 공구" : "진행 중인 공구";
 
     const headerDesc =
         tab === "today"
             ? "오늘의 공구만 모아서 볼 수 있어요."
-            : tab === "pickup"
-                ? "바로 픽업 가능한 상품만 볼 수 있어요."
-                : "현재 예약 가능한 공동구매 상품입니다.";
+            : "현재 예약 가능한 공동구매 상품입니다.";
 
     function onChangeTab(next: TabKey) {
         setTab(next);
@@ -238,7 +239,7 @@ function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
                 </div>
 
                 <div className="mt-2 text-[18px] font-extrabold text-[color:var(--fg)] md:text-[22px]">
-                    {Number(item.price ?? 0).toLocaleString()}원
+                    {formatDisplayPrice(item.price, item.masked)}
                 </div>
 
                 {(item.metaLeft || item.metaRight) && (

@@ -1,6 +1,7 @@
 // apps/api/src/modules/public/orders.routes.ts
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { captureRefFromRequest } from "../attribution/capture.js";
+import { requireAdmin } from "../../common/guard.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -943,7 +944,12 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
         }
     );
 
-    fastify.get("/v1/orders", async (request: FastifyRequest, reply: FastifyReply) => {
+    // ⚠️ 접근제어(2026-07-20): 이 라우트는 테넌트 최근 주문 50건을 반환하며 응답에
+    // buyerName/buyerPhone/receiverName/receiverPhone/message/memo/금액/상품내역 등
+    // 개인정보가 포함된다. 기존에는 인증 없이(requireTenant만) 누구나 조회 가능했고
+    // 프론트에도 호출자가 없는 고아 라우트였으므로 관리자 인증 뒤로 이동한다.
+    // (고객 본인 주문은 /v1/orders/me, 비회원은 /v1/orders/guest/*, 셀러는 /v1/seller/orders 사용)
+    fastify.get("/v1/orders", { preHandler: requireAdmin() }, async (request: FastifyRequest, reply: FastifyReply) => {
         try {
             const { tenantId } = getTenantContext(request as FastifyRequest<PublicOrderRoute>);
 

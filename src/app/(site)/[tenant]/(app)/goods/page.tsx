@@ -15,7 +15,8 @@ type GoodsPageSearchParams = {
 };
 
 function normalizeTab(tab?: string): "today" | "pickup" | "ongoing" {
-    if (tab === "pickup") return "pickup";
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 진입 차단(들어오면 오늘의 공구로 폴백)
+    // if (tab === "pickup") return "pickup";
     if (tab === "ongoing") return "ongoing";
     return "today";
 }
@@ -45,7 +46,9 @@ async function fetchProducts(
     return (data.items ?? []).map((p) => ({
         id: String(p.id),
         title: String(p.title ?? ""),
-        price: Number(p.price ?? 0),
+        // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "?????원"으로 표시된다
+        price: p.price == null ? null : Number(p.price),
+        masked: p.masked ?? p.price == null,
         badgeLeft: undefined,
         badgeRight: undefined,
         metaLeft: p.metaLeft,

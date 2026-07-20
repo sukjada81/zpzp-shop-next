@@ -34,6 +34,16 @@ function toNumber(v: unknown, fallback = 0): number {
     return Number.isFinite(n) ? n : fallback;
 }
 
+// 비회원 가격 마스킹 (기획서 §8 — 비회원 가격 노출 차단)
+// 폐쇄몰이라 비로그인 요청에는 실판매가(price/옵션가) 필드 자체를 미전송(null)하고
+// masked 플래그만 내린다. CSS 가리기가 아니라 서버사이드에서 실가를 전송조차 하지 않음.
+// 회원 세션은 auth.routes.ts가 req.session.member = { uid, ... } 로 주입한다.
+function isMemberLoggedIn(req: unknown): boolean {
+    const uid = (req as { session?: { member?: { uid?: unknown } } } | undefined)?.session?.member
+        ?.uid;
+    return uid != null && String(uid).length > 0;
+}
+
 const DB_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function getDbNow(): Date {
@@ -502,6 +512,8 @@ export async function publicProductRoutes(app: FastifyInstance) {
             },
         });
 
+        const masked = !isMemberLoggedIn(req); // 비회원이면 실판매가 미전송
+
         const items = rows.map((r) => {
             const thumb = goodsImageUrl(r.image1);
             const hideScheduleMeta = isPickupReadyCate(r.cate);
@@ -521,7 +533,8 @@ export async function publicProductRoutes(app: FastifyInstance) {
             return {
                 id: toId(r.uid),
                 title: String(r.name ?? ""),
-                price: toNumber(r.price, 0),
+                price: masked ? null : toNumber(r.price, 0),
+                masked,
                 categoryLabel: categoryLabelFromCate(r.cate),
                 metaLeft: saleEndDateText,
                 metaRight: pickupBadgeText,
@@ -624,10 +637,17 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const hasPickupPeriod = !!row.pickup_start_at || !!row.pickup_end_at;
         const hideScheduleMeta = isPickupReadyCate(row.cate);
 
+        const masked = !isMemberLoggedIn(req); // 비회원이면 실판매가 미전송
+        // 비회원엔 옵션가(기본가+추가금)와 추가금 자체를 모두 미전송 — 역산 방지
+        const maskedOptions = masked
+            ? options.map((o) => ({ ...o, price: null, addPrice: undefined }))
+            : options;
+
         const product = {
             id: toId(row.uid),
             title: String(row.name ?? ""),
-            price: toNumber(row.price, 0),
+            price: masked ? null : toNumber(row.price, 0),
+            masked,
             description: desc,
             categoryLabel: categoryLabelFromCate(row.cate),
             meta: {
@@ -644,7 +664,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 pickupNote: hideScheduleMeta ? null : (row.pickup_note ? String(row.pickup_note) : null),
             },
             images,
-            options,
+            options: maskedOptions,
             sourceTenantId: row.tenant_id != null ? toId(row.tenant_id) : null,
             saleStartAt: formatDbDateTime(row.sale_start_at),
             saleEndAt: formatDbDateTime(row.sale_end_at),

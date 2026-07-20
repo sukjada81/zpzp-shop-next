@@ -19,7 +19,9 @@ type RecentOrdersResponse = {
 type CardItem = {
     id: string;
     title: string;
-    price: number;
+    // 비회원 마스킹(§8): 비로그인이면 서버가 price=null + masked=true 로 내림
+    price: number | null;
+    masked?: boolean;
     tags?: string[];
     thumbnailUrl?: string;
     categoryLabel?: string;
@@ -98,6 +100,8 @@ async function fetchProductDetail(
 
 function displayCategoryLabel(label?: string) {
     if (label === "오늘의 공구") return "오늘의 공구";
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — "바로 픽업 가능" 카테고리 배지는 노출하지 않음
+    if (label === "바로 픽업 가능") return undefined;
     return label;
 }
 
@@ -105,7 +109,9 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
     return (items ?? []).map((p) => ({
         id: String(p.id ?? ""),
         title: String(p.title ?? ""),
-        price: Number(p.price ?? 0),
+        // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "?????원"으로 표시된다
+        price: p.price == null ? null : Number(p.price),
+        masked: p.masked ?? p.price == null,
         thumbnailUrl: p.thumbnailUrl,
         cate: p.cate ?? null,
         categoryLabel: displayCategoryLabel(p.categoryLabel),
@@ -161,7 +167,9 @@ function toOngoingItems(
             id: String(p.id),
             tenant,
             title: String(p.title ?? ""),
-            price: Number(p.price ?? 0),
+            // 비회원 마스킹(§8): null 보존
+            price: p.price == null ? null : Number(p.price),
+            masked: p.masked ?? p.price == null,
             href: `/${tenant}/goods/${p.id}`,
             images,
             options,
@@ -193,9 +201,10 @@ export default async function HomePage({
 
     if (!tenant) notFound();
 
-    const [todayProducts, pickupProducts, recentOrders] = await Promise.all([
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 상품 조회 중단(fetchProducts type:"pickup")
+    const [todayProducts, recentOrders] = await Promise.all([
         fetchProducts(tenant, { take: 10, type: "today" }),
-        fetchProducts(tenant, { take: 8, type: "pickup" }),
+        // fetchProducts(tenant, { take: 8, type: "pickup" }),
         fetchRecentOrders(tenant, 10),
     ]);
 
@@ -210,11 +219,12 @@ export default async function HomePage({
         items: toCardItems(todayProducts),
     };
 
-    const pickupSection: GridSection = {
-        title: "📦 바로 픽업 가능",
-        href: `/${tenant}/goods?tab=pickup`,
-        items: toCardItems(pickupProducts),
-    };
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — "바로 픽업 가능" 섹션 정의/노출 중단
+    // const pickupSection: GridSection = {
+    //     title: "📦 바로 픽업 가능",
+    //     href: `/${tenant}/goods?tab=pickup`,
+    //     items: toCardItems(pickupProducts),
+    // };
 
     return (
         <main className="mx-auto w-full max-w-[520px] px-4 pb-28 pt-3">
@@ -234,12 +244,14 @@ export default async function HomePage({
             />
             <Grid2 tenant={tenant} items={todaySection.items} emptyText="등록된 상품이 없습니다." />
 
+            {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — "바로 픽업 가능" 섹션 노출 중단
             <SectionTitle
                 title={pickupSection.title}
                 href={pickupSection.href}
                 description={pickupSection.description}
             />
             <Grid2 tenant={tenant} items={pickupSection.items} emptyText="등록된 상품이 없습니다." />
+            */}
 
             {todayProducts.length > 0 && (
                 <OngoingGroupBuySection

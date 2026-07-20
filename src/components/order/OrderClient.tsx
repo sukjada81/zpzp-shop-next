@@ -119,7 +119,8 @@ export default function OrderClient(props: {
     const [receiverPhoneB, setReceiverPhoneB] = useState("");
     const [receiverPhoneC, setReceiverPhoneC] = useState("");
 
-    const [pickupAt, setPickupAt] = useState(nowLocalDateTimeInputValue());
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 희망일시 입력 비활성(주문 시 pickupAt=null 전송)
+    // const [pickupAt, setPickupAt] = useState(nowLocalDateTimeInputValue());
     const [message, setMessage] = useState("");
     const [memo, setMemo] = useState("");
 
@@ -300,7 +301,9 @@ export default function OrderClient(props: {
                     buyerPhone: normalizedBuyerPhone,
                     receiverName: normalizedReceiverName,
                     receiverPhone: normalizedReceiverPhone,
-                    pickupAt: toApiDateTime(pickupAt),
+                    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업일시 전송 중단(장바구니/상세와 동일하게 null)
+                    // 기존: pickupAt: toApiDateTime(pickupAt),
+                    pickupAt: null,
                     message: message.trim(),
                     memo: memo.trim(),
                     direct: isDirectOrder ? 1 : 0,
@@ -520,15 +523,19 @@ export default function OrderClient(props: {
             </section>
 
             <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[16px] font-extrabold text-slate-900">픽업/요청사항</div>
+                {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — 섹션명에서 "픽업" 제거 */}
+                <div className="text-[16px] font-extrabold text-slate-900">요청사항</div>
 
                 <div className="mt-3 space-y-3">
+                    {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 희망일시 입력 노출 중단
+                        (pickupAt state는 유지하며 주문 생성 시 null로 전송됨 → API 스키마 무영향)
                     <input
                         type="datetime-local"
                         value={pickupAt}
                         onChange={(e) => setPickupAt(e.target.value)}
                         className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
                     />
+                    */}
                     <textarea
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}

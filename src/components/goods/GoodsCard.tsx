@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import type { GoodsListItem } from "@/components/goods/GoodsListClient";
+import { formatDisplayPrice } from "@/lib/price";
 
 export default function GoodsCard(props: { tenant: string; item: GoodsListItem }) {
     const { tenant, item } = props;
@@ -42,7 +43,7 @@ export default function GoodsCard(props: { tenant: string; item: GoodsListItem }
                 </div>
 
                 <div className="mt-3 line-clamp-2 text-sm font-bold text-[color:var(--fg)]">{item.title}</div>
-                <div className="mt-2 text-lg font-extrabold text-[color:var(--fg)]">{Number(item.price ?? 0).toLocaleString()}원</div>
+                <div className="mt-2 text-lg font-extrabold text-[color:var(--fg)]">{formatDisplayPrice(item.price, item.masked)}</div>
 
                 {(item.metaLeft || item.metaRight) && (
                     <div className="mt-2 flex items-center justify-between text-[11px] font-semibold text-[color:var(--muted)]">

@@ -13,6 +13,7 @@ import {
     readQuickOrderProfile,
 } from "@/lib/profile/quickOrderProfile";
 import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
+import { formatDisplayPrice } from "@/lib/price";
 
 type GoodsOption = {
     id: string;
@@ -30,7 +31,9 @@ type GoodsOption = {
 export type GoodsDetailData = {
     id: string;
     title: string;
-    price: number;
+    // 비회원 마스킹(§8): 비로그인이면 서버가 price=null + masked=true, options[].price=null 로 내림
+    price: number | null;
+    masked?: boolean;
     description?: string | null;
     badges?: { left?: string; right?: string };
     meta?: {
@@ -319,7 +322,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             const q = qty[o.id] ?? 0;
             if (!q) return acc;
 
-            const unit = o.price ?? data.price;
+            // 비회원 마스킹 시 price가 null이므로 계산은 0으로 안전하게 접고, 표시는 masked 분기로 처리
+            const unit = o.price ?? data.price ?? 0;
 
             acc.push({
                 optionId: o.id,
@@ -375,10 +379,12 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     const descIsHtml = looksLikeHtml(descRaw);
     const descHtml = descIsHtml ? absolutizeHtmlImageSrc(sanitizeHtml(descRaw)) : "";
 
-    const pickupPeriodText = buildPickupPeriodText(
-        data.meta?.pickupStartAt,
-        data.meta?.pickupEndAt
-    );
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 기간 계산/표시 중단
+    // (formatPickupDate / buildPickupPeriodText 함수는 정책 복귀 대비 그대로 남겨둠)
+    // const pickupPeriodText = buildPickupPeriodText(
+    //     data.meta?.pickupStartAt,
+    //     data.meta?.pickupEndAt
+    // );
 
     const mainImage = safeImages[imgIdx];
     const mainImageUrl = toAbsoluteImageUrl(mainImage?.key);
@@ -682,19 +688,18 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     </div>
 
                     <div className="mt-3 text-[16px] font-bold text-[color:var(--fg)]">
-                        {Number(data.price ?? 0).toLocaleString()}원
+                        {formatDisplayPrice(data.price, data.masked)}
                     </div>
 
-                    {(data.meta?.timeLeft || pickupPeriodText || data.meta?.pickupNote) ? (
+                    {data.meta?.timeLeft ? (
                         <div className="mt-4 flex flex-wrap gap-2">
-                            {data.meta?.timeLeft ? (
-                                <MetaBadge
-                                    icon={<Clock3 size={14} strokeWidth={2} />}
-                                    text={allSoldout ? "품절" : data.meta.timeLeft}
-                                    tone={allSoldout ? "default" : "danger"}
-                                />
-                            ) : null}
+                            <MetaBadge
+                                icon={<Clock3 size={14} strokeWidth={2} />}
+                                text={allSoldout ? "품절" : data.meta.timeLeft}
+                                tone={allSoldout ? "default" : "danger"}
+                            />
 
+                            {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업일/픽업안내 배지 노출 중단
                             {pickupPeriodText ? (
                                 <MetaBadge
                                     icon={<Truck size={14} strokeWidth={2} />}
@@ -710,6 +715,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                     tone="default"
                                 />
                             ) : null}
+                            */}
                         </div>
                     ) : null}
                 </section>
@@ -754,7 +760,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             const isMaxReached =
                                 maxQty !== Number.POSITIVE_INFINITY && optionQty >= maxQty;
                             // TODO(2026-04-24): 한정수량 상품 도입 시 stockText 뱃지 재활성화
-                            const displayPrice = Number(option.price ?? data.price ?? 0);
+                            // 비회원 마스킹(§8): null 보존 — 헬퍼가 "?????원"으로 표시
+                            const displayPrice = option.price ?? data.price;
 
                             return (
                                 <div
@@ -783,7 +790,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                         ) : null}
 
                                         <div className="mt-2 text-[16px] text-[color:var(--muted)]">
-                                            {displayPrice.toLocaleString()}원
+                                            {formatDisplayPrice(displayPrice, data.masked)}
                                         </div>
                                     </div>
 
@@ -851,7 +858,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                                         <span className="absolute inset-y-0 right-4 flex flex-col items-end justify-center text-right">
                                             <span className="text-[13px] opacity-90">총 {totalQty}개</span>
                                             <span className="text-[13px] opacity-90">
-                                                {totalPrice.toLocaleString()}원
+                                                {formatDisplayPrice(data.masked ? null : totalPrice, data.masked)}
                                             </span>
                                         </span>
                                     ) : null}

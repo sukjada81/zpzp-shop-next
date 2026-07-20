@@ -25,7 +25,9 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                 const detail: GoodsDetailData = {
                     id: String(p.id),
                     title: String(p.title ?? ""),
-                    price: Number(p.price ?? 0),
+                    // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "?????원"으로 표시된다
+                    price: p.price == null ? null : Number(p.price),
+                    masked: p.masked ?? p.price == null,
                     description: p.description ?? null,
                     badges: (p as any).badges,
                     meta: {
@@ -91,7 +93,9 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
         const detail: GoodsDetailData = {
             id: String(found.id),
             title: String(found.title ?? ""),
-            price: Number(found.price ?? 0),
+            // 비회원 마스킹(§8): null 보존
+            price: found.price == null ? null : Number(found.price),
+            masked: found.masked ?? found.price == null,
             description: null,
             badges: undefined,
             meta: {

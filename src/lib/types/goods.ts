@@ -21,7 +21,9 @@ export type PublicProductImage = {
 export type PublicProductListItem = {
     id: string;
     title: string;
-    price: number;
+    // 비회원 마스킹(기획서 §8): 비로그인이면 서버가 price=null + masked=true 로 내림
+    price: number | null;
+    masked?: boolean;
     metaLeft?: string;
     metaRight?: string;
     thumbnailUrl?: string;
@@ -54,7 +56,9 @@ export type PublicProductDetailResponse = {
     product: {
         id: string;
         title: string;
-        price: number;
+        // 비회원 마스킹(기획서 §8): 비로그인이면 서버가 price=null + masked=true, options[].price=null 로 내림
+        price: number | null;
+        masked?: boolean;
         description?: string | null;
         cate?: string | null;
         categoryLabel?: string;

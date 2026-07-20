@@ -153,6 +153,16 @@ function dedupeOrders(items: OrderSummary[]) {
     return Array.from(map.values());
 }
 
+// 줍줍은 배송 전용, 정책 변경 대비 보존 —
+// 서버(apps/api)는 기존 주문 데이터를 위해 픽업 배지/안내 문구를 계속 내려주므로,
+// 고객 화면에서는 픽업 문구만 걸러서 노출하지 않는다. (API·DB는 그대로 둠)
+function hidePickupText(text?: string | null): string {
+    const t = String(text ?? "").trim();
+    if (!t) return "";
+    if (t.includes("픽업") || t.includes("매장 방문 시 수령")) return "";
+    return t;
+}
+
 function getFooterVariant(text: string) {
     if (text.includes("미수령")) return "warning";
     if (text.includes("취소")) return "danger";
@@ -422,10 +432,12 @@ export default function OrdersClient(props: {
                 orders.map((order) => {
                     const isHighlighted = highlightOrderNo === order.orderNo;
                     const href = `/${tenant}/orders/${encodeURIComponent(order.orderNo)}`;
-                    const footerText = order.footerText || order.status;
+                    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 문구 노출 차단
+                    const footerText = hidePickupText(order.footerText) || order.status;
+                    const badgeText = hidePickupText(order.badgeText);
                     const footerVariant = getFooterVariant(footerText);
                     const footerClass = getFooterClass(footerVariant);
-                    const badgeClass = order.badgeText ? getBadgeClass(order.badgeText) : "";
+                    const badgeClass = badgeText ? getBadgeClass(badgeText) : "";
 
                     return (
                         <article
@@ -444,7 +456,7 @@ export default function OrdersClient(props: {
                                             {formatOrderDateLabel(order.createdAt)}
                                         </div>
 
-                                        {order.badgeText ? (
+                                        {badgeText ? (
                                             <span
                                                 className={[
                                                     "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold",
@@ -452,7 +464,7 @@ export default function OrdersClient(props: {
                                                 ].join(" ")}
                                             >
                                                 <CalendarDays size={13} />
-                                                <span>{order.badgeText}</span>
+                                                <span>{badgeText}</span>
                                             </span>
                                         ) : null}
                                     </div>
