@@ -15,6 +15,7 @@ import {
     ShieldCheck,
     ChevronsUpDown,
     Building2,
+    PackageCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -98,6 +99,7 @@ export default function SellerShell({
     const salesHref = `/${tenant}/sales`;
     const ordersHref = `/${tenant}/orders`;
     const membersHref = `/${tenant}/members`;
+    const productsHref = `/${tenant}/products`;
     const applicationsHref = `/${tenant}/applications`;
     const tenantsHref = `/${tenant}/tenants`;
 
@@ -111,6 +113,9 @@ export default function SellerShell({
     const isMembersActive =
         pathname.startsWith(`/${tenant}/members`) ||
         pathname.startsWith(`/seller/${tenant}/members`);
+    const isProductsActive =
+        pathname.startsWith(`/${tenant}/products`) ||
+        pathname.startsWith(`/seller/${tenant}/products`);
     const isApplicationsActive =
         pathname.startsWith(`/${tenant}/applications`) ||
         pathname.startsWith(`/seller/${tenant}/applications`);
@@ -213,6 +218,7 @@ export default function SellerShell({
     }
 
     const currentTenantLabel = tenant === "__all__" ? "전체 지점" : tenant;
+    const isLinker = role === "linker";
 
     const tenantSwitcher =
         isSuperAdmin ? (
@@ -270,13 +276,13 @@ export default function SellerShell({
         <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
             <div className="mb-5">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Seller Console
+                    {isLinker ? "Linker Console" : "Seller Console"}
                 </div>
                 <div className="mt-2 break-words text-2xl font-extrabold tracking-[-0.04em] text-slate-900">
                     {tenant === "__all__" ? "전체 지점" : tenant}
                 </div>
                 <div className="mt-2 text-sm text-slate-500">
-                    지점 운영 / 주문 / 회원 / 매출 통계
+                    {isLinker ? "내 줍줍샵 상품과 슬롯 관리" : "지점 운영 / 주문 / 회원 / 매출 통계"}
                 </div>
                 {isAdmin ? (
                     <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700">
@@ -289,32 +295,39 @@ export default function SellerShell({
             {tenantSwitcher}
 
             <div className="space-y-2">
-                <NavItem
+                {!isLinker ? <NavItem
                     href={dashboardHref}
                     label="대시보드"
                     icon={LayoutDashboard}
                     active={isDashboardActive}
                     onClick={closeMobileMenu}
-                />
-                <NavItem
+                /> : null}
+                {!isLinker ? <NavItem
                     href={salesHref}
                     label="매출통계"
                     icon={BarChart3}
                     active={isSalesActive}
                     onClick={closeMobileMenu}
-                />
-                <NavItem
+                /> : null}
+                {!isLinker ? <NavItem
                     href={ordersHref}
                     label="주문관리"
                     icon={ShoppingBag}
                     active={isOrdersActive}
                     onClick={closeMobileMenu}
-                />
-                <NavItem
+                /> : null}
+                {!isLinker ? <NavItem
                     href={membersHref}
                     label="회원관리"
                     icon={Users}
                     active={isMembersActive}
+                    onClick={closeMobileMenu}
+                /> : null}
+                <NavItem
+                    href={productsHref}
+                    label="상품관리"
+                    icon={PackageCheck}
+                    active={isProductsActive}
                     onClick={closeMobileMenu}
                 />
                 {isSuperAdmin ? (
