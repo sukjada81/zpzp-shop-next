@@ -66,6 +66,24 @@ export async function sellerAccessCheckRoutes(app: FastifyInstance) {
                 return reply.send({ ok: true, status: "active", role: bestRole });
             }
 
+            // 활성 링커는 자신의 샵 상품관리 화면에 접근할 수 있다.
+            // 주문/회원/매출 권한과 섞이지 않도록 별도 role을 반환한다.
+            const linker = await app.prisma.zpzp_linker.findFirst({
+                where: {
+                    member_uid: memberUid,
+                    status: "active",
+                    OR: [
+                        { tenant_id: tenantId },
+                        { shop_slug: String(req.tenantSlug ?? "") },
+                    ],
+                },
+                select: { uid: true },
+            });
+
+            if (linker) {
+                return reply.send({ ok: true, status: "active", role: "linker" });
+            }
+
             // 2. 지점 셀러 멤버십 조회 (status 무관)
             const tenantMs = await app.prisma.mallRN_member_membership.findFirst({
                 where: {

@@ -3302,6 +3302,57 @@ model zpzp_linker {
   @@map("zpzp_linker")
 }
 
+model mallRN_linker_products {
+  uid                     BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  linker_uid              Int
+  product_uid             Int      @db.UnsignedInt
+  selection_status        String   @default("selected") @db.VarChar(20)
+  display_status          String   @default("visible") @db.VarChar(20)
+  display_order           Int      @default(0) @db.UnsignedInt
+  product_status_snapshot String   @default("") @db.VarChar(20)
+  selected_at             DateTime @default(now()) @db.DateTime(0)
+  selected_by             Int?     @db.UnsignedInt
+  removed_at              DateTime? @db.DateTime(0)
+  removed_by              Int?     @db.UnsignedInt
+  remove_reason           String?  @db.VarChar(255)
+  last_status_checked_at  DateTime? @db.DateTime(0)
+  created_at              DateTime @default(now()) @db.DateTime(0)
+  updated_at              DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@unique([linker_uid, product_uid], map: "uq_linker_product")
+  @@index([linker_uid, selection_status], map: "idx_linker_selection")
+  @@index([linker_uid, display_status, display_order], map: "idx_linker_display_order")
+  @@index([product_uid], map: "idx_linker_product_uid")
+  @@map("mallRN_linker_products")
+}
+
+model mallRN_linker_product_logs {
+  uid                     BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  linker_uid              Int
+  product_uid             Int?     @db.UnsignedInt
+  linker_product_uid      BigInt?   @db.UnsignedBigInt
+  action_type             String   @db.VarChar(30)
+  action_scope            String   @default("single") @db.VarChar(20)
+  previous_value          Json?
+  changed_value           Json?
+  slot_limit_snapshot     Int      @default(0) @db.UnsignedInt
+  slot_used_before        Int      @default(0) @db.UnsignedInt
+  slot_used_after         Int      @default(0) @db.UnsignedInt
+  product_status_snapshot String?  @db.VarChar(20)
+  reason                  String?  @db.VarChar(255)
+  request_id              String   @db.VarChar(50)
+  actor_type              String   @default("linker") @db.VarChar(20)
+  actor_uid               Int?     @db.UnsignedInt
+  ip_address              String?  @db.VarChar(45)
+  user_agent              String?  @db.VarChar(500)
+  created_at              DateTime @default(now()) @db.DateTime(0)
+
+  @@index([linker_uid, created_at], map: "idx_linker_log_created")
+  @@index([product_uid], map: "idx_linker_log_product")
+  @@index([request_id], map: "idx_linker_log_request")
+  @@map("mallRN_linker_product_logs")
+}
+
 model zpzp_referral_attribution {
   uid               Int                     @id @default(autoincrement())
   member_uid        Int                     @unique(map: "uq_zpzp_attr_member") @db.UnsignedInt

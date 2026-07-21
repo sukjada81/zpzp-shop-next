@@ -460,6 +460,26 @@ function isPickupReadyCate(cate?: bigint | null) {
 export async function publicProductRoutes(app: FastifyInstance) {
     app.addHook("preHandler", requireTenant());
 
+    async function getLinkerSelection(req: any) {
+        const slug = String(req.cookies?.zpzp_ref ?? "").trim().toLowerCase();
+        if (!slug) return null;
+        const linker = await app.prisma.zpzp_linker.findFirst({
+            where: { shop_slug: slug, status: "active" },
+            select: { uid: true },
+        });
+        if (!linker) return null;
+        const rows = await app.prisma.mallRN_linker_products.findMany({
+            where: {
+                linker_uid: linker.uid,
+                selection_status: "selected",
+                display_status: "visible",
+            },
+            orderBy: [{ display_order: "asc" }, { selected_at: "desc" }],
+            select: { product_uid: true, display_order: true },
+        });
+        return { linkerUid: linker.uid, rows, ids: rows.map((row) => row.product_uid) };
+    }
+
     app.get("/v1/public/products", async (req) => {
         const tenantSlug: string | undefined = (req as any).tenantSlug;
         const tenantId = (req as any).tenantId as bigint;
@@ -477,6 +497,19 @@ export async function publicProductRoutes(app: FastifyInstance) {
 
         const segment = q.type ?? q.tab;
         const where: Prisma.mallRN_goodsWhereInput = buildPublicGoodsWhere(tenantId);
+        const linkerSelection = await getLinkerSelection(req);
+        if (linkerSelection) {
+            const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+            where.AND = [
+                ...existingAnd,
+                {
+                    OR: [
+                        { tenant_id: tenantId },
+                        { tenant_id: HQ_TENANT_ID, uid: { in: linkerSelection.ids } },
+                    ],
+                },
+            ];
+        }
 
         if (q.q?.trim()) {
             const keyword = q.q.trim();
@@ -567,6 +600,16 @@ export async function publicProductRoutes(app: FastifyInstance) {
 
         const params = z.object({ id: z.string() }).parse(req.params);
         const uid = Number(params.id);
+        const linkerSelection = await getLinkerSelection(req);
+        if (linkerSelection) {
+            const candidate = await app.prisma.mallRN_goods.findUnique({
+                where: { uid },
+                select: { tenant_id: true },
+            });
+            if (candidate?.tenant_id === HQ_TENANT_ID && !linkerSelection.ids.includes(uid)) {
+                return reply.code(404).send({ ok: false });
+            }
+        }
 
         const row = await app.prisma.mallRN_goods.findFirst({
             where: {
