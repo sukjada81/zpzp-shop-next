@@ -17,7 +17,7 @@ import {
     Building2,
     PackageCheck,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type SessionResponse = {
     ok?: boolean;
@@ -182,12 +182,9 @@ export default function SellerShell({
         setTenantSwitcherOpen(false);
     }, [pathname]);
 
-    const loginHref = useMemo(() => {
-        if (typeof window === "undefined") return "#";
-        const origin = window.location.origin;
-        const returnTo = `${origin}/${tenant}`;
-        return `/auth/kakao/login?tenant=${encodeURIComponent(tenant)}&returnTo=${encodeURIComponent(returnTo)}`;
-    }, [tenant]);
+    const sellerOrigin = String(process.env.SELLER_ORIGIN || "").replace(/\/+$/, "");
+    const returnTo = sellerOrigin ? `${sellerOrigin}/${tenant}` : `/${tenant}`;
+    const loginHref = `/auth/kakao/login?tenant=${encodeURIComponent(tenant)}&returnTo=${encodeURIComponent(returnTo)}`;
 
     async function handleLogout() {
         try {

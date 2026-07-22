@@ -6,6 +6,8 @@ import { requireTenant } from "../../common/guard.js";
 
 const HQ_TENANT_ID = BigInt(0);
 const DEFAULT_SLOT_LIMIT = 20;
+const MAX_FILTERED_ALL_RESULTS = 10_000;
+const GOODS_STATUS_SELLING = "published"; // product active
 
 type SessionMember = { uid?: string | number };
 
@@ -22,11 +24,35 @@ function isSelling(row: {
     sale_end_at: Date | null;
 }) {
     return (
-        row.status === "active" &&
+        row.status === GOODS_STATUS_SELLING &&
         row.sale_use === 1 &&
         row.deleted_at == null &&
         (!row.sale_end_at || row.sale_end_at.getTime() >= Date.now())
     );
+}
+
+function availableGoodsWhere(selectedIds: number[], keywordRaw: string): Prisma.mallRN_goodsWhereInput {
+    const keyword = keywordRaw.trim();
+    const search: Prisma.mallRN_goodsWhereInput[] = keyword
+        ? [
+            { name: { contains: keyword } },
+            ...(Number.isInteger(Number(keyword)) && Number(keyword) > 0
+                ? [{ uid: Number(keyword) }]
+                : []),
+        ]
+        : [];
+    return {
+        tenant_id: HQ_TENANT_ID,
+        status: GOODS_STATUS_SELLING,
+        sale_use: 1,
+        auth_ck: "Y",
+        deleted_at: null,
+        ...(selectedIds.length > 0 ? { uid: { notIn: selectedIds } } : {}),
+        AND: [
+            { OR: [{ sale_end_at: null }, { sale_end_at: { gte: new Date() } }] },
+            ...(search.length > 0 ? [{ OR: search }] : []),
+        ],
+    };
 }
 
 function imageUrl(raw: string | null) {
@@ -52,18 +78,56 @@ async function getLinker(app: FastifyInstance, req: FastifyRequest) {
     });
 }
 
-async function getSlotPolicy(app: FastifyInstance, linker: { member_uid: number }) {
+export async function getLinkerSlotPolicy(app: FastifyInstance, linker: { member_uid: number }) {
     const member = await app.prisma.mallRN_member.findUnique({
         where: { uid: linker.member_uid },
         select: { id: true },
     });
     const yearMonth = new Date().toISOString().slice(0, 7);
-    const grade = member
-        ? await app.prisma.mallRN_member_grade.findUnique({
-              where: { member_id_year_month: { member_id: member.id, year_month: yearMonth } },
-          })
-        : null;
-    const gradeCode = grade?.grade_code || "기본";
+    const lookupTypeSetting = await app.prisma.zpzp_setting.findUnique({
+        where: { name: "linker_grade_lookup_type" },
+    });
+    const gradeLookupType = lookupTypeSetting?.value === "2" ? 2 : 1;
+
+    let gradeCode = "기본";
+    if (member) {
+        if (gradeLookupType === 1) {
+            // 타입 1: 현재 월 자료가 없어도 가장 최근 확정 등급을 그대로 유지한다.
+            const latestGrade = await app.prisma.mallRN_member_grade.findFirst({
+                where: { member_id: member.id, year_month: { lte: yearMonth } },
+                orderBy: [{ year_month: "desc" }, { uid: "desc" }],
+            });
+            gradeCode = latestGrade?.grade_code || "기본";
+        } else {
+            // 타입 2: 현재 월 등급을 우선 사용한다.
+            const currentGrade = await app.prisma.mallRN_member_grade.findUnique({
+                where: { member_id_year_month: { member_id: member.id, year_month: yearMonth } },
+            });
+            if (currentGrade) {
+                gradeCode = currentGrade.grade_code;
+            } else {
+                // 현재 월 등급이 없으면 마지막 달의 기준값(base_amount)에
+                // 현재 활성 등급 정책(min_sales/max_sales)을 적용해 기본 산정한다.
+                const lastGrade = await app.prisma.mallRN_member_grade.findFirst({
+                    where: { member_id: member.id, year_month: { lt: yearMonth } },
+                    orderBy: [{ year_month: "desc" }, { uid: "desc" }],
+                });
+                if (lastGrade) {
+                    const baseAmount = Number(lastGrade.base_amount ?? 0);
+                    const gradePolicies = await app.prisma.mallRN_member_grade_policy.findMany({
+                        where: { is_active: true },
+                        orderBy: [{ sort: "desc" }, { uid: "desc" }],
+                    });
+                    const matchedPolicy = gradePolicies.find((policy) => {
+                        const min = Number(policy.min_sales ?? 0);
+                        const max = Number(policy.max_sales ?? 0);
+                        return baseAmount >= min && (max === 0 || baseAmount <= max);
+                    });
+                    gradeCode = matchedPolicy?.grade_code || "기본";
+                }
+            }
+        }
+    }
     const settingNames = [
         `linker_slot_${gradeCode.toLowerCase()}`,
         "linker_slot_default",
@@ -74,6 +138,7 @@ async function getSlotPolicy(app: FastifyInstance, linker: { member_uid: number 
     const parsed = Number(raw ?? DEFAULT_SLOT_LIMIT);
     return {
         gradeCode,
+        gradeLookupType,
         slotLimit: Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_SLOT_LIMIT,
     };
 }
@@ -85,8 +150,8 @@ async function getSelectedState(app: FastifyInstance, linkerUid: number) {
     });
     const products = selections.length
         ? await app.prisma.mallRN_goods.findMany({
-              where: { uid: { in: selections.map((row) => row.product_uid) } },
-          })
+            where: { uid: { in: selections.map((row) => row.product_uid) } },
+        })
         : [];
     const productMap = new Map(products.map((row) => [row.uid, row]));
     const slotUsed = selections.reduce((sum, row) => {
@@ -94,6 +159,54 @@ async function getSelectedState(app: FastifyInstance, linkerUid: number) {
         return sum + (product && isSelling(product) ? 1 : 0);
     }, 0);
     return { selections, productMap, slotUsed };
+}
+
+async function hideOverflowProducts(
+    app: FastifyInstance,
+    req: FastifyRequest,
+    linkerUid: number,
+    state: Awaited<ReturnType<typeof getSelectedState>>,
+    slotLimit: number
+) {
+    const sellingSelections = state.selections.filter((selection) => {
+        const product = state.productMap.get(selection.product_uid);
+        return Boolean(product && isSelling(product));
+    });
+    if (sellingSelections.length <= slotLimit) return false;
+
+    const overflow = sellingSelections
+        .slice(slotLimit)
+        .filter((selection) => selection.display_status === "visible");
+    if (overflow.length === 0) return false;
+
+    const requestId = randomUUID();
+    await app.prisma.$transaction(async (tx) => {
+        for (const selection of overflow) {
+            await tx.mallRN_linker_products.update({
+                where: { uid: selection.uid },
+                data: { display_status: "hidden", last_status_checked_at: new Date() },
+            });
+            await tx.mallRN_linker_product_logs.create({
+                data: {
+                    linker_uid: linkerUid,
+                    product_uid: selection.product_uid,
+                    linker_product_uid: selection.uid,
+                    action_type: "AUTO_HIDDEN_SLOT_EXCEEDED",
+                    action_scope: "system",
+                    previous_value: { displayStatus: selection.display_status },
+                    changed_value: { displayStatus: "hidden" },
+                    slot_limit_snapshot: slotLimit,
+                    slot_used_before: state.slotUsed,
+                    slot_used_after: state.slotUsed,
+                    request_id: requestId,
+                    actor_type: "system",
+                    reason: "판매 재개 또는 등급 변경으로 슬롯을 초과하여 자동 숨김",
+                    ...requestMeta(req),
+                },
+            });
+        }
+    });
+    return true;
 }
 
 function productDto(product: any, selection?: any, sales?: { order_count: bigint; sale_qty: bigint }) {
@@ -119,9 +232,7 @@ function productDto(product: any, selection?: any, sales?: { order_count: bigint
 }
 
 export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
-    app.addHook("preHandler", requireTenant());
-
-    app.get("/v1/seller/linker-products", async (req, reply) => {
+    app.get("/v1/seller/linker-products", { preHandler: requireTenant() }, async (req, reply) => {
         const linker = await getLinker(app, req);
         if (!linker) return reply.code(403).send({ ok: false, message: "활성 링커 계정이 필요합니다." });
 
@@ -130,11 +241,16 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
             availableQ: z.string().default(""),
             selectedPage: z.coerce.number().int().min(1).default(1),
             availablePage: z.coerce.number().int().min(1).default(1),
-            pageSize: z.coerce.number().int().min(10).max(100).default(20),
+            // 클라이언트가 예전 pageSize를 보내더라도 서버에서는 항상 5개씩 조회한다.
+            pageSize: z.coerce.number().int().optional(),
         }).parse(req.query);
+        const pageSize = 5;
 
-        const policy = await getSlotPolicy(app, linker);
-        const state = await getSelectedState(app, linker.uid);
+        const policy = await getLinkerSlotPolicy(app, linker);
+        let state = await getSelectedState(app, linker.uid);
+        if (await hideOverflowProducts(app, req, linker.uid, state, policy.slotLimit)) {
+            state = await getSelectedState(app, linker.uid);
+        }
         const selectedIds = new Set(state.selections.map((row) => row.product_uid));
         const salesRows = state.selections.length
             ? await app.prisma.$queryRaw<Array<{ g_uid: number; order_count: bigint; sale_qty: bigint }>>(Prisma.sql`
@@ -152,19 +268,8 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
             : [];
         const salesMap = new Map(salesRows.map((row) => [row.g_uid, row]));
 
-        const availableProducts = await app.prisma.mallRN_goods.findMany({
-            where: {
-                tenant_id: HQ_TENANT_ID,
-                status: "active",
-                sale_use: 1,
-                auth_ck: "Y",
-                deleted_at: null,
-            },
-            orderBy: [{ sort_order: "desc" }, { uid: "desc" }],
-        });
-
         const selectedKeyword = query.selectedQ.trim().toLowerCase();
-        const availableKeyword = query.availableQ.trim().toLowerCase();
+        const availableKeyword = query.availableQ.trim();
         const selectedItems = state.selections
             .map((selection) => {
                 const product = state.productMap.get(selection.product_uid);
@@ -173,19 +278,28 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
             .filter((item): item is NonNullable<typeof item> => Boolean(item))
             .filter((item) => item.slotCounted || item.salesCount > 0)
             .filter((item) => !selectedKeyword || item.name.toLowerCase().includes(selectedKeyword) || item.id.includes(selectedKeyword));
-        const availableItems = availableProducts
-            .filter((product) => !selectedIds.has(product.uid) && isSelling(product))
-            .map((product) => productDto(product))
-            .filter((item) => !availableKeyword || item.name.toLowerCase().includes(availableKeyword) || item.id.includes(availableKeyword));
+        const availableWhere = availableGoodsWhere([...selectedIds], availableKeyword);
+        const availableSkip = (query.availablePage - 1) * pageSize;
+        const [availableTotal, availableProducts] = await Promise.all([
+            app.prisma.mallRN_goods.count({ where: availableWhere }),
+            app.prisma.mallRN_goods.findMany({
+                where: availableWhere,
+                orderBy: [{ sort_order: "desc" }, { uid: "desc" }],
+                skip: availableSkip,
+                take: pageSize,
+            }),
+        ]);
+        const availableItems = availableProducts.map((product) => productDto(product));
 
         const selectedStopped = selectedItems.filter((item) => !item.slotCounted).length;
-        const selectedStart = (query.selectedPage - 1) * query.pageSize;
-        const availableStart = (query.availablePage - 1) * query.pageSize;
+        const selectedStart = (query.selectedPage - 1) * pageSize;
+        const selectedPageItems = selectedItems.slice(selectedStart, selectedStart + pageSize);
         return reply.send({
             ok: true,
             linker: { uid: linker.uid, shopSlug: linker.shop_slug, shopName: linker.shop_name },
             summary: {
                 grade: policy.gradeCode,
+                gradeLookupType: policy.gradeLookupType,
                 slotLimit: policy.slotLimit,
                 slotUsed: state.slotUsed,
                 slotRemaining: Math.max(0, policy.slotLimit - state.slotUsed),
@@ -195,32 +309,68 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
                 registrationBlocked: state.slotUsed >= policy.slotLimit,
             },
             selected: {
-                items: selectedItems.slice(selectedStart, selectedStart + query.pageSize),
-                allIds: selectedItems.map((item) => item.id),
+                items: selectedPageItems,
+                allIds: selectedPageItems.map((item) => item.id),
                 total: selectedItems.length,
                 page: query.selectedPage,
-                pageSize: query.pageSize,
+                pageSize,
             },
             available: {
-                items: availableItems.slice(availableStart, availableStart + query.pageSize),
+                items: availableItems,
+                // 전체 4만여 개 ID를 응답하지 않고 현재 페이지 5개만 전달한다.
                 allIds: availableItems.map((item) => item.id),
-                total: availableItems.length,
+                total: availableTotal,
                 page: query.availablePage,
-                pageSize: query.pageSize,
+                pageSize,
             },
         });
     });
 
-    app.post("/v1/seller/linker-products/select", async (req, reply) => {
+    app.post("/v1/seller/linker-products/select", { preHandler: requireTenant() }, async (req, reply) => {
         const actorUid = memberUid(req);
         const linker = await getLinker(app, req);
         if (!linker) return reply.code(403).send({ ok: false, message: "활성 링커 계정이 필요합니다." });
         const body = z.object({
-            productIds: z.array(z.coerce.number().int().positive()).min(1).max(1000),
+            productIds: z.array(z.coerce.number().int().positive()).max(1000).default([]),
             scope: z.enum(["single", "selected", "filtered_all"]).default("selected"),
+            availableQ: z.string().max(200).default(""),
         }).parse(req.body);
-        const productIds = [...new Set(body.productIds)];
-        const policy = await getSlotPolicy(app, linker);
+        const policy = await getLinkerSlotPolicy(app, linker);
+        let productIds = [...new Set(body.productIds)];
+        if (body.scope === "filtered_all") {
+            const state = await getSelectedState(app, linker.uid);
+            const remaining = Math.max(0, policy.slotLimit - state.slotUsed);
+            const where = availableGoodsWhere(
+                state.selections.map((row) => row.product_uid),
+                body.availableQ
+            );
+            const total = await app.prisma.mallRN_goods.count({ where });
+            if (total === 0) {
+                return reply.code(400).send({ ok: false, message: "현재 검색조건에 등록 가능한 상품이 없습니다." });
+            }
+            if (total > MAX_FILTERED_ALL_RESULTS) {
+                return reply.code(409).send({
+                    ok: false,
+                    message: `검색 결과가 ${MAX_FILTERED_ALL_RESULTS.toLocaleString("ko-KR")}개를 초과하여 전체 등록할 수 없습니다. 검색조건을 더 구체적으로 입력해 주세요.`,
+                });
+            }
+            if (total > remaining) {
+                return reply.code(409).send({
+                    ok: false,
+                    message: `검색 결과는 ${total}개이고 남은 슬롯은 ${remaining}개입니다. 전체 등록할 수 없습니다.`,
+                });
+            }
+            const rows = await app.prisma.mallRN_goods.findMany({
+                where,
+                orderBy: [{ sort_order: "desc" }, { uid: "desc" }],
+                select: { uid: true },
+                take: Math.min(1000, remaining),
+            });
+            productIds = rows.map((row) => row.uid);
+        }
+        if (productIds.length === 0) {
+            return reply.code(400).send({ ok: false, message: "등록할 상품을 선택해 주세요." });
+        }
         const requestId = randomUUID();
 
         try {
@@ -254,15 +404,17 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
                             removed_at: null, removed_by: null, remove_reason: null, last_status_checked_at: new Date(),
                         },
                     });
-                    await tx.mallRN_linker_product_logs.create({ data: {
-                        linker_uid: linker.uid, product_uid: product.uid, linker_product_uid: row.uid,
-                        action_type: previous ? "PRODUCT_RESTORED" : "PRODUCT_ADDED", action_scope: body.scope,
-                        previous_value: previous ? { selectionStatus: previous.selection_status } : undefined,
-                        changed_value: { selectionStatus: "selected", displayStatus: "visible" },
-                        slot_limit_snapshot: policy.slotLimit, slot_used_before: usedBefore,
-                        slot_used_after: usedBefore + valid.length, product_status_snapshot: product.status,
-                        request_id: requestId, actor_uid: actorUid, ...requestMeta(req),
-                    }});
+                    await tx.mallRN_linker_product_logs.create({
+                        data: {
+                            linker_uid: linker.uid, product_uid: product.uid, linker_product_uid: row.uid,
+                            action_type: previous ? "PRODUCT_RESTORED" : "PRODUCT_ADDED", action_scope: body.scope,
+                            previous_value: previous ? { selectionStatus: previous.selection_status } : undefined,
+                            changed_value: { selectionStatus: "selected", displayStatus: "visible" },
+                            slot_limit_snapshot: policy.slotLimit, slot_used_before: usedBefore,
+                            slot_used_after: usedBefore + valid.length, product_status_snapshot: product.status,
+                            request_id: requestId, actor_uid: actorUid, ...requestMeta(req),
+                        }
+                    });
                 }
                 return { count: valid.length, slotUsed: usedBefore + valid.length };
             }, { isolationLevel: "Serializable" });
@@ -280,73 +432,113 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
         }
     });
 
-    app.delete("/v1/seller/linker-products/select", async (req, reply) => {
+    app.delete("/v1/seller/linker-products/select", { preHandler: requireTenant() }, async (req, reply) => {
         const actorUid = memberUid(req);
         const linker = await getLinker(app, req);
         if (!linker) return reply.code(403).send({ ok: false, message: "활성 링커 계정이 필요합니다." });
         const body = z.object({
-            productIds: z.array(z.coerce.number().int().positive()).min(1).max(1000),
+            productIds: z.array(z.coerce.number().int().positive()).max(1000).default([]),
             scope: z.enum(["single", "selected", "filtered_all"]).default("selected"),
+            selectedQ: z.string().max(200).default(""),
             reason: z.string().max(255).default("링커 상품 관리에서 삭제"),
         }).parse(req.body);
-        const productIds = [...new Set(body.productIds)];
-        const policy = await getSlotPolicy(app, linker);
+        let productIds = [...new Set(body.productIds)];
+        const policy = await getLinkerSlotPolicy(app, linker);
         const before = await getSelectedState(app, linker.uid);
+        if (body.scope === "filtered_all") {
+            const keyword = body.selectedQ.trim().toLowerCase();
+            productIds = before.selections
+                .filter((selection) => {
+                    const product = before.productMap.get(selection.product_uid);
+                    if (!product) return false;
+                    return !keyword
+                        || String(product.name ?? "").toLowerCase().includes(keyword)
+                        || String(product.uid).includes(keyword);
+                })
+                .map((selection) => selection.product_uid);
+        }
+        if (productIds.length === 0) {
+            return reply.code(400).send({ ok: false, message: "삭제할 상품이 없습니다." });
+        }
         const requestId = randomUUID();
         const rows = await app.prisma.mallRN_linker_products.findMany({
             where: { linker_uid: linker.uid, product_uid: { in: productIds }, selection_status: "selected" },
         });
+        const removedSlotCount = rows.reduce((count, row) => {
+            const product = before.productMap.get(row.product_uid);
+            return count + (product && isSelling(product) ? 1 : 0);
+        }, 0);
+        const slotUsedAfter = Math.max(0, before.slotUsed - removedSlotCount);
         await app.prisma.$transaction(async (tx) => {
             for (const row of rows) {
-                await tx.mallRN_linker_products.update({ where: { uid: row.uid }, data: {
-                    selection_status: "removed", removed_at: new Date(), removed_by: actorUid, remove_reason: body.reason,
-                }});
-                await tx.mallRN_linker_product_logs.create({ data: {
-                    linker_uid: linker.uid, product_uid: row.product_uid, linker_product_uid: row.uid,
-                    action_type: "PRODUCT_REMOVED", action_scope: body.scope,
-                    previous_value: { selectionStatus: "selected" }, changed_value: { selectionStatus: "removed" },
-                    slot_limit_snapshot: policy.slotLimit, slot_used_before: before.slotUsed,
-                    slot_used_after: Math.max(0, before.slotUsed - rows.length), request_id: requestId,
-                    actor_uid: actorUid, reason: body.reason, ...requestMeta(req),
-                }});
+                await tx.mallRN_linker_products.update({
+                    where: { uid: row.uid }, data: {
+                        selection_status: "removed", removed_at: new Date(), removed_by: actorUid, remove_reason: body.reason,
+                    }
+                });
+                await tx.mallRN_linker_product_logs.create({
+                    data: {
+                        linker_uid: linker.uid, product_uid: row.product_uid, linker_product_uid: row.uid,
+                        action_type: "PRODUCT_REMOVED", action_scope: body.scope,
+                        previous_value: { selectionStatus: "selected" }, changed_value: { selectionStatus: "removed" },
+                        slot_limit_snapshot: policy.slotLimit, slot_used_before: before.slotUsed,
+                        slot_used_after: slotUsedAfter, request_id: requestId,
+                        actor_uid: actorUid, reason: body.reason, ...requestMeta(req),
+                    }
+                });
             }
         });
         return reply.send({ ok: true, count: rows.length, requestId });
     });
 
-    app.patch("/v1/seller/linker-products/order", async (req, reply) => {
+    app.patch("/v1/seller/linker-products/order", { preHandler: requireTenant() }, async (req, reply) => {
         const actorUid = memberUid(req);
         const linker = await getLinker(app, req);
         if (!linker) return reply.code(403).send({ ok: false, message: "활성 링커 계정이 필요합니다." });
-        const body = z.object({ items: z.array(z.object({
-            productId: z.coerce.number().int().positive(),
-            displayOrder: z.coerce.number().int().min(1),
-            displayStatus: z.enum(["visible", "hidden"]).default("visible"),
-        })).min(1).max(1000) }).parse(req.body);
-        const normalized = [...body.items].sort((a, b) => a.displayOrder - b.displayOrder);
-        const policy = await getSlotPolicy(app, linker);
+        const body = z.object({
+            items: z.array(z.object({
+                productId: z.coerce.number().int().positive(),
+                displayOrder: z.coerce.number().int().min(1),
+                displayStatus: z.enum(["visible", "hidden"]).default("visible"),
+            })).min(1).max(1000)
+        }).parse(req.body);
+        const policy = await getLinkerSlotPolicy(app, linker);
         const state = await getSelectedState(app, linker.uid);
         const requestId = randomUUID();
-        await app.prisma.$transaction(async (tx) => {
-            for (let index = 0; index < normalized.length; index += 1) {
-                const item = normalized[index];
+        const changedCount = await app.prisma.$transaction(async (tx) => {
+            let count = 0;
+            for (const item of body.items) {
                 const current = await tx.mallRN_linker_products.findUnique({
                     where: { linker_uid_product_uid: { linker_uid: linker.uid, product_uid: item.productId } },
                 });
                 if (!current || current.selection_status !== "selected") continue;
-                await tx.mallRN_linker_products.update({ where: { uid: current.uid }, data: {
-                    display_order: index + 1, display_status: item.displayStatus,
-                }});
-                await tx.mallRN_linker_product_logs.create({ data: {
-                    linker_uid: linker.uid, product_uid: item.productId, linker_product_uid: current.uid,
-                    action_type: "DISPLAY_ORDER_CHANGED", action_scope: "selected",
-                    previous_value: { displayOrder: current.display_order, displayStatus: current.display_status },
-                    changed_value: { displayOrder: index + 1, displayStatus: item.displayStatus },
-                    slot_limit_snapshot: policy.slotLimit, slot_used_before: state.slotUsed, slot_used_after: state.slotUsed,
-                    request_id: requestId, actor_uid: actorUid, ...requestMeta(req),
-                }});
+                const orderChanged = current.display_order !== item.displayOrder;
+                const statusChanged = current.display_status !== item.displayStatus;
+                if (!orderChanged && !statusChanged) continue;
+                await tx.mallRN_linker_products.update({
+                    where: { uid: current.uid }, data: {
+                        display_order: item.displayOrder, display_status: item.displayStatus,
+                    }
+                });
+                const actionType = orderChanged && statusChanged
+                    ? "DISPLAY_SETTINGS_CHANGED"
+                    : statusChanged
+                        ? "DISPLAY_STATUS_CHANGED"
+                        : "DISPLAY_ORDER_CHANGED";
+                await tx.mallRN_linker_product_logs.create({
+                    data: {
+                        linker_uid: linker.uid, product_uid: item.productId, linker_product_uid: current.uid,
+                        action_type: actionType, action_scope: "selected",
+                        previous_value: { displayOrder: current.display_order, displayStatus: current.display_status },
+                        changed_value: { displayOrder: item.displayOrder, displayStatus: item.displayStatus },
+                        slot_limit_snapshot: policy.slotLimit, slot_used_before: state.slotUsed, slot_used_after: state.slotUsed,
+                        request_id: requestId, actor_uid: actorUid, ...requestMeta(req),
+                    }
+                });
+                count += 1;
             }
+            return count;
         });
-        return reply.send({ ok: true, count: normalized.length, requestId });
+        return reply.send({ ok: true, count: changedCount, requestId });
     });
 }

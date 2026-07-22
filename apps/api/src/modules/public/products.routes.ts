@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireTenant } from "../../common/guard.js";
+import { getLinkerSlotPolicy } from "../seller/linker-products.routes.js";
 
 type ImageItem = { key: string; label?: string };
 
@@ -465,7 +466,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
         if (!slug) return null;
         const linker = await app.prisma.zpzp_linker.findFirst({
             where: { shop_slug: slug, status: "active" },
-            select: { uid: true },
+            select: { uid: true, member_uid: true },
         });
         if (!linker) return null;
         const rows = await app.prisma.mallRN_linker_products.findMany({
@@ -477,7 +478,28 @@ export async function publicProductRoutes(app: FastifyInstance) {
             orderBy: [{ display_order: "asc" }, { selected_at: "desc" }],
             select: { product_uid: true, display_order: true },
         });
-        return { linkerUid: linker.uid, rows, ids: rows.map((row) => row.product_uid) };
+        if (rows.length === 0) return { linkerUid: linker.uid, rows, ids: [] as number[] };
+
+        const policy = await getLinkerSlotPolicy(app, linker);
+        const sellingProducts = await app.prisma.mallRN_goods.findMany({
+            where: {
+                uid: { in: rows.map((row) => row.product_uid) },
+                status: "published",
+                sale_use: 1,
+                deleted_at: null,
+                AND: [{ OR: [{ sale_end_at: null }, { sale_end_at: { gte: new Date() } }] }],
+            },
+            select: { uid: true },
+        });
+        const sellingIds = new Set(sellingProducts.map((product) => product.uid));
+        const visibleWithinSlot = rows
+            .filter((row) => sellingIds.has(row.product_uid))
+            .slice(0, policy.slotLimit);
+        return {
+            linkerUid: linker.uid,
+            rows: visibleWithinSlot,
+            ids: visibleWithinSlot.map((row) => row.product_uid),
+        };
     }
 
     app.get("/v1/public/products", async (req) => {
@@ -523,10 +545,11 @@ export async function publicProductRoutes(app: FastifyInstance) {
         applySegmentFilter(where, segment);
         applyCategoryFilter(where, q.category, q.cate != null ? BigInt(q.cate) : null);
 
-        const rows = await app.prisma.mallRN_goods.findMany({
+        const queriedRows = await app.prisma.mallRN_goods.findMany({
             where,
             orderBy: buildProductOrderBy(segment),
-            take: q.take,
+            // 링커 선택 상품을 진열 순서대로 재정렬할 수 있도록 선택 건수만큼 후보를 확보한다.
+            take: linkerSelection ? Math.min(1000, q.take + linkerSelection.ids.length) : q.take,
             select: {
                 uid: true,
                 tenant_id: true,
@@ -546,6 +569,23 @@ export async function publicProductRoutes(app: FastifyInstance) {
         });
 
         const masked = !isMemberLoggedIn(req); // 비회원이면 실판매가 미전송
+        const rows = linkerSelection
+            ? (() => {
+                const displayOrder = new Map(
+                    linkerSelection.rows.map((row, index) => [row.product_uid, index])
+                );
+                return [...queriedRows]
+                    .sort((a, b) => {
+                        const aOrder = displayOrder.get(a.uid);
+                        const bOrder = displayOrder.get(b.uid);
+                        if (aOrder != null && bOrder != null) return aOrder - bOrder;
+                        if (aOrder != null) return -1;
+                        if (bOrder != null) return 1;
+                        return 0;
+                    })
+                    .slice(0, q.take);
+            })()
+            : queriedRows;
 
         const items = rows.map((r) => {
             const thumb = goodsImageUrl(r.image1);
