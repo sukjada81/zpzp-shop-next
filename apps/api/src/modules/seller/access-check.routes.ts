@@ -67,6 +67,8 @@ export async function sellerAccessCheckRoutes(app: FastifyInstance) {
             }
 
             // 2. 지점 셀러 멤버십 조회 (status 무관)
+            // 기존 셀러 권한이 활성 상태라면 링커 권한보다 우선한다.
+            // 그래야 링커 상품 기능을 추가해도 대시보드/매출/주문/회원 메뉴가 유지된다.
             const tenantMs = await app.prisma.mallRN_member_membership.findFirst({
                 where: {
                     member_uid: memberUid,
@@ -77,19 +79,36 @@ export async function sellerAccessCheckRoutes(app: FastifyInstance) {
                 select: { uid: true, status: true, role_code: true },
             });
 
+            const tenantStatus = String(tenantMs?.status ?? "").trim();
+            if (tenantMs && tenantStatus === "active") {
+                return reply.send({
+                    ok: true,
+                    status: "active",
+                    role: String(tenantMs.role_code ?? ""),
+                });
+            }
+
+            // 활성 셀러 멤버십이 없는 회원은 링커 권한을 확인한다.
+            // 순수 링커에게만 linker role을 반환해 상품관리 메뉴만 노출한다.
+            const linker = await app.prisma.zpzp_linker.findFirst({
+                where: {
+                    member_uid: memberUid,
+                    status: "active",
+                    OR: [
+                        { tenant_id: tenantId },
+                        { shop_slug: String(req.tenantSlug ?? "") },
+                    ],
+                },
+                select: { uid: true },
+            });
+
+            if (linker) {
+                return reply.send({ ok: true, status: "active", role: "linker" });
+            }
+
             if (tenantMs) {
-                const currentStatus = String(tenantMs.status ?? "").trim();
-
-                if (currentStatus === "active") {
-                    return reply.send({
-                        ok: true,
-                        status: "active",
-                        role: String(tenantMs.role_code ?? ""),
-                    });
-                }
-
                 // rejected → pending 복원 (Phase E 포함)
-                if (currentStatus === "rejected") {
+                if (tenantStatus === "rejected") {
                     await app.prisma.mallRN_member_membership.update({
                         where: { uid: tenantMs.uid },
                         data: { status: "pending" },
@@ -98,7 +117,7 @@ export async function sellerAccessCheckRoutes(app: FastifyInstance) {
                 }
 
                 // pending 또는 기타
-                return reply.send({ ok: true, status: currentStatus });
+                return reply.send({ ok: true, status: tenantStatus });
             }
 
             // 3. 멤버십 없음 → pending 자동 생성

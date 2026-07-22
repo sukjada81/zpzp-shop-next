@@ -1,5 +1,5 @@
 // src/app/(seller)/seller/[tenant]/page.tsx
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import SellerDashboardClient, {
     type SellerDashboardData,
 } from "@/components/seller/SellerDashboardClient";
@@ -23,6 +23,12 @@ export default async function SellerDashboardPage({
 
     const origin = getInternalOrigin();
     const cookie = await getCookieHeader();
+
+    const accessUrl = new URL(`/api/seller/${tenant}/access-check`, origin);
+    const access = await fetchSellerApi<{ ok: boolean; status?: string; role?: string }>(accessUrl, cookie, tenant);
+    if (access.ok && access.data.status === "active" && access.data.role === "linker") {
+        redirect(`/seller/${tenant}/products`);
+    }
 
     // 전체 지점 합산 대시보드 (hq_super 전용)
     if (tenant === "__all__") {
