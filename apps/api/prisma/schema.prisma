@@ -3282,6 +3282,12 @@ enum zpzp_crew_status {
   revoked
 }
 
+enum zpzp_linker_grade_history_reason {
+  auto
+  manual
+  initial
+}
+
 model zpzp_linker {
   uid                  Int                         @id @default(autoincrement())
   member_uid           Int                         @unique(map: "uq_zpzp_linker_member") @db.UnsignedInt
@@ -3300,6 +3306,59 @@ model zpzp_linker {
 
   @@index([status], map: "ix_zpzp_linker_status")
   @@map("zpzp_linker")
+}
+
+model zpzp_linker_grade_policy {
+  uid             Int     @id @default(autoincrement())
+  grade_code      String  @unique(map: "uq_grade_code") @db.VarChar(30)
+  title           String  @default("") @db.VarChar(50)
+  crew_min        Int     @default(0)
+  commission_rate Decimal @default(0.00) @db.Decimal(5, 2)
+  slot_count      Int     @default(0)
+  sort            Int     @default(0) @db.TinyInt
+  is_active       Boolean @default(true)
+  note            String? @db.VarChar(255)
+  created_at      Int     @default(0) @db.UnsignedInt
+  updated_at      Int     @default(0) @db.UnsignedInt
+
+  @@index([is_active, crew_min], map: "idx_active_crewmin")
+  @@map("zpzp_linker_grade_policy")
+}
+
+model zpzp_linker_grade {
+  uid             BigInt    @id @default(autoincrement())
+  linker_id       Int
+  year_month      String    @db.Char(7)
+  cutoff_at       DateTime? @db.DateTime(0)
+  crew_count      Int       @default(0)
+  grade_code      String    @default("") @db.VarChar(30)
+  commission_rate Decimal   @default(0.00) @db.Decimal(5, 2)
+  slot_count      Int       @default(0)
+  effective_from  DateTime  @db.DateTime(0)
+  decided_by      String    @default("system") @db.VarChar(32)
+  created_at      DateTime  @db.DateTime(0)
+
+  @@unique([linker_id, year_month], map: "uq_linker_month")
+  @@index([linker_id, effective_from], map: "ix_linker_eff")
+  @@map("zpzp_linker_grade")
+}
+
+model zpzp_linker_grade_history {
+  uid           BigInt                           @id @default(autoincrement())
+  linker_id     Int
+  before_grade  String?                          @db.VarChar(30)
+  after_grade   String?                          @db.VarChar(30)
+  before_rate   Decimal?                         @db.Decimal(5, 2)
+  after_rate    Decimal?                         @db.Decimal(5, 2)
+  reason        zpzp_linker_grade_history_reason
+  crew_count_at Int                              @default(0)
+  actor         String                           @default("system") @db.VarChar(32)
+  year_month    String                           @default("") @db.Char(7)
+  note          String?                          @db.VarChar(255)
+  created_at    DateTime                         @db.DateTime(0)
+
+  @@index([linker_id, created_at], map: "ix_hist_linker")
+  @@map("zpzp_linker_grade_history")
 }
 
 model mallRN_linker_products {

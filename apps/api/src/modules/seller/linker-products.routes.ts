@@ -78,68 +78,70 @@ async function getLinker(app: FastifyInstance, req: FastifyRequest) {
     });
 }
 
-export async function getLinkerSlotPolicy(app: FastifyInstance, linker: { member_uid: number }) {
-    const member = await app.prisma.mallRN_member.findUnique({
-        where: { uid: linker.member_uid },
-        select: { id: true },
-    });
-    const yearMonth = new Date().toISOString().slice(0, 7);
-    const lookupTypeSetting = await app.prisma.zpzp_setting.findUnique({
-        where: { name: "linker_grade_lookup_type" },
-    });
+export async function getLinkerSlotPolicy(
+    app: FastifyInstance,
+    linker: { uid: number; member_uid: number }
+) {
+    const yearMonth = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7);
+    const [lookupTypeSetting, activePolicies] = await Promise.all([
+        app.prisma.zpzp_setting.findUnique({
+            where: { name: "linker_grade_lookup_type" },
+        }),
+        app.prisma.zpzp_linker_grade_policy.findMany({
+            where: { is_active: true },
+            orderBy: [{ crew_min: "asc" }, { sort: "asc" }, { uid: "asc" }],
+        }),
+    ]);
     const gradeLookupType = lookupTypeSetting?.value === "2" ? 2 : 1;
+    const defaultPolicy = activePolicies[0] ?? null;
+    const policyByCode = new Map(activePolicies.map((policy) => [policy.grade_code, policy]));
 
-    let gradeCode = "기본";
-    if (member) {
-        if (gradeLookupType === 1) {
-            // 타입 1: 현재 월 자료가 없어도 가장 최근 확정 등급을 그대로 유지한다.
-            const latestGrade = await app.prisma.mallRN_member_grade.findFirst({
-                where: { member_id: member.id, year_month: { lte: yearMonth } },
+    const gradeSnapshot = gradeLookupType === 1
+        ? await app.prisma.zpzp_linker_grade.findFirst({
+            where: { linker_id: linker.uid, year_month: { lte: yearMonth } },
+            orderBy: [{ year_month: "desc" }, { uid: "desc" }],
+        })
+        : (
+            await app.prisma.zpzp_linker_grade.findUnique({
+                where: {
+                    linker_id_year_month: {
+                        linker_id: linker.uid,
+                        year_month: yearMonth,
+                    },
+                },
+            })
+            ?? await app.prisma.zpzp_linker_grade.findFirst({
+                where: { linker_id: linker.uid, year_month: { lt: yearMonth } },
                 orderBy: [{ year_month: "desc" }, { uid: "desc" }],
-            });
-            gradeCode = latestGrade?.grade_code || "기본";
-        } else {
-            // 타입 2: 현재 월 등급을 우선 사용한다.
-            const currentGrade = await app.prisma.mallRN_member_grade.findUnique({
-                where: { member_id_year_month: { member_id: member.id, year_month: yearMonth } },
-            });
-            if (currentGrade) {
-                gradeCode = currentGrade.grade_code;
-            } else {
-                // 현재 월 등급이 없으면 마지막 달의 기준값(base_amount)에
-                // 현재 활성 등급 정책(min_sales/max_sales)을 적용해 기본 산정한다.
-                const lastGrade = await app.prisma.mallRN_member_grade.findFirst({
-                    where: { member_id: member.id, year_month: { lt: yearMonth } },
-                    orderBy: [{ year_month: "desc" }, { uid: "desc" }],
-                });
-                if (lastGrade) {
-                    const baseAmount = Number(lastGrade.base_amount ?? 0);
-                    const gradePolicies = await app.prisma.mallRN_member_grade_policy.findMany({
-                        where: { is_active: true },
-                        orderBy: [{ sort: "desc" }, { uid: "desc" }],
-                    });
-                    const matchedPolicy = gradePolicies.find((policy) => {
-                        const min = Number(policy.min_sales ?? 0);
-                        const max = Number(policy.max_sales ?? 0);
-                        return baseAmount >= min && (max === 0 || baseAmount <= max);
-                    });
-                    gradeCode = matchedPolicy?.grade_code || "기본";
-                }
-            }
-        }
-    }
-    const settingNames = [
-        `linker_slot_${gradeCode.toLowerCase()}`,
-        "linker_slot_default",
-    ];
-    const settings = await app.prisma.zpzp_setting.findMany({ where: { name: { in: settingNames } } });
-    const byName = new Map(settings.map((row) => [row.name, row.value]));
-    const raw = byName.get(settingNames[0]) ?? byName.get("linker_slot_default");
-    const parsed = Number(raw ?? DEFAULT_SLOT_LIMIT);
+            })
+        );
+
+    const snapshotPolicy = gradeSnapshot
+        ? policyByCode.get(gradeSnapshot.grade_code) ?? null
+        : null;
+    const useSnapshotValues = Boolean(
+        gradeSnapshot
+        && (gradeLookupType === 1 || gradeSnapshot.year_month === yearMonth)
+    );
+    const effectivePolicy = snapshotPolicy ?? defaultPolicy;
+    const gradeCode = gradeSnapshot?.grade_code || effectivePolicy?.grade_code || "기본";
+    const gradeTitle = effectivePolicy?.title || gradeCode;
+    const slotLimitRaw = useSnapshotValues
+        ? Number(gradeSnapshot?.slot_count ?? DEFAULT_SLOT_LIMIT)
+        : Number(effectivePolicy?.slot_count ?? DEFAULT_SLOT_LIMIT);
+    const commissionRate = useSnapshotValues
+        ? Number(gradeSnapshot?.commission_rate ?? 0)
+        : Number(effectivePolicy?.commission_rate ?? 0);
+
     return {
         gradeCode,
+        gradeTitle,
         gradeLookupType,
-        slotLimit: Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_SLOT_LIMIT,
+        gradeYearMonth: gradeSnapshot?.year_month ?? null,
+        commissionRate,
+        slotLimit: Number.isInteger(slotLimitRaw) && slotLimitRaw >= 0
+            ? slotLimitRaw
+            : DEFAULT_SLOT_LIMIT,
     };
 }
 
@@ -299,7 +301,10 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
             linker: { uid: linker.uid, shopSlug: linker.shop_slug, shopName: linker.shop_name },
             summary: {
                 grade: policy.gradeCode,
+                gradeTitle: policy.gradeTitle,
                 gradeLookupType: policy.gradeLookupType,
+                gradeYearMonth: policy.gradeYearMonth,
+                commissionRate: policy.commissionRate,
                 slotLimit: policy.slotLimit,
                 slotUsed: state.slotUsed,
                 slotRemaining: Math.max(0, policy.slotLimit - state.slotUsed),
