@@ -1,8 +1,17 @@
-// apps/api/src/lib/toss-payment.ts
-// shop-php lib/toss_payment.php + toss_confirm.php API 호출부 포팅
+/**
+ * Toss Payments API 공통 유틸
+ *
+ * shop-php `lib/toss_payment.php`, `php/toss_confirm.php` 의 API 호출부를 TypeScript로 포팅.
+ * 셀러 스토어프론트(shop-next)와 본사몰(shop-php)이 동일 PG 키·동일 b2bdb 를 쓴다.
+ *
+ * 환경변수 (apps/api/.env):
+ *   TOSS_CLIENT_KEY — 프론트 결제창 SDK용 (client-key API에서 노출)
+ *   TOSS_SECRET_KEY — 서버 confirm/cancel API용 (절대 프론트 노출 금지)
+ */
 
 import { createHash } from "node:crypto";
 
+/** Toss API 호출 결과 (shop-php toss_api_post 반환 형태와 동일) */
 export type TossApiResult = {
     httpCode: number;
     body: string;
@@ -10,10 +19,12 @@ export type TossApiResult = {
     curlError: string;
 };
 
+/** 서버 전용 시크릿 키 — confirm/cancel API Authorization 헤더에 사용 */
 export function getTossSecretKey(): string {
     return String(process.env.TOSS_SECRET_KEY ?? "").trim();
 }
 
+/** 클라이언트 키 — GET /v1/payments/toss/client-key 로 프론트에 전달 */
 export function getTossClientKey(): string {
     return String(process.env.TOSS_CLIENT_KEY ?? "").trim();
 }
@@ -26,10 +37,16 @@ export function tossJsonEncode(value: unknown): string {
     }
 }
 
+/** Idempotency-Key 생성용 — 동일 결제 재시도 시 Toss 중복 승인 방지 */
 function hashSha256(input: string): string {
     return createHash("sha256").update(input).digest("hex");
 }
 
+/**
+ * Toss REST API POST 공통 호출
+ * - Authorization: Basic base64(secretKey + ':')
+ * - Idempotency-Key: 멱등성 보장 (confirm/cancel 각각 고유 키)
+ */
 export async function tossApiPost(
     url: string,
     body: Record<string, unknown>,
@@ -81,6 +98,10 @@ export async function tossApiPost(
     }
 }
 
+/**
+ * 전액 취소 성공 여부 판정 (shop-php toss_cancel_succeeded 와 동일)
+ * - status=CANCELED, balanceAmount=0, 마지막 cancelStatus=DONE
+ */
 export function tossCancelSucceeded(apiResult: TossApiResult): boolean {
     if (apiResult.httpCode < 200 || apiResult.httpCode >= 300) return false;
 
@@ -95,6 +116,7 @@ export function tossCancelSucceeded(apiResult: TossApiResult): boolean {
     return String(lastCancel.cancelStatus ?? "").toUpperCase() === "DONE";
 }
 
+/** Toss confirm 응답 method → mallRN_order_info.pay_method 저장용 코드 */
 export function normalizeTossMethod(raw: string): string {
     const value = String(raw ?? "").trim();
     if (!value) return "UNKNOWN";
@@ -115,6 +137,7 @@ export function normalizeTossMethod(raw: string): string {
     return token;
 }
 
+/** 간편결제 provider → pay_info 세 번째 필드 (TOSS|METHOD|PROVIDER) */
 export function normalizeTossProvider(raw: string): string {
     const token = String(raw ?? "")
         .trim()
@@ -128,6 +151,7 @@ export function normalizeTossProvider(raw: string): string {
     return token;
 }
 
+/** prepare 단계에서 생성하는 Toss orderId (mallRN_toss_prepare.order_id) */
 export function buildTossOrderId(): string {
     const rand = Math.floor(Math.random() * 900) + 100;
     return `ORDER-${Date.now()}-${rand}`;
@@ -137,6 +161,7 @@ export function isValidTossOrderId(orderId: string): boolean {
     return /^[A-Za-z0-9_-]{6,64}$/.test(orderId);
 }
 
+/** POST /v1/payments/confirm — 결제창 successUrl 콜백 후 서버에서 승인 확정 */
 export async function tossConfirmPayment(
     secretKey: string,
     paymentKey: string,
@@ -151,6 +176,10 @@ export async function tossConfirmPayment(
     );
 }
 
+/**
+ * POST /v1/payments/{paymentKey}/cancel — 전액 취소
+ * 주문 생성 실패 시 자동 취소, (향후) 고객/관리자 취소 API에서도 사용 예정
+ */
 export async function tossCancelPaymentFull(
     secretKey: string,
     paymentKey: string,

@@ -29,10 +29,9 @@ export const endpoints = {
 
     createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
 
+    /** Toss PG — shop-php toss_* .php 대응 (셀러 스토어프론트) */
     tossClientKey: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/client-key`),
-
     tossPrepare: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/prepare`),
-
     tossConfirm: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/confirm`),
 
     publicRecentOrders: (tenant: string, q?: { take?: number }) => {

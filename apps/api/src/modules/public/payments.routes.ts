@@ -1,6 +1,20 @@
-// apps/api/src/modules/public/payments.routes.ts
-// shop-php toss_prepare.php / toss_confirm.php / toss_client_config.php 포팅
-
+/**
+ * 셀러 스토어프론트 Toss PG 라우트
+ *
+ * shop-php 대응:
+ *   toss_client_config.php → GET  /v1/payments/toss/client-key
+ *   toss_prepare.php       → POST /v1/payments/toss/prepare
+ *   toss_confirm.php       → GET  /v1/payments/toss/confirm
+ *
+ * 결제 흐름:
+ *   1. prepare — 금액·상품 서버 검증, mallRN_toss_prepare INSERT (status=0)
+ *   2. 프론트 Toss SDK requestPayment → successUrl 로 redirect
+ *   3. confirm — Toss /payments/confirm 호출 → 주문 INSERT → prepare status=2
+ *   4. 주문 실패 시 Toss 전액 자동취소 (status=7 또는 8)
+ *
+ * mallRN_toss_prepare.status (shop-php 와 동일):
+ *   0=준비, 1=승인완료(주문 전), 2=주문연결완료, 7=자동취소 성공, 8=자동취소 실패, 9=실패
+ */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { captureRefFromRequest } from "../attribution/capture.js";
 import {
@@ -192,6 +206,7 @@ function parsePrepareForm(raw: string | null | undefined): StoredPrepareForm | n
 export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
     const prisma = fastify.prisma;
 
+    /** 프론트 Toss SDK 초기화용 — secret key 는 절대 반환하지 않음 */
     fastify.get("/v1/payments/toss/client-key", async (_request, reply: FastifyReply) => {
         const clientKey = getTossClientKey();
         if (!clientKey) {
@@ -203,6 +218,11 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
         return reply.send({ ok: true, clientKey });
     });
 
+    /**
+     * 결제창 열기 전 prepare
+     * - 클라이언트 amount 를 DB 상품가로 재검증
+     * - form_json 에 주문 폼 전체 저장 (confirm 시 주문 생성에 사용)
+     */
     fastify.post<PrepareRoute>("/v1/payments/toss/prepare", async (request, reply: FastifyReply) => {
         try {
             const body = request.body ?? {};
@@ -305,6 +325,10 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
         }
     });
 
+    /**
+     * Toss successUrl 콜백 — 승인 확정 + 주문 생성
+     * 프론트 confirm 페이지가 paymentKey/orderId/amount 쿼리로 호출
+     */
     fastify.get(
         "/v1/payments/toss/confirm",
         async (
@@ -356,6 +380,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
+                // 이미 주문까지 연결된 결제 — 재진입 시 중복 주문 방지
                 if (prepare.order_num) {
                     return reply.send({
                         ok: true,
@@ -399,6 +424,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 let confirmBody = prepare.confirm_json ?? "";
                 let confirmData: Record<string, unknown> = {};
 
+                // status=1/8 이고 confirm_json 이 있으면 Toss 재승인 없이 저장값으로 주문 재개
                 if (
                     (prepare.status === 1 || prepare.status === 8) &&
                     prepare.payment_key === paymentKey &&
@@ -577,6 +603,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                     });
 
                     if (!created.ok) {
+                        // 승인은 됐지만 주문 INSERT 실패 → PG 전액 자동취소 (shop-php toss_confirm.php 동일)
                         const cancelResult = await tossCancelPaymentFull(
                             secretKey,
                             paymentKey,

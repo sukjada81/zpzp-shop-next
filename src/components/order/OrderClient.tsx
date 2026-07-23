@@ -236,6 +236,13 @@ export default function OrderClient(props: {
         cart.updateQuantity(String(target.id), safeQty, optionKey);
     }
 
+    /**
+     * Toss PG 결제 제출
+     * 1) prepare API — 서버 금액 검증 + mallRN_toss_prepare 저장
+     * 2) Toss SDK requestPayment — 결제창
+     * 3) successUrl → /order/payment/confirm → confirm API → 주문 생성
+     * (장바구니 비우기는 confirm 성공 후 orders 페이지에서 처리)
+     */
     async function submitOrder() {
         if (!canSubmit) return;
 
@@ -308,6 +315,7 @@ export default function OrderClient(props: {
                 })),
             };
 
+            // 1. 서버-side 금액·상품 검증 (shop-php toss_prepare.php 와 동일 역할)
             const prepareRes = await fetch(endpoints.tossPrepare(tenant), {
                 method: "POST",
                 headers: {
@@ -343,6 +351,7 @@ export default function OrderClient(props: {
                 );
             }
 
+            // 2. Toss 결제창 — success/fail URL 은 tenant 서브도메인 기준
             const payment = await initTossPayment(tenant);
 
             await payment.requestPayment({

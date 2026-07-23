@@ -88,7 +88,7 @@ app.register(
     async (tenantScoped) => {
         await publicTenantRoutes(tenantScoped);
         await publicProductRoutes(tenantScoped);
-        await publicPaymentRoutes(tenantScoped);
+        await publicPaymentRoutes(tenantScoped); // Toss PG (prepare/confirm/client-key)
         await publicOrderRoutes(tenantScoped);
     },
     { prefix: "/:tenant" }

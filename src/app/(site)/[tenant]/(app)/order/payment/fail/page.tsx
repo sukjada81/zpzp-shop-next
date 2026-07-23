@@ -1,3 +1,7 @@
+/**
+ * Toss failUrl landing 페이지
+ * 결제창 취소·confirm 실패 시 msg 쿼리로 안내 문구 표시 (shop-php order_payment_fail 유사)
+ */
 "use client";
 
 import Link from "next/link";

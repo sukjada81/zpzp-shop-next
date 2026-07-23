@@ -1,3 +1,10 @@
+/**
+ * Toss successUrl landing 페이지
+ *
+ * Toss 가 paymentKey, orderId, amount 를 쿼리로 redirect.
+ * 서버 confirm API 호출 → 주문 생성 → 주문내역 페이지로 이동.
+ * (shop-php php/toss_confirm.php 의 redirect 역할을 프론트+API 로 분리)
+ */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

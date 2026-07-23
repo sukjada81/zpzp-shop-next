@@ -1,8 +1,15 @@
-// apps/api/src/modules/public/order-create.service.ts
-// public orders.routes.ts 주문 생성 로직 — Toss confirm에서도 재사용
+/**
+ * 셀러 스토어프론트 주문 생성 서비스
+ *
+ * `orders.routes.ts` POST /v1/orders 와 Toss confirm 이 공통으로 사용.
+ * Toss 결제 완료 시 payment 옵션을 넘기면 pay_type=C, pay_status=C, reals=1 로 저장.
+ *
+ * shop-php order_post.php 와 동일한 mallRN_order_info / mallRN_order_goods 스키마 사용.
+ */
 
 import type { PrismaClient } from "@prisma/client";
 
+/** shop-next 공개 주문은 DAD 플랫폼 타입 (레거시 mallRN_order_info.platform_type) */
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
 
@@ -36,6 +43,7 @@ export type CreateStoreOrderInput = {
     memo?: string;
     direct?: number;
     items: OrderItemInput[];
+    /** Toss confirm 성공 후 전달 — 없으면 무통장 대기(B/A) 주문 */
     payment?: {
         paymentKey: string;
         tossOrderId: string;
@@ -68,6 +76,7 @@ function buildOrderNum(): string {
     return `ORD-${now}-${rand}`;
 }
 
+/** order_num 유니크 충돌(P2002) 시 재시도 */
 function isOrderNumUniqueError(error: unknown): boolean {
     if (!error || typeof error !== "object") return false;
     const maybe = error as { code?: string; meta?: { target?: unknown } };
@@ -79,6 +88,7 @@ function isOrderNumUniqueError(error: unknown): boolean {
     return String(target ?? "") === "order_num";
 }
 
+/** DB에서 상품 조회 + qty>0 필터 — prepare/confirm 양쪽에서 금액 검증에 사용 */
 async function loadProducts(
     prisma: PrismaClient,
     items: OrderItemInput[]
@@ -127,6 +137,11 @@ async function loadProducts(
     return { ok: true, products };
 }
 
+/**
+ * mallRN_order_info + mallRN_order_goods INSERT
+ * - payment 있음: pay_type=C, pay_status=C(결제완료), reals=1, pay_info=TOSS|METHOD|PROVIDER
+ * - payment 없음: pay_type=B, pay_status=A(입금대기), reals=0 (레거시 오프라인 주문용)
+ */
 export async function createStoreOrder(
     prisma: PrismaClient,
     input: CreateStoreOrderInput
@@ -140,6 +155,7 @@ export async function createStoreOrder(
         0
     );
 
+    // 클라이언트·Toss 승인 금액과 서버 재계산 금액 일치 검증
     if (input.payment && payTotal !== input.payment.amount) {
         return { ok: false, message: "결제금액이 일치하지 않습니다." };
     }
@@ -276,6 +292,7 @@ export function computeOrderAmount(
     );
 }
 
+/** prepare 단계: 서버-side 금액 재계산 (클라이언트 amount 신뢰하지 않음) */
 export async function validateOrderItems(
     prisma: PrismaClient,
     items: OrderItemInput[]
