@@ -11,6 +11,7 @@ import { sessionPlugin } from "./plugins/session.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
 import { publicProductRoutes } from "./modules/public/products.routes.js";
 import { publicOrderRoutes } from "./modules/public/orders.routes.js";
+import { publicPaymentRoutes } from "./modules/public/payments.routes.js";
 import { publicTenantRoutes } from "./modules/public/tenants.routes.js";
 
 import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
@@ -87,6 +88,7 @@ app.register(
     async (tenantScoped) => {
         await publicTenantRoutes(tenantScoped);
         await publicProductRoutes(tenantScoped);
+        await publicPaymentRoutes(tenantScoped);
         await publicOrderRoutes(tenantScoped);
     },
     { prefix: "/:tenant" }

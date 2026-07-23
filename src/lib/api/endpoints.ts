@@ -29,6 +29,12 @@ export const endpoints = {
 
     createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
 
+    tossClientKey: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/client-key`),
+
+    tossPrepare: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/prepare`),
+
+    tossConfirm: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/confirm`),
+
     publicRecentOrders: (tenant: string, q?: { take?: number }) => {
         const url = new URL(apiProxy(`${tenant}/v1/orders/recent`), "http://local");
         if (q?.take) url.searchParams.set("take", String(q.take));
