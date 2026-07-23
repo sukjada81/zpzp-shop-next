@@ -17,6 +17,7 @@ import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
 import { adminDashboardRoutes } from "./modules/admin/dashboard.routes.js";
 import { adminOrdersRoutes } from "./modules/admin/orders.routes.js";
 import { adminProductsRoutes } from "./modules/admin/products.routes.js";
+import { adminLinkerProductsRoutes } from "./modules/admin/linker-products.routes.js";
 import { adminUploadsRoutes } from "./modules/admin/uploads.routes.js";
 import { sellerMembersRoutes } from "./modules/seller/members.routes.js";
 import { sellerOrderRoutes } from "./modules/seller/orders.routes.js";
@@ -66,6 +67,7 @@ await adminAuthRoutes(app);
 await adminDashboardRoutes(app);
 await adminOrdersRoutes(app);
 await adminProductsRoutes(app);
+await adminLinkerProductsRoutes(app);
 await adminUploadsRoutes(app);
 
 await adminRoutes(app);
