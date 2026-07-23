@@ -90,7 +90,7 @@ function goodsImageUrl(raw: string | null | undefined): string {
     if (/^https?:\/\//i.test(s)) return s;
     if (/^\/\//.test(s)) return `https:${s}`;
 
-    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://zpzp.kr").replace(/\/+$/, "");
     const path = s.replace(/^\/+/, "");
 
     if (/^image\//i.test(path)) {
@@ -107,7 +107,7 @@ function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | 
     if (/^https?:\/\//i.test(s)) return s;
     if (/^\/\//.test(s)) return `https:${s}`;
 
-    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://zpzp.kr").replace(/\/+$/, "");
     const n = Number(uid);
     const imgBlock = Number.isFinite(n) ? Math.max(1, Math.floor(n / 10000)) : 1;
     const path = s.replace(/^\/+/, "");

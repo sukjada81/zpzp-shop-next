@@ -320,13 +320,13 @@ export default function SellerShell({
                     active={isMembersActive}
                     onClick={closeMobileMenu}
                 /> : null}
-                <NavItem
+                {isLinker ? <NavItem
                     href={productsHref}
                     label="상품관리"
                     icon={PackageCheck}
                     active={isProductsActive}
                     onClick={closeMobileMenu}
-                />
+                /> : null}
                 {isSuperAdmin ? (
                     <NavItem
                         href={applicationsHref}
