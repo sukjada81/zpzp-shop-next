@@ -3,7 +3,6 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireTenant } from "../../common/guard.js";
-import { getLinkerSlotPolicy } from "../seller/linker-products.routes.js";
 
 type ImageItem = { key: string; label?: string };
 
@@ -480,7 +479,6 @@ export async function publicProductRoutes(app: FastifyInstance) {
         });
         if (rows.length === 0) return { linkerUid: linker.uid, rows, ids: [] as number[] };
 
-        const policy = await getLinkerSlotPolicy(app, linker);
         const sellingProducts = await app.prisma.mallRN_goods.findMany({
             where: {
                 uid: { in: rows.map((row) => row.product_uid) },
@@ -492,13 +490,11 @@ export async function publicProductRoutes(app: FastifyInstance) {
             select: { uid: true },
         });
         const sellingIds = new Set(sellingProducts.map((product) => product.uid));
-        const visibleWithinSlot = rows
-            .filter((row) => sellingIds.has(row.product_uid))
-            .slice(0, policy.slotLimit);
+        const visibleSelling = rows.filter((row) => sellingIds.has(row.product_uid));
         return {
             linkerUid: linker.uid,
-            rows: visibleWithinSlot,
-            ids: visibleWithinSlot.map((row) => row.product_uid),
+            rows: visibleSelling,
+            ids: visibleSelling.map((row) => row.product_uid),
         };
     }
 

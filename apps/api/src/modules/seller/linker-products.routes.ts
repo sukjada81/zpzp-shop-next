@@ -163,54 +163,6 @@ async function getSelectedState(app: FastifyInstance, linkerUid: number) {
     return { selections, productMap, slotUsed };
 }
 
-async function hideOverflowProducts(
-    app: FastifyInstance,
-    req: FastifyRequest,
-    linkerUid: number,
-    state: Awaited<ReturnType<typeof getSelectedState>>,
-    slotLimit: number
-) {
-    const sellingSelections = state.selections.filter((selection) => {
-        const product = state.productMap.get(selection.product_uid);
-        return Boolean(product && isSelling(product));
-    });
-    if (sellingSelections.length <= slotLimit) return false;
-
-    const overflow = sellingSelections
-        .slice(slotLimit)
-        .filter((selection) => selection.display_status === "visible");
-    if (overflow.length === 0) return false;
-
-    const requestId = randomUUID();
-    await app.prisma.$transaction(async (tx) => {
-        for (const selection of overflow) {
-            await tx.mallRN_linker_products.update({
-                where: { uid: selection.uid },
-                data: { display_status: "hidden", last_status_checked_at: new Date() },
-            });
-            await tx.mallRN_linker_product_logs.create({
-                data: {
-                    linker_uid: linkerUid,
-                    product_uid: selection.product_uid,
-                    linker_product_uid: selection.uid,
-                    action_type: "AUTO_HIDDEN_SLOT_EXCEEDED",
-                    action_scope: "system",
-                    previous_value: { displayStatus: selection.display_status },
-                    changed_value: { displayStatus: "hidden" },
-                    slot_limit_snapshot: slotLimit,
-                    slot_used_before: state.slotUsed,
-                    slot_used_after: state.slotUsed,
-                    request_id: requestId,
-                    actor_type: "system",
-                    reason: "판매 재개 또는 등급 변경으로 슬롯을 초과하여 자동 숨김",
-                    ...requestMeta(req),
-                },
-            });
-        }
-    });
-    return true;
-}
-
 function productDto(product: any, selection?: any, sales?: { order_count: bigint; sale_qty: bigint }) {
     const selling = isSelling(product);
     return {
@@ -249,10 +201,7 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
         const pageSize = 5;
 
         const policy = await getLinkerSlotPolicy(app, linker);
-        let state = await getSelectedState(app, linker.uid);
-        if (await hideOverflowProducts(app, req, linker.uid, state, policy.slotLimit)) {
-            state = await getSelectedState(app, linker.uid);
-        }
+        const state = await getSelectedState(app, linker.uid);
         const selectedIds = new Set(state.selections.map((row) => row.product_uid));
         const salesRows = state.selections.length
             ? await app.prisma.$queryRaw<Array<{ g_uid: number; order_count: bigint; sale_qty: bigint }>>(Prisma.sql`
