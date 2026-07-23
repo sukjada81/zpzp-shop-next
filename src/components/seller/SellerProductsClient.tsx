@@ -49,7 +49,10 @@ type ResponseData = {
     linker?: { shopName: string; shopSlug: string };
     summary?: {
         grade: string;
+        gradeTitle: string;
         gradeLookupType: 1 | 2;
+        gradeYearMonth: string | null;
+        commissionRate: number;
         slotLimit: number;
         slotUsed: number;
         slotRemaining: number;
@@ -308,7 +311,7 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
         () =>
             summary
                 ? [
-                    ["현재 등급", summary.grade, "text-violet-600"],
+                    ["현재 등급", summary.gradeTitle || summary.grade, "text-violet-600"],
                     ["등급 기준", summary.gradeLookupType === 2 ? "기본 재산정" : "최근 등급 유지", "text-slate-900"],
                     ["최대 슬롯", `${summary.slotLimit}개`, "text-slate-900"],
                     ["사용 슬롯", `${summary.slotUsed}개`, "text-blue-600"],
