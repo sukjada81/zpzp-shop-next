@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { statusLabel } from "@/lib/admin/productStatus";
 import { toPreviewUrl } from "./productFormUtils";
+import ProductLinkerCountCell from "./ProductLinkerCountCell";
 
 function statusColor(status: string) {
     if (status === "active") return "bg-green-100 text-green-700 border-green-200";
@@ -59,7 +60,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
     return (
         <div className="overflow-x-auto">
             {selected.length > 0 && (
-                <div className="sticky top-0 z-20 flex min-w-[1160px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
+                <div className="sticky top-0 z-20 flex min-w-[1240px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
                     <div className="text-sm font-bold">선택 {selected.length}개</div>
 
                     <button onClick={() => bulkStatus("active")} className="dad-btn dad-btn-primary h-8 px-3 text-xs">
@@ -76,7 +77,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                 </div>
             )}
 
-            <table className="w-full min-w-[1160px] table-fixed text-left text-sm">
+            <table className="w-full min-w-[1240px] table-fixed text-left text-sm">
                 <colgroup>
                     <col className="w-[36px]" />
                     <col className="w-[62px]" />
@@ -85,6 +86,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                     <col className="w-[130px]" />
                     <col className="w-[85px]" />
                     <col className="w-[100px]" />
+                    <col className="w-[88px]" />
                     <col className="w-[108px]" />
                 </colgroup>
 
@@ -103,6 +105,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                     <th className="px-2 py-3 text-center">카테고리</th>
                     <th className="px-2 py-3 text-center">상태</th>
                     <th className="px-2 py-3 text-center">가격</th>
+                    <th className="px-2 py-3 text-center">링커</th>
                     <th className="sticky right-0 z-10 bg-white px-2 py-3 text-center">관리</th>
                 </tr>
                 </thead>
@@ -122,6 +125,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                     const status = String(p?.status ?? "");
                     const price = Number(p?.price ?? p?.basePrice ?? 0);
                     const categoryLabel = categoryLabelFromRow(p);
+                    const linkerCount = Number(p?.linkerCount ?? 0);
 
                     return (
                         <tr key={id} className="border-b border-[var(--dad-border)] hover:bg-gray-50">
@@ -191,6 +195,14 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                                 {price.toLocaleString()}원
                             </td>
 
+                            <td className="px-2 py-3 text-center align-middle">
+                                <ProductLinkerCountCell
+                                    productId={id}
+                                    productTitle={title}
+                                    linkerCount={linkerCount}
+                                />
+                            </td>
+
                             <td className="sticky right-0 z-10 bg-white px-2 py-3 text-center align-middle">
                                 <Link
                                     href={`/admin/products/${id}`}
@@ -205,7 +217,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
 
                 {(rows || []).length === 0 && (
                     <tr>
-                        <td colSpan={8} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
+                        <td colSpan={9} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
                             상품 데이터가 없습니다.
                         </td>
                     </tr>

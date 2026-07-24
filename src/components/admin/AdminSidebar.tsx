@@ -10,6 +10,7 @@ const items = [
     // ✅ FIX: page.tsx 파일 경로가 아니라 실제 페이지 라우트로 이동해야 함
     { label: "지점 관리", href: "/admin/tenant", icon: "🏬" },
     { label: "상품", href: "/admin/products", icon: "🧾" },
+    { label: "링커 상품", href: "/admin/linker-products", icon: "🔗" },
     { label: "주문", href: "/admin/orders", icon: "📦" },
     { label: "포인트", href: "/admin/points", icon: "🪙" },
 ];

@@ -450,7 +450,10 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                 {summary && summary.slotExceeded > 0 ? (
                     <div className="mt-4 flex gap-2 rounded-2xl bg-rose-50 p-4 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">
                         <AlertCircle className="h-5 w-5 shrink-0" />
-                        현재 등급의 최대 슬롯을 {summary.slotExceeded}개 초과했습니다.
+                        <span>
+                            현재 등급의 최대 슬롯을 {summary.slotExceeded}개 초과했습니다.
+                            기존 진열 상품은 계속 판매됩니다. 슬롯을 정리해야 새 상품을 올릴 수 있어요.
+                        </span>
                     </div>
                 ) : null}
             </section>
@@ -532,6 +535,13 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                         <button type="button" aria-disabled={filteredAllTooLarge} disabled={busy || available.total === 0 || registrationBlocked} onClick={requestRegisterAllFiltered} className={`rounded-xl border border-blue-200 px-3 py-2.5 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 ${filteredAllTooLarge ? "cursor-not-allowed opacity-40" : ""}`}>전체 검색 상품 등록</button>
                     </div>
                 </div>
+                {registrationBlocked ? (
+                    <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">
+                        {summary && summary.slotExceeded > 0
+                            ? "슬롯을 정리해야 새 상품을 올릴 수 있어요."
+                            : "사용 가능한 슬롯이 없어 새 상품을 등록할 수 없습니다."}
+                    </p>
+                ) : null}
                 {filteredAllTooLarge ? (
                     <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
                         검색 결과가 10,000개를 초과하여 전체 등록할 수 없습니다. 검색조건을 더 구체적으로 입력해 주세요.
