@@ -482,7 +482,10 @@ export async function publicProductRoutes(app: FastifyInstance) {
         const sellingProducts = await app.prisma.mallRN_goods.findMany({
             where: {
                 uid: { in: rows.map((row) => row.product_uid) },
-                status: "published",
+                // 노출 플랜B: 링커 선택 상품이 "published"로만 걸려 라이브(status="active") 상품이
+                // 미노출되던 문제 회피. 메인 목록 buildPublicGoodsWhere는 "active"를 쓰므로 정합을 맞춘다.
+                // "published"의 별도 의미가 밝혀지면 이 in 배열에서 되돌릴 수 있게 명시적으로 남긴다.
+                status: { in: ["published", "active"] },
                 sale_use: 1,
                 deleted_at: null,
                 AND: [{ OR: [{ sale_end_at: null }, { sale_end_at: { gte: new Date() } }] }],
