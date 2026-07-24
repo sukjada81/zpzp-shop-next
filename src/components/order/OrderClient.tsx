@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints } from "@/lib/api/endpoints";
-import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
 import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
+import { initTossPayment } from "@/lib/toss/client";
 
 export type OrderItem = {
     id: string;
@@ -20,14 +20,6 @@ export type OrderItem = {
     stockQty?: number;
     soldout?: boolean;
     stockNote?: string;
-};
-
-type CreateOrderResponse = {
-    ok: boolean;
-    orderNum?: string;
-    status?: number;
-    statusLabel?: string;
-    message?: string;
 };
 
 type AuthSessionResponse = {
@@ -107,6 +99,7 @@ export default function OrderClient(props: {
     const initialItems = props.initialItems ?? [];
 
     const [submitting, setSubmitting] = useState(false);
+    const [payError, setPayError] = useState("");
 
     const [buyerName, setBuyerName] = useState("");
     const [buyerPhoneA, setBuyerPhoneA] = useState("010");
@@ -279,7 +272,13 @@ export default function OrderClient(props: {
             return;
         }
 
+        if (subtotal <= 0) {
+            alert("결제 금액이 올바르지 않습니다.");
+            return;
+        }
+
         setSubmitting(true);
+        setPayError("");
 
         try {
             const auth = await fetchAuthSession();
@@ -288,7 +287,28 @@ export default function OrderClient(props: {
                 return;
             }
 
-            const res = await fetch(endpoints.createOrder(tenant), {
+            const orderPayload = {
+                buyerName: normalizedBuyerName,
+                buyerPhone: normalizedBuyerPhone,
+                receiverName: normalizedReceiverName,
+                receiverPhone: normalizedReceiverPhone,
+                pickupAt: null,
+                message: message.trim(),
+                memo: memo.trim(),
+                direct: isDirectOrder ? 1 : 0,
+                amount: subtotal,
+                items: items.map((it) => ({
+                    productId: Number(it.id),
+                    optionId:
+                        it.optionId != null && String(it.optionId).trim() !== ""
+                            ? Number(it.optionId)
+                            : undefined,
+                    optionName: it.optionName ?? "",
+                    qty: Number(it.qty ?? 0),
+                })),
+            };
+
+            const prepareRes = await fetch(endpoints.tossPrepare(tenant), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -296,57 +316,49 @@ export default function OrderClient(props: {
                 },
                 credentials: "include",
                 cache: "no-store",
-                body: JSON.stringify({
-                    buyerName: normalizedBuyerName,
-                    buyerPhone: normalizedBuyerPhone,
-                    receiverName: normalizedReceiverName,
-                    receiverPhone: normalizedReceiverPhone,
-                    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업일시 전송 중단(장바구니/상세와 동일하게 null)
-                    // 기존: pickupAt: toApiDateTime(pickupAt),
-                    pickupAt: null,
-                    message: message.trim(),
-                    memo: memo.trim(),
-                    direct: isDirectOrder ? 1 : 0,
-                    items: items.map((it) => ({
-                        productId: Number(it.id),
-                        optionId:
-                            it.optionId != null && String(it.optionId).trim() !== ""
-                                ? Number(it.optionId)
-                                : undefined,
-                        optionName: it.optionName ?? "",
-                        qty: Number(it.qty ?? 0),
-                    })),
-                }),
+                body: JSON.stringify(orderPayload),
             });
 
-            const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
+            const prepareJson = (await prepareRes.json().catch(() => ({}))) as {
+                ok?: boolean;
+                msg?: string;
+                message?: string;
+                orderId?: string;
+                amount?: number;
+            };
 
-            if (res.status === 401) {
+            if (prepareRes.status === 401) {
                 redirectToLogin();
                 return;
             }
 
-            if (!res.ok || json?.ok === false || !json?.orderNum) {
-                throw new Error(json?.message || `주문 생성 실패 (HTTP ${res.status})`);
+            const orderId = prepareJson?.orderId || "";
+            const payAmount = Number(prepareJson?.amount ?? subtotal) || subtotal;
+
+            if (!prepareRes.ok || prepareJson?.ok !== true || !orderId) {
+                throw new Error(
+                    prepareJson?.msg ||
+                        prepareJson?.message ||
+                        `결제 준비 실패 (HTTP ${prepareRes.status})`
+                );
             }
 
-            const orderNum = json.orderNum;
+            const payment = await initTossPayment(tenant);
 
-            saveGuestOrderRef({
-                tenant,
-                orderNum,
-                phone: normalizedBuyerPhone,
-                buyerName: normalizedBuyerName,
-                createdAt: new Date().toISOString(),
+            await payment.requestPayment({
+                method: "CARD",
+                amount: { currency: "KRW", value: payAmount },
+                orderId,
+                orderName: "주문결제",
+                successUrl: `${window.location.origin}/${tenant}/order/payment/confirm`,
+                failUrl: `${window.location.origin}/${tenant}/order/payment/fail`,
+                customerName: normalizedBuyerName,
+                customerEmail: String(auth.member?.email ?? "guest@example.com"),
+                card: { flowMode: "DEFAULT" },
             });
-
-            if (!isDirectOrder) {
-                cart.clear();
-            }
-
-            router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(orderNum)}`);
         } catch (e: any) {
-            alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
+            const errMsg = e?.message || "결제 처리 중 오류가 발생했습니다.";
+            setPayError(errMsg);
         } finally {
             setSubmitting(false);
         }
@@ -559,8 +571,14 @@ export default function OrderClient(props: {
                 disabled={!canSubmit}
                 className="mt-5 w-full rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white disabled:opacity-50"
             >
-                {submitting ? "주문 처리 중..." : "주문하기"}
+                {submitting ? "결제 준비 중..." : `${subtotal.toLocaleString()}원 결제하기`}
             </button>
+
+            {payError ? (
+                <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-[13px] font-semibold text-red-700">
+                    {payError}
+                </div>
+            ) : null}
         </main>
     );
 }
