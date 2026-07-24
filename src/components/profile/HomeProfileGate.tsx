@@ -20,7 +20,6 @@ type AuthSession = {
 
 export default function HomeProfileGate({ tenant }: { tenant: string }) {
     const [open, setOpen] = useState(false);
-    const [openchatUrl, setOpenchatUrl] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -38,14 +37,7 @@ export default function HomeProfileGate({ tenant }: { tenant: string }) {
 
                 if (!data?.loggedIn) return;
 
-                const tenantRes = await fetch(`/api/proxy/${tenant}/v1/public/tenant`, {
-                    cache: "no-store",
-                });
-                if (!cancelled && tenantRes.ok) {
-                    const tenantData = await tenantRes.json().catch(() => null);
-                    setOpenchatUrl(tenantData?.item?.openchatUrl ?? null);
-                }
-
+                // (줍줍) DAD 오픈채팅 안내 제거로 tenant openchatUrl 조회 폐지.
                 if (shouldOpenProfileSetupModal(tenant)) {
                     setOpen(true);
                 }
@@ -67,7 +59,6 @@ export default function HomeProfileGate({ tenant }: { tenant: string }) {
             tenant={tenant}
             onClose={() => setOpen(false)}
             onSaved={() => setOpen(false)}
-            openchatUrl={openchatUrl}
         />
     );
 }
