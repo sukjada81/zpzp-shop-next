@@ -394,8 +394,8 @@ export default function SellerSalesStatsClient({
                             <option value="all">전체</option>
                             <option value="0">주문접수</option>
                             <option value="1">현장결제완료</option>
-                            <option value="2">픽업준비완료</option>
-                            <option value="4">픽업완료</option>
+                            <option value="2">발송준비완료</option>
+                            <option value="4">배송완료</option>
                             <option value="9">주문취소</option>
                         </select>
                     </label>

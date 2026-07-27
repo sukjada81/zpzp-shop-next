@@ -25,7 +25,7 @@ export default function AdminTopbar() {
                         </div>
                         <div className="leading-tight">
                             <div className="text-sm font-extrabold text-[var(--dad-ink)]">
-                                디스카운트 올데이 <span className="text-[var(--dad-orange)]">Admin</span>
+                                줍줍링크 <span className="text-[var(--dad-orange)]">Admin</span>
                             </div>
                             <div className="text-xs text-[var(--dad-muted)]">통합 대시보드 / 전체 지점 관리</div>
                         </div>

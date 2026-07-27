@@ -79,9 +79,9 @@ function getStatusLabel(status?: number) {
         case 1:
             return "현장결제완료";
         case 2:
-            return "픽업준비완료";
+            return "발송준비완료";
         case 4:
-            return "픽업완료";
+            return "배송완료";
         case 9:
             return "주문취소";
         default:
@@ -218,13 +218,13 @@ export default function SellerOrderDetailClient({
             const json = await res.json().catch(() => null);
 
             if (!res.ok || !json?.ok) {
-                throw new Error(json?.message || "픽업완료 처리에 실패했습니다.");
+                throw new Error(json?.message || "배송완료 처리에 실패했습니다.");
             }
 
             await load();
-            alert("픽업완료 처리되었습니다.");
+            alert("배송완료 처리되었습니다.");
         } catch (e: any) {
-            setError(e?.message || "픽업완료 처리에 실패했습니다.");
+            setError(e?.message || "배송완료 처리에 실패했습니다.");
         } finally {
             setSaving(false);
         }
@@ -323,7 +323,7 @@ export default function SellerOrderDetailClient({
                         주문 상세
                     </div>
                     <div className="mt-1 text-sm text-slate-500">
-                        주문 상태를 확인하고 확인 버튼으로 픽업완료 처리할 수 있습니다.
+                        주문 상태를 확인하고 확인 버튼으로 배송완료 처리할 수 있습니다.
                     </div>
                 </div>
 
@@ -346,7 +346,7 @@ export default function SellerOrderDetailClient({
                         ) : (
                             <CheckCircle2 className="h-4 w-4" />
                         )}
-                        {isDone ? "픽업완료" : isCanceled ? "취소 주문" : saving ? "처리 중..." : "확인"}
+                        {isDone ? "배송완료" : isCanceled ? "취소 주문" : saving ? "처리 중..." : "확인"}
                     </button>
 
                     <button
@@ -544,7 +544,7 @@ export default function SellerOrderDetailClient({
                         </div>
                         <div className="mt-3 text-sm leading-6 text-slate-600">
                             주문 상품을 고객에게 전달 완료했다면 확인 버튼을 눌러
-                            픽업완료 상태로 변경하세요.
+                            배송완료 상태로 변경하세요.
                         </div>
 
                         <div className="mt-4 space-y-2">

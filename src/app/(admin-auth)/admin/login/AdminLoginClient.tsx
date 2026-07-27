@@ -50,7 +50,7 @@ export default function AdminLoginClient() {
                             😊
                         </div>
                         <div>
-                            <div className="text-lg font-extrabold text-[var(--dad-ink)]">디스카운트 올데이</div>
+                            <div className="text-lg font-extrabold text-[var(--dad-ink)]">줍줍링크</div>
                             <div className="text-sm font-bold text-[var(--dad-muted)]">통합 관리자(Admin) 로그인</div>
                         </div>
                     </div>
