@@ -2,6 +2,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { captureRefFromRequest } from "../attribution/capture.js";
 import { requireAdmin } from "../../common/guard.js";
+import {
+    consumeCoupons,
+    pickRepresentativeCoupon,
+    resolveCouponSelection,
+    resolveMemberLoginId,
+} from "./coupon.service.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -22,6 +28,8 @@ type PublicCreateOrderBody = {
         optionName?: string;
         qty: number;
     }[];
+    /** 사용할 쿠폰(mallRN_coupon.uid). 스택 ON이면 일반 1 + 웰컴 1까지. 서버가 최종 검증한다. */
+    couponUids?: number[];
 };
 
 type GuestOrderListBody = {
@@ -711,19 +719,49 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 });
             }
 
-            const payTotal = products.reduce((sum, row) => {
+            const subtotal = products.reduce((sum, row) => {
                 return sum + toInt(row.product.price, 0) * toInt(row.item.qty, 0);
             }, 0);
 
+            // 쿠폰 적용(W-1). 산식·스택 판정은 coupon.service 가 단일 소유. 스펙 D2/D3.
+            const selection = await resolveCouponSelection(
+                prisma,
+                memberUid,
+                subtotal,
+                body.couponUids
+            );
+            if (!selection.ok) {
+                return reply.send({
+                    ok: false,
+                    error: "coupon_invalid",
+                    message: selection.message,
+                });
+            }
+
+            const couponRows = selection.rows;
+            const payTotal = subtotal - selection.discountTotal;
+
+            const couponOwnerId = couponRows.length
+                ? await resolveMemberLoginId(prisma, memberUid)
+                : "";
+            if (couponRows.length && !couponOwnerId) {
+                return reply.send({
+                    ok: false,
+                    error: "coupon_owner_unresolved",
+                    message: "회원 정보를 확인할 수 없습니다.",
+                });
+            }
+
             let orderNum = "";
             let created = false;
+            let couponFailure = "";
 
             for (let attempt = 0; attempt < 5; attempt += 1) {
                 orderNum = buildOrderNum();
 
                 try {
-                    const txOps = [
-                        prisma.mallRN_order_info.create({
+                    await prisma.$transaction(async (tx) => {
+                        await tx.mallRN_order_info.create({
                             data: {
                                 id: orderNum,
                                 tenant_id: tenantId,
@@ -751,8 +789,9 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 escrow: 0,
                                 bank_info: "",
                                 use_mileage: 0,
-                                use_coupon: 0,
-                                coupon_uid: 0,
+                                // 장바구니 쿠폰 합계 + 대표 1장. 상세는 zpzp_order_coupon(단일 진실원).
+                                use_coupon: selection.discountTotal,
+                                coupon_uid: pickRepresentativeCoupon(couponRows),
                                 cash_receipts: "",
                                 mail_send: 0,
                                 cash_issued: 0,
@@ -768,9 +807,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 use_td_point: 0,
                                 pay_method: "",
                             },
-                        }),
-                        ...products.map((row) =>
-                            prisma.mallRN_order_goods.create({
+                        });
+
+                        for (const row of products) {
+                            await tx.mallRN_order_goods.create({
                                 data: {
                                     vendor: toSafeString(row.product.vendor, tenantSlug || String(tenantId)),
                                     vendor_delivery: "",
@@ -805,19 +845,33 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                     reals: 0,
                                     signdate: now,
                                 },
-                            })
-                        ),
-                    ];
+                            });
+                        }
 
-                    await prisma.$transaction(txOps);
+                        // 쿠폰 소비는 같은 트랜잭션 안에서. 동시 사용이면 throw → 주문까지 롤백.
+                        await consumeCoupons(tx, couponOwnerId, couponRows, orderNum, now);
+                    });
+
                     created = true;
                     break;
                 } catch (error: unknown) {
                     if (isOrderNumUniqueError(error)) {
                         continue;
                     }
+                    if (error instanceof Error && error.message.startsWith("COUPON_ALREADY_USED")) {
+                        couponFailure = "이미 사용된 쿠폰입니다. 쿠폰을 다시 선택해 주세요.";
+                        break;
+                    }
                     throw error;
                 }
+            }
+
+            if (couponFailure) {
+                return reply.send({
+                    ok: false,
+                    error: "coupon_already_used",
+                    message: couponFailure,
+                });
             }
 
             if (!created || !orderNum) {

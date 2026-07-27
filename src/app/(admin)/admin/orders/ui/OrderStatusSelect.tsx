@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 const OPTIONS = [
     { value: "0", label: "주문접수" },
     { value: "1", label: "현장결제완료" },
-    { value: "2", label: "픽업준비완료" },
-    { value: "4", label: "픽업완료" },
+    { value: "2", label: "발송준비완료" },
+    { value: "4", label: "배송완료" },
     { value: "9", label: "주문취소" },
 ];
 

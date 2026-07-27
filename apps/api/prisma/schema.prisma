@@ -3498,3 +3498,20 @@ model zpzp_setting {
 
   @@map("zpzp_setting")
 }
+
+/// 주문별 사용 쿠폰 단일 진실원(W-1). 주문당 1~2행.
+/// mallRN_order_info 는 하위호환 유지: use_coupon = 합계금액, coupon_uid = 대표 1장(일반 우선).
+model zpzp_order_coupon {
+  uid        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  order_num  String   @db.VarChar(32)
+  coupon_uid Int      @db.UnsignedInt
+  c_uid      Int      @db.UnsignedInt
+  kind       String   @db.VarChar(16)
+  amount     Int      @default(0)
+  sort_order Int      @default(0) @db.TinyInt
+  created_at DateTime @db.DateTime(0)
+
+  @@unique([order_num, coupon_uid], map: "uq_order_coupon")
+  @@index([order_num], map: "idx_order")
+  @@map("zpzp_order_coupon")
+}

@@ -20,6 +20,7 @@ import {
     type OrderItemInput,
     validateOrderItems,
 } from "./order-create.service.js";
+import { listAvailableCoupons, resolveCouponSelection } from "./coupon.service.js";
 
 type TenantContext = {
     tenantId?: bigint | string | number | null;
@@ -27,7 +28,10 @@ type TenantContext = {
 };
 
 type PrepareBody = {
+    /** ★계약(스펙 D5): 할인 전 상품합계. '최종 결제액'이 아니다. 바꾸면 금액 검증이 깨진다. */
     amount?: number;
+    /** 사용할 쿠폰(mallRN_coupon.uid). 스택 ON이면 일반 1 + 웰컴 1까지. */
+    couponUids?: number[];
     cartId?: string;
     buyerName?: string;
     buyerPhone?: string;
@@ -162,9 +166,18 @@ type StoredPrepareForm = {
     memo?: string;
     direct?: number;
     items: OrderItemInput[];
+    couponUids: number[];
     memberUid: string;
     tenantSlug: string;
 };
+
+function toCouponUidList(value: unknown): number[] {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((v) => toInt(v, 0))
+        .filter((v) => v > 0)
+        .slice(0, 2);
+}
 
 function parsePrepareForm(raw: string | null | undefined): StoredPrepareForm | null {
     if (!raw) return null;
@@ -181,6 +194,7 @@ function parsePrepareForm(raw: string | null | undefined): StoredPrepareForm | n
             memo: toSafeString(data.memo, ""),
             direct: toInt(data.direct, 0),
             items: data.items,
+            couponUids: toCouponUidList(data.couponUids),
             memberUid: toSafeString(data.memberUid, ""),
             tenantSlug: toSafeString(data.tenantSlug, ""),
         };
@@ -202,6 +216,33 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
         }
         return reply.send({ ok: true, clientKey });
     });
+
+    // 주문서 쿠폰 섹션용 — 보유 쿠폰 + 각 쿠폰의 할인액(할인 전 상품합계 기준) + 스택 허용 여부.
+    fastify.get<{ Querystring: { subtotal?: string }; Params: { tenant?: string } }>(
+        "/v1/coupons/available",
+        async (request, reply: FastifyReply) => {
+            const memberUid = extractAuthenticatedMemberUid(request);
+            if (!memberUid) {
+                return reply.code(401).send({ ok: false, msg: "로그인이 필요합니다." });
+            }
+
+            const subtotal = toInt(request.query?.subtotal, 0);
+            if (subtotal < 0) {
+                return reply.code(400).send({ ok: false, msg: "주문금액이 올바르지 않습니다." });
+            }
+
+            try {
+                const result = await listAvailableCoupons(prisma, memberUid, subtotal);
+                return reply.send({ ok: true, ...result });
+            } catch (error: unknown) {
+                fastify.log.error(error, "COUPON_LIST_ERROR");
+                return reply.code(500).send({
+                    ok: false,
+                    msg: "쿠폰 정보를 불러오지 못했습니다.",
+                });
+            }
+        }
+    );
 
     fastify.post<PrepareRoute>("/v1/payments/toss/prepare", async (request, reply: FastifyReply) => {
         try {
@@ -251,6 +292,27 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 });
             }
 
+            // 쿠폰 적용(W-1). body.amount 는 할인 전 상품합계이므로 위 가드는 그대로 두고,
+            // 여기서 할인을 적용해 '실제 승인액'을 만든다. 프론트 선택값은 신뢰하지 않는다.
+            const couponUids = toCouponUidList(body.couponUids);
+            const selection = await resolveCouponSelection(
+                prisma,
+                memberUid,
+                validated.amount,
+                couponUids
+            );
+            if (!selection.ok) {
+                return reply.code(400).send({ ok: false, msg: selection.message });
+            }
+
+            const payableAmount = validated.amount - selection.discountTotal;
+            if (payableAmount <= 0) {
+                return reply.code(400).send({
+                    ok: false,
+                    msg: "할인 금액이 결제금액과 같거나 커서 결제할 수 없습니다. 쿠폰 선택을 조정해 주세요.",
+                });
+            }
+
             const cartId = toSafeString(body.cartId) || buildCartId(memberUid, body.items);
             const orderId = buildTossOrderId();
             const nowTs = toUnixNow();
@@ -265,6 +327,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 memo: toSafeString(body.memo, ""),
                 direct: toInt(body.direct, 0),
                 items: body.items,
+                couponUids,
                 memberUid: memberUid.toString(),
                 tenantSlug,
             };
@@ -276,7 +339,8 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                     cart_id: cartId,
                     member_id: memberUid.toString(),
                     form_json: tossJsonEncode(formPayload),
-                    amount: validated.amount,
+                    // 저장값 = 할인 후 실제 승인액. confirm 의 amount 대조가 이 값을 쓴다.
+                    amount: payableAmount,
                     payload: tossJsonEncode(body),
                     status: 0,
                     payment_key: "",
@@ -292,7 +356,10 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
             return reply.send({
                 ok: true,
                 orderId,
-                amount: validated.amount,
+                // OrderClient 는 이 값을 그대로 requestPayment 청구액으로 쓴다(할인 후 금액).
+                amount: payableAmount,
+                subtotal: validated.amount,
+                discountTotal: selection.discountTotal,
                 cart_id: cartId,
                 member_id: memberUid.toString(),
             });
@@ -566,6 +633,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                         memo: form.memo,
                         direct: form.direct,
                         items: form.items,
+                        couponUids: form.couponUids,
                         payment: {
                             paymentKey,
                             tossOrderId: orderId,

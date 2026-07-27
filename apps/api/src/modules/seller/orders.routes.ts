@@ -70,9 +70,9 @@ function statusLabel(status: number) {
         case 1:
             return "현장결제완료";
         case 2:
-            return "픽업준비완료";
+            return "발송준비완료";
         case 4:
-            return "픽업완료";
+            return "배송완료";
         case 8:
             return "미수령";
         case 9:
