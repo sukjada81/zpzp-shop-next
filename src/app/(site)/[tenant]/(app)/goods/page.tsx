@@ -14,11 +14,14 @@ type GoodsPageSearchParams = {
     q?: string;
 };
 
-function normalizeTab(tab?: string): "today" | "pickup" | "ongoing" {
-    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 진입 차단(들어오면 오늘의 공구로 폴백)
+function normalizeTab(tab?: string): "all" | "today" | "ongoing" {
+    // 노출 플랜B: 링커 스토어 기본 뷰를 '진열 전체'로 변경(기존 today 고정 → 공구 딜 없으면 미노출로 보임).
+    // today/ongoing 탭은 유지 — 공구 딜이 생기면 기존대로 동작한다.
+    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 진입 차단(들어오면 전체로 폴백)
     // if (tab === "pickup") return "pickup";
+    if (tab === "today") return "today";
     if (tab === "ongoing") return "ongoing";
-    return "today";
+    return "all";
 }
 
 async function fetchProducts(
@@ -31,7 +34,8 @@ async function fetchProducts(
 
     const path = endpoints.publicProducts(tenant, {
         take: 200,
-        type: tab,
+        // '전체'(all)는 segment 미전달 → API가 진열 전체를 반환한다. today/ongoing만 type을 보낸다.
+        ...(tab === "all" ? {} : { type: tab }),
         ...(q ? { q } : {}),
     });
 

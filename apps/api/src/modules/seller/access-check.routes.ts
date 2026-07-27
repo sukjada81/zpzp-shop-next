@@ -81,10 +81,23 @@ export async function sellerAccessCheckRoutes(app: FastifyInstance) {
 
             const tenantStatus = String(tenantMs?.status ?? "").trim();
             if (tenantMs && tenantStatus === "active") {
+                const activeLinker = await app.prisma.zpzp_linker.findFirst({
+                    where: { member_uid: memberUid, status: "active" },
+                    select: { shop_slug: true, shop_name: true },
+                });
+
                 return reply.send({
                     ok: true,
                     status: "active",
                     role: String(tenantMs.role_code ?? ""),
+                    ...(activeLinker
+                        ? {
+                              linker: {
+                                  shopSlug: activeLinker.shop_slug,
+                                  shopName: activeLinker.shop_name,
+                              },
+                          }
+                        : {}),
                 });
             }
 
@@ -103,7 +116,31 @@ export async function sellerAccessCheckRoutes(app: FastifyInstance) {
             });
 
             if (linker) {
-                return reply.send({ ok: true, status: "active", role: "linker" });
+                const linkerRow = await app.prisma.zpzp_linker.findFirst({
+                    where: {
+                        member_uid: memberUid,
+                        status: "active",
+                        OR: [
+                            { tenant_id: tenantId },
+                            { shop_slug: String(req.tenantSlug ?? "") },
+                        ],
+                    },
+                    select: { shop_slug: true, shop_name: true },
+                });
+
+                return reply.send({
+                    ok: true,
+                    status: "active",
+                    role: "linker",
+                    ...(linkerRow
+                        ? {
+                              linker: {
+                                  shopSlug: linkerRow.shop_slug,
+                                  shopName: linkerRow.shop_name,
+                              },
+                          }
+                        : {}),
+                });
             }
 
             if (tenantMs) {

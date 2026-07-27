@@ -59,7 +59,7 @@ function imageUrl(raw: string | null) {
     const value = String(raw ?? "").trim();
     if (!value) return "";
     if (/^https?:\/\//i.test(value)) return value;
-    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://zpzp.kr").replace(/\/+$/, "");
     return `${base}/image/goods/img${value.replace(/^\/+/, "")}`;
 }
 
@@ -73,8 +73,20 @@ function requestMeta(req: FastifyRequest) {
 async function getLinker(app: FastifyInstance, req: FastifyRequest) {
     const uid = memberUid(req);
     if (!uid) return null;
+
+    const tenantId = (req as any).tenantId as bigint | undefined;
+    const tenantSlug = String((req as any).tenantSlug ?? "").trim();
+    const tenantScope: Array<{ tenant_id: bigint } | { shop_slug: string }> = [];
+    if (tenantId != null) tenantScope.push({ tenant_id: tenantId });
+    if (tenantSlug) tenantScope.push({ shop_slug: tenantSlug });
+    if (tenantScope.length === 0) return null;
+
     return app.prisma.zpzp_linker.findFirst({
-        where: { member_uid: uid, status: "active" },
+        where: {
+            member_uid: uid,
+            status: "active",
+            OR: tenantScope,
+        },
     });
 }
 
@@ -163,54 +175,6 @@ async function getSelectedState(app: FastifyInstance, linkerUid: number) {
     return { selections, productMap, slotUsed };
 }
 
-async function hideOverflowProducts(
-    app: FastifyInstance,
-    req: FastifyRequest,
-    linkerUid: number,
-    state: Awaited<ReturnType<typeof getSelectedState>>,
-    slotLimit: number
-) {
-    const sellingSelections = state.selections.filter((selection) => {
-        const product = state.productMap.get(selection.product_uid);
-        return Boolean(product && isSelling(product));
-    });
-    if (sellingSelections.length <= slotLimit) return false;
-
-    const overflow = sellingSelections
-        .slice(slotLimit)
-        .filter((selection) => selection.display_status === "visible");
-    if (overflow.length === 0) return false;
-
-    const requestId = randomUUID();
-    await app.prisma.$transaction(async (tx) => {
-        for (const selection of overflow) {
-            await tx.mallRN_linker_products.update({
-                where: { uid: selection.uid },
-                data: { display_status: "hidden", last_status_checked_at: new Date() },
-            });
-            await tx.mallRN_linker_product_logs.create({
-                data: {
-                    linker_uid: linkerUid,
-                    product_uid: selection.product_uid,
-                    linker_product_uid: selection.uid,
-                    action_type: "AUTO_HIDDEN_SLOT_EXCEEDED",
-                    action_scope: "system",
-                    previous_value: { displayStatus: selection.display_status },
-                    changed_value: { displayStatus: "hidden" },
-                    slot_limit_snapshot: slotLimit,
-                    slot_used_before: state.slotUsed,
-                    slot_used_after: state.slotUsed,
-                    request_id: requestId,
-                    actor_type: "system",
-                    reason: "판매 재개 또는 등급 변경으로 슬롯을 초과하여 자동 숨김",
-                    ...requestMeta(req),
-                },
-            });
-        }
-    });
-    return true;
-}
-
 function productDto(product: any, selection?: any, sales?: { order_count: bigint; sale_qty: bigint }) {
     const selling = isSelling(product);
     return {
@@ -249,10 +213,7 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
         const pageSize = 5;
 
         const policy = await getLinkerSlotPolicy(app, linker);
-        let state = await getSelectedState(app, linker.uid);
-        if (await hideOverflowProducts(app, req, linker.uid, state, policy.slotLimit)) {
-            state = await getSelectedState(app, linker.uid);
-        }
+        const state = await getSelectedState(app, linker.uid);
         const selectedIds = new Set(state.selections.map((row) => row.product_uid));
         const salesRows = state.selections.length
             ? await app.prisma.$queryRaw<Array<{ g_uid: number; order_count: bigint; sale_qty: bigint }>>(Prisma.sql`
@@ -427,7 +388,7 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
         } catch (error) {
             const code = error instanceof Error ? error.message : "UNKNOWN";
             const message = code === "SLOT_EXCEEDED"
-                ? "현재 등급의 슬롯 수를 초과하여 신규 상품을 등록할 수 없습니다."
+                ? "슬롯을 정리해야 새 상품을 올릴 수 있어요."
                 : code === "SLOT_SHORTAGE"
                     ? "선택한 상품 수가 남은 슬롯보다 많습니다."
                     : code === "INVALID_PRODUCT"

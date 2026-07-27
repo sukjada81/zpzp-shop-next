@@ -21,8 +21,10 @@ export type GoodsListItem = {
     categoryLabel?: string;
 };
 
+// 노출 플랜B: '전체'(진열 전체) 탭 신설·기본화. today/ongoing은 유지(공구 딜 생기면 동작).
 // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 노출만 제거(필터 로직·타입은 유지)
 const TABS = [
+    { key: "all", label: "전체" },
     { key: "today", label: "오늘의 공구" },
     // { key: "pickup", label: "바로 픽업 가능" },
     { key: "ongoing", label: "진행 중인 공구" },
@@ -58,7 +60,7 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
 
     const tabFromUrl = sp?.get("tab");
     const [q, setQ] = useState("");
-    const [tab, setTab] = useState<TabKey>(isTabKey(tabFromUrl) ? tabFromUrl : "today");
+    const [tab, setTab] = useState<TabKey>(isTabKey(tabFromUrl) ? tabFromUrl : "all");
 
     useEffect(() => {
         const t = sp?.get("tab");
@@ -71,6 +73,11 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
         const tabFilter = (it: GoodsListItem) => {
             const cate = String(it.cate ?? "").trim();
             const categoryLabel = String(displayCategoryLabel(it.categoryLabel) ?? "").trim();
+
+            // 노출 플랜B: '전체'는 진열된 모든 상품 노출(클라 필터 없음)
+            if (tab === "all") {
+                return true;
+            }
 
             if (tab === "today") {
                 return cate === "100000" || categoryLabel === "오늘의 공구";
@@ -93,13 +100,16 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
             .filter((it) => (qq ? (it.title ?? "").toLowerCase().includes(qq) : true));
     }, [initialItems, q, tab]);
 
-    // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 탭 제거로 픽업 헤더 문구 분기도 비활성
-    const headerTitle = tab === "today" ? "오늘의 공구" : "진행 중인 공구";
+    // 노출 플랜B: '전체' 헤더 문구 추가. 줍줍은 배송 전용 — 픽업 헤더 분기는 비활성 유지
+    const headerTitle =
+        tab === "today" ? "오늘의 공구" : tab === "ongoing" ? "진행 중인 공구" : "전체 상품";
 
     const headerDesc =
         tab === "today"
             ? "오늘의 공구만 모아서 볼 수 있어요."
-            : "현재 예약 가능한 공동구매 상품입니다.";
+            : tab === "ongoing"
+                ? "현재 예약 가능한 공동구매 상품입니다."
+                : "이 스토어에 진열된 상품을 모두 볼 수 있어요.";
 
     function onChangeTab(next: TabKey) {
         setTab(next);

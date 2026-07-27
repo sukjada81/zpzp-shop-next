@@ -19,6 +19,10 @@ type AccessCheckResponse = {
     status?: string;
     role?: string;
     message?: string;
+    linker?: {
+        shopSlug?: string;
+        shopName?: string;
+    };
 };
 
 type SuperCheckResponse = {
@@ -127,8 +131,16 @@ export default async function SellerTenantLayout({
         );
     }
 
+    const linkerShopSlug = String(access.linker?.shopSlug ?? "").trim();
+
     return (
-        <SellerShell tenant={tenant} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} role={role}>
+        <SellerShell
+            tenant={tenant}
+            isAdmin={isAdmin}
+            isSuperAdmin={isSuperAdmin}
+            role={role}
+            linkerShopSlug={linkerShopSlug || undefined}
+        >
             {children}
         </SellerShell>
     );

@@ -1,5 +1,6 @@
 // apps/api/src/modules/admin/products.routes.ts
 import type { FastifyInstance } from "fastify";
+import { countActiveLinkersByProductIds } from "./linker-products.routes.js";
 
 type AdminSession = {
     admin?: {
@@ -382,6 +383,11 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             ])
         );
 
+        const linkerCountMap = await countActiveLinkersByProductIds(
+            app,
+            (rows as any[]).map((r) => Number(r.uid))
+        );
+
         const mapped = (rows as any[]).map((r) => {
             const isHq = String(r.tenant_id ?? "") === "0";
             const tenant = !isHq && r.tenant_id != null ? tenantMap.get(String(r.tenant_id)) ?? null : null;
@@ -409,6 +415,8 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 image2: r.image2 || "",
                 image3: r.image3 || "",
                 thumbnailUrl: r.image1 || r.image2 || r.image3 || null,
+
+                linkerCount: linkerCountMap.get(Number(r.uid)) ?? 0,
 
                 createdAt: unixToIso(r.signdate),
                 updatedAt: unixToIso(r.moddate),

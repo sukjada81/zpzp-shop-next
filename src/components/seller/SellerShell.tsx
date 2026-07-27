@@ -78,12 +78,14 @@ export default function SellerShell({
     isAdmin = false,
     isSuperAdmin = false,
     role = "",
+    linkerShopSlug,
     children,
 }: {
     tenant: string;
     isAdmin?: boolean;
     isSuperAdmin?: boolean;
     role?: string;
+    linkerShopSlug?: string;
     children: React.ReactNode;
 }) {
     const pathname = usePathname();
@@ -99,7 +101,10 @@ export default function SellerShell({
     const salesHref = `/${tenant}/sales`;
     const ordersHref = `/${tenant}/orders`;
     const membersHref = `/${tenant}/members`;
-    const productsHref = `/${tenant}/products`;
+    const isLinker = role === "linker";
+    const canManageProducts = isLinker || Boolean(linkerShopSlug);
+    const productsTenant = linkerShopSlug || tenant;
+    const productsHref = `/${productsTenant}/products`;
     const applicationsHref = `/${tenant}/applications`;
     const tenantsHref = `/${tenant}/tenants`;
 
@@ -114,8 +119,8 @@ export default function SellerShell({
         pathname.startsWith(`/${tenant}/members`) ||
         pathname.startsWith(`/seller/${tenant}/members`);
     const isProductsActive =
-        pathname.startsWith(`/${tenant}/products`) ||
-        pathname.startsWith(`/seller/${tenant}/products`);
+        pathname.startsWith(`/${productsTenant}/products`) ||
+        pathname.startsWith(`/seller/${productsTenant}/products`);
     const isApplicationsActive =
         pathname.startsWith(`/${tenant}/applications`) ||
         pathname.startsWith(`/seller/${tenant}/applications`);
@@ -215,7 +220,6 @@ export default function SellerShell({
     }
 
     const currentTenantLabel = tenant === "__all__" ? "전체 지점" : tenant;
-    const isLinker = role === "linker";
 
     const tenantSwitcher =
         isSuperAdmin ? (
@@ -320,13 +324,13 @@ export default function SellerShell({
                     active={isMembersActive}
                     onClick={closeMobileMenu}
                 /> : null}
-                <NavItem
+                {canManageProducts ? <NavItem
                     href={productsHref}
                     label="상품관리"
                     icon={PackageCheck}
                     active={isProductsActive}
                     onClick={closeMobileMenu}
-                />
+                /> : null}
                 {isSuperAdmin ? (
                     <NavItem
                         href={applicationsHref}

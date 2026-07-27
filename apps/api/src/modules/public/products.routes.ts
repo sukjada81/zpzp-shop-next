@@ -3,7 +3,6 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireTenant } from "../../common/guard.js";
-import { getLinkerSlotPolicy } from "../seller/linker-products.routes.js";
 
 type ImageItem = { key: string; label?: string };
 
@@ -91,7 +90,7 @@ function goodsImageUrl(raw: string | null | undefined): string {
     if (/^https?:\/\//i.test(s)) return s;
     if (/^\/\//.test(s)) return `https:${s}`;
 
-    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://zpzp.kr").replace(/\/+$/, "");
     const path = s.replace(/^\/+/, "");
 
     if (/^image\//i.test(path)) {
@@ -108,7 +107,7 @@ function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | 
     if (/^https?:\/\//i.test(s)) return s;
     if (/^\/\//.test(s)) return `https:${s}`;
 
-    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://discountallday.kr").replace(/\/+$/, "");
+    const base = (process.env.GOODS_IMAGE_BASE_URL || "https://zpzp.kr").replace(/\/+$/, "");
     const n = Number(uid);
     const imgBlock = Number.isFinite(n) ? Math.max(1, Math.floor(n / 10000)) : 1;
     const path = s.replace(/^\/+/, "");
@@ -480,11 +479,13 @@ export async function publicProductRoutes(app: FastifyInstance) {
         });
         if (rows.length === 0) return { linkerUid: linker.uid, rows, ids: [] as number[] };
 
-        const policy = await getLinkerSlotPolicy(app, linker);
         const sellingProducts = await app.prisma.mallRN_goods.findMany({
             where: {
                 uid: { in: rows.map((row) => row.product_uid) },
-                status: "published",
+                // 노출 플랜B: 링커 선택 상품이 "published"로만 걸려 라이브(status="active") 상품이
+                // 미노출되던 문제 회피. 메인 목록 buildPublicGoodsWhere는 "active"를 쓰므로 정합을 맞춘다.
+                // "published"의 별도 의미가 밝혀지면 이 in 배열에서 되돌릴 수 있게 명시적으로 남긴다.
+                status: { in: ["published", "active"] },
                 sale_use: 1,
                 deleted_at: null,
                 AND: [{ OR: [{ sale_end_at: null }, { sale_end_at: { gte: new Date() } }] }],
@@ -492,13 +493,11 @@ export async function publicProductRoutes(app: FastifyInstance) {
             select: { uid: true },
         });
         const sellingIds = new Set(sellingProducts.map((product) => product.uid));
-        const visibleWithinSlot = rows
-            .filter((row) => sellingIds.has(row.product_uid))
-            .slice(0, policy.slotLimit);
+        const visibleSelling = rows.filter((row) => sellingIds.has(row.product_uid));
         return {
             linkerUid: linker.uid,
-            rows: visibleWithinSlot,
-            ids: visibleWithinSlot.map((row) => row.product_uid),
+            rows: visibleSelling,
+            ids: visibleSelling.map((row) => row.product_uid),
         };
     }
 
