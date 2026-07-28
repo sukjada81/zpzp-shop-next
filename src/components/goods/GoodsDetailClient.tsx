@@ -442,7 +442,11 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
         showToast("로그인 후 이용할 수 있습니다.", "error");
 
-        const returnTo = typeof window !== "undefined" ? window.location.pathname : `/${tenant}/home`;
+        // returnTo 는 반드시 절대 URL 이어야 한다.
+        // 상대경로를 넘기면 카카오 콜백의 safeNextUrl 이 <tenant>.zpzp.kr 을 조립하는데,
+        // 링커 스토어의 tenant 는 hq(예약 슬러그)라 점포선택으로 폴백되고 로그인 루프가 됐다.
+        const returnTo =
+            typeof window !== "undefined" ? window.location.href : `/${tenant}/home`;
         router.push(`/${tenant}/login?returnTo=${encodeURIComponent(returnTo)}`);
 
         return true;

@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Menu } from "lucide-react";
 
-import { BRAND_NAME, USE_TEXT_LOGO } from "@/lib/brand";
+import { BRAND_NAME, BRAND_LOGO_SRC, USE_TEXT_LOGO } from "@/lib/brand";
 
 const LOGO_H = 32;
 const LOGO_W = Math.round(LOGO_H * 3.05);
@@ -77,11 +77,13 @@ export default function MobileHeader({
                                             {BRAND_NAME}
                                         </span>
                                     ) : (
+                                        // 정사각 로고라 슬롯도 정사각(LOGO_H x LOGO_H)으로 잡는다
                                         <Image
-                                            src="/logo_top.png"
+                                            src={BRAND_LOGO_SRC}
                                             alt={BRAND_NAME}
-                                            width={LOGO_W}
+                                            width={LOGO_H}
                                             height={LOGO_H}
+                                            className="object-contain"
                                             priority
                                         />
                                     )}

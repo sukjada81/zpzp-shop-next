@@ -13,7 +13,10 @@ async function getSessionFromApi() {
     const cookie = h.get("cookie") || "";
 
     const INTERNAL_ORIGIN = process.env.NEXT_INTERNAL_ORIGIN || "http://127.0.0.1:3000";
-    const url = new URL("/api/auth/session", INTERNAL_ORIGIN);
+    // 세션 조회 경로는 /auth/session 이다. /api/auth/session 은 존재하지 않아 404 였고,
+    // res.ok=false → loggedIn:false 로 굳어 **로그인해도 계속 auth 로 되돌리는 무한 루프**가 났다.
+    // (auth 로그인 페이지는 실제 세션을 보고 다시 여기로 돌려보내므로 서로 튕긴다)
+    const url = new URL("/auth/session", INTERNAL_ORIGIN);
 
     const res = await fetch(url.toString(), {
         headers: { cookie },

@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { BRAND_NAME, USE_TEXT_LOGO } from "@/lib/brand";
+import { BRAND_NAME, BRAND_LOGO_SRC, USE_TEXT_LOGO } from "@/lib/brand";
 
 export default function Footer() {
     const [showTopButton, setShowTopButton] = useState(false);
@@ -41,11 +41,12 @@ export default function Footer() {
                                         {BRAND_NAME}
                                     </span>
                                 ) : (
+                                    // 정사각 로고 — 가로 150px 슬롯에서 왼쪽 정렬로 높이에 맞춘다
                                     <Image
-                                        src="/logo_top.png"
+                                        src={BRAND_LOGO_SRC}
                                         alt={BRAND_NAME}
                                         fill
-                                        sizes="150px"
+                                        sizes="32px"
                                         className="object-contain object-left"
                                         priority
                                     />

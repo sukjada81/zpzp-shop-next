@@ -20,7 +20,15 @@ export default function TenantLoginPage() {
                 : `https://${tenant}.zpzp.kr`;
 
         const defaultReturnTo = tenant ? new URL("/home", origin).toString() : origin;
-        const returnTo = returnToParam || defaultReturnTo;
+
+        // 넘어온 returnTo 가 상대경로면 **현재 스토어 origin 기준으로 절대화**한다.
+        // 그대로 흘리면 카카오 콜백이 <tenant>.zpzp.kr 을 조립하는데, 링커 스토어의
+        // tenant 는 hq(예약 슬러그)라 점포선택으로 폴백되고 로그인 루프가 된다.
+        const returnTo = returnToParam
+            ? /^https?:\/\//i.test(returnToParam)
+                ? returnToParam
+                : new URL(returnToParam.startsWith("/") ? returnToParam : `/${returnToParam}`, origin).toString()
+            : defaultReturnTo;
 
         const loginUrl = new URL("/login", AUTH_ORIGIN);
         if (tenant) loginUrl.searchParams.set("tenant", tenant);

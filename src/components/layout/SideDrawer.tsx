@@ -34,7 +34,7 @@ type AuthSession = {
     user?: { id: string; provider: string } | null;
 };
 
-import { BRAND_NAME, USE_TEXT_LOGO } from "@/lib/brand";
+import { BRAND_NAME, BRAND_LOGO_SRC, USE_TEXT_LOGO } from "@/lib/brand";
 const HIDE_POINTS_MENU = false;
 const HIDE_SELECT_TENANT_MENU = true;
 const HIDE_AUTH_BUTTON = false;
@@ -213,7 +213,7 @@ export default function SideDrawer({
                                         </span>
                                     ) : (
                                         <Image
-                                            src="/logo_side.png"
+                                            src={BRAND_LOGO_SRC}
                                             alt={BRAND_NAME}
                                             fill
                                             sizes="40px"
