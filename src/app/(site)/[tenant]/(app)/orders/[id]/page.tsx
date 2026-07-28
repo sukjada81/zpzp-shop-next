@@ -78,10 +78,10 @@ function toneByStatus(statusLabel: string) {
     if (statusLabel.includes("취소") || statusLabel.includes("미수령")) {
         return "bg-rose-50 border-rose-200 text-rose-700";
     }
-    if (statusLabel.includes("픽업완료")) {
+    if (statusLabel.includes("배송완료")) {
         return "bg-emerald-50 border-emerald-200 text-emerald-700";
     }
-    if (statusLabel.includes("픽업준비") || statusLabel.includes("픽업기간")) {
+    if (statusLabel.includes("발송준비") || statusLabel.includes("픽업기간")) {
         return "bg-amber-50 border-amber-200 text-amber-700";
     }
     if (statusLabel.includes("공구") || statusLabel.includes("예정")) {

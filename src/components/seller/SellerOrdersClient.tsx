@@ -62,9 +62,9 @@ function getStatusLabel(status?: number) {
         case 1:
             return "현장결제완료";
         case 2:
-            return "픽업준비완료";
+            return "발송준비완료";
         case 4:
-            return "픽업완료";
+            return "배송완료";
         case 9:
             return "주문취소";
         default:
@@ -241,12 +241,12 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
             const json = await res.json().catch(() => null);
 
             if (!res.ok || !json?.ok) {
-                throw new Error(json?.message || "픽업완료 처리에 실패했습니다.");
+                throw new Error(json?.message || "배송완료 처리에 실패했습니다.");
             }
 
             await load();
         } catch (e: any) {
-            alert(e?.message || "픽업완료 처리에 실패했습니다.");
+            alert(e?.message || "배송완료 처리에 실패했습니다.");
         } finally {
             setSavingId(null);
         }
@@ -313,7 +313,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                     주문 관리
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    최근 주문을 확인하고 확인 처리 후 픽업완료로 변경할 수 있습니다.
+                    최근 주문을 확인하고 확인 처리 후 배송완료로 변경할 수 있습니다.
                 </p>
                 {hasQuery ? (
                     <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
@@ -466,7 +466,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                                 ) : (
                                                     <CheckCircle2 className="h-4 w-4" />
                                                 )}
-                                                {isDone ? "픽업완료" : isCanceled ? "취소주문" : "확인"}
+                                                {isDone ? "배송완료" : isCanceled ? "취소주문" : "확인"}
                                             </button>
 
                                             <button

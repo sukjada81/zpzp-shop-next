@@ -1,7 +1,7 @@
 // src/lib/orders/ordersStore.ts
 
 
-export type OrderStatus = "주문완료" | "결제완료" | "픽업대기" | "픽업완료" | "취소";
+export type OrderStatus = "주문완료" | "결제완료" | "발송준비완료" | "배송완료" | "취소";
 
 export type OrderLine = {
     productId: string;

@@ -8,6 +8,12 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import {
+    consumeCoupons,
+    pickRepresentativeCoupon,
+    resolveCouponSelection,
+    resolveMemberLoginId,
+} from "./coupon.service.js";
 
 /** shop-next 공개 주문은 DAD 플랫폼 타입 (레거시 mallRN_order_info.platform_type) */
 const PLATFORM_TYPE = "DAD";
@@ -43,6 +49,8 @@ export type CreateStoreOrderInput = {
     memo?: string;
     direct?: number;
     items: OrderItemInput[];
+    /** 사용할 쿠폰(mallRN_coupon.uid). 스택 ON이면 일반 1 + 웰컴 1까지. 서버가 최종 검증한다. */
+    couponUids?: number[];
     /** Toss confirm 성공 후 전달 — 없으면 무통장 대기(B/A) 주문 */
     payment?: {
         paymentKey: string;
@@ -150,14 +158,34 @@ export async function createStoreOrder(
     if (!loaded.ok) return loaded;
 
     const { products } = loaded;
-    const payTotal = products.reduce(
+    const subtotal = products.reduce(
         (sum, row) => sum + toInt(row.product.price, 0) * toInt(row.item.qty, 0),
         0
     );
 
+    // 쿠폰 재검증(결제 승인 후 상태가 바뀌었을 수 있음). 스펙 D2: 할인 전 상품합계 기준.
+    const selection = await resolveCouponSelection(
+        prisma,
+        input.memberUid,
+        subtotal,
+        input.couponUids
+    );
+    if (!selection.ok) return { ok: false, message: selection.message };
+
+    const couponRows = selection.rows;
+    const couponTotal = selection.discountTotal;
+    const payTotal = subtotal - couponTotal;
+
     // 클라이언트·Toss 승인 금액과 서버 재계산 금액 일치 검증
     if (input.payment && payTotal !== input.payment.amount) {
         return { ok: false, message: "결제금액이 일치하지 않습니다." };
+    }
+
+    const couponOwnerId = couponRows.length
+        ? await resolveMemberLoginId(prisma, input.memberUid)
+        : "";
+    if (couponRows.length && !couponOwnerId) {
+        return { ok: false, message: "회원 정보를 확인할 수 없습니다." };
     }
 
     const now = input.payment?.approvedAtTs ?? toUnixNow();
@@ -168,13 +196,14 @@ export async function createStoreOrder(
 
     let orderNum = "";
     let created = false;
+    let couponFailure = "";
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
         orderNum = buildOrderNum();
 
         try {
-            const txOps = [
-                prisma.mallRN_order_info.create({
+            await prisma.$transaction(async (tx) => {
+                await tx.mallRN_order_info.create({
                     data: {
                         id: orderNum,
                         tenant_id: input.tenantId,
@@ -206,8 +235,9 @@ export async function createStoreOrder(
                         escrow: 0,
                         bank_info: "",
                         use_mileage: 0,
-                        use_coupon: 0,
-                        coupon_uid: 0,
+                        // 장바구니 쿠폰 합계 + 대표 1장. 상세 내역은 zpzp_order_coupon(단일 진실원).
+                        use_coupon: couponTotal,
+                        coupon_uid: pickRepresentativeCoupon(couponRows),
                         cash_receipts: "",
                         mail_send: 0,
                         cash_issued: 0,
@@ -223,9 +253,10 @@ export async function createStoreOrder(
                         use_td_point: 0,
                         pay_method: isPaid ? paymentMethod : "",
                     },
-                }),
-                ...products.map((row) =>
-                    prisma.mallRN_order_goods.create({
+                });
+
+                for (const row of products) {
+                    await tx.mallRN_order_goods.create({
                         data: {
                             vendor: toSafeString(row.product.vendor, input.tenantSlug || String(input.tenantId)),
                             vendor_delivery: "",
@@ -260,17 +291,27 @@ export async function createStoreOrder(
                             reals: isPaid ? 1 : 0,
                             signdate: now,
                         },
-                    })
-                ),
-            ];
+                    });
+                }
 
-            await prisma.$transaction(txOps);
+                // 쿠폰 소비는 반드시 같은 트랜잭션 안에서. 동시 사용이면 throw → 주문까지 롤백.
+                await consumeCoupons(tx, couponOwnerId, couponRows, orderNum, now);
+            });
+
             created = true;
             break;
         } catch (error: unknown) {
             if (isOrderNumUniqueError(error)) continue;
+            if (error instanceof Error && error.message.startsWith("COUPON_ALREADY_USED")) {
+                couponFailure = "이미 사용된 쿠폰입니다. 쿠폰을 다시 선택해 주세요.";
+                break;
+            }
             throw error;
         }
+    }
+
+    if (couponFailure) {
+        return { ok: false, message: couponFailure };
     }
 
     if (!created || !orderNum) {
