@@ -87,7 +87,36 @@ function safeTenantSlug(raw: string) {
     return t;
 }
 
+/**
+ * tenant 를 서브도메인으로 조립하면 안 되는 슬러그.
+ * middleware.ts 의 RESERVED_SUBDOMAINS 와 같은 목록이다 — 거기서 tenant 로 취급하지 않으므로
+ * <slug>.zpzp.kr 을 만들면 라우팅되는 페이지가 없어 404 가 난다.
+ * 특히 hq: 링커 스토어의 라우트 tenant 가 hq(본사몰 카탈로그)라서, 상대 returnTo 와 만나면
+ * https://hq.zpzp.kr/home 이 조립돼 카카오 로그인 직후 404 가 났다.
+ */
+const NON_TENANT_SLUGS = new Set([
+    "www",
+    "admin",
+    "auth",
+    "api",
+    "select-tenant",
+    "seller",
+    "hq",
+]);
+
+function isNonTenantSlug(tenant: string) {
+    const t = (tenant || "").trim().toLowerCase();
+    return !t || NON_TENANT_SLUGS.has(t);
+}
+
+function selectTenantOrigin() {
+    return process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.zpzp.kr";
+}
+
 function buildTenantOrigin(req: NextRequest, tenant: string) {
+    // 서브도메인으로 세울 수 없는 슬러그면 조립하지 않고 점포 선택으로 보낸다.
+    if (isNonTenantSlug(tenant)) return selectTenantOrigin();
+
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "zpzp.kr";
     const dev = isDevHttp(req);
     const proto = dev ? "http" : "https";
@@ -102,7 +131,12 @@ function buildTenantOrigin(req: NextRequest, tenant: string) {
 function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
     if (isAbsoluteUrl(returnTo)) return returnTo;
     const path = returnTo.startsWith("/") ? returnTo : "/home";
-    return new URL(path, buildTenantOrigin(req, tenant)).toString();
+
+    // 폴백 origin 이 점포 선택이면 스토어 경로(/home 등)를 붙여봐야 의미가 없다 — 루트로 보낸다.
+    const origin = buildTenantOrigin(req, tenant);
+    if (isNonTenantSlug(tenant)) return new URL("/", origin).toString();
+
+    return new URL(path, origin).toString();
 }
 
 async function exchangeKakaoToken(code: string, redirectUri: string) {
@@ -299,7 +333,11 @@ export async function GET(req: NextRequest) {
 
         const kakaoAccount = profile.kakao_account ?? {};
         const kakaoProfile = kakaoAccount.profile ?? {};
-        const tenantSlug = String(tenant || "a").trim().toLowerCase();
+        // DAD 잔재였던 하드코딩 기본값 "a" 제거 — 존재하지 않는 점포라 API 가 엉뚱한 테넌트로
+        // 폴백했다. 빈 값이면 본사몰(hq) 카탈로그를 기본으로 쓴다.
+        // 리다이렉트 목적지는 별개다 — safeNextUrl 이 hq 를 서브도메인으로 세우지 않고
+        // 점포 선택으로 보낸다(NON_TENANT_SLUGS).
+        const tenantSlug = String(tenant || "hq").trim().toLowerCase();
 
         const completePayload = {
             tenantSlug,

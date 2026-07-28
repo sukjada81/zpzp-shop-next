@@ -36,7 +36,7 @@ export default function Footer() {
                             <div className="relative h-8 w-[150px]">
                                 <Image
                                     src="/logo_top.png"
-                                    alt="디스카운트 올데이"
+                                    alt="줍줍링크"
                                     fill
                                     sizes="150px"
                                     className="object-contain object-left"
@@ -47,7 +47,11 @@ export default function Footer() {
                     </div>
 
                     <div className="space-y-2 text-[12px] leading-[1.8] text-[#5f6470]">
-                        <p className="font-semibold text-[#4b4f58]">주식회사 디스카운트올데이</p>
+                        {/* 회사명만 우선 교체(mallRN_configuration.comp_name = "주식회사 디에스허브").
+                            원본: "주식회사 디스카운트올데이"
+                            아래 대표자·사업자등록번호·연락처·주소는 DAD 값이 그대로 남아 있음 —
+                            줍줍 실제 값 수령 후 교체 예정(팀장 요청 중). 값을 지어내지 말 것. */}
+                        <p className="font-semibold text-[#4b4f58]">주식회사 디에스허브</p>
                         <p>대표자: 김재철</p>
                         <p>사업자 등록번호: 230-88-03533</p>
                         <p>연락처: 010-2914-2549</p>
@@ -65,7 +69,8 @@ export default function Footer() {
                     </div>
 
                     <div className="mt-8 border-t border-[#d9d9d9] pt-4 text-[12px] text-[#9aa0ad]">
-                        © 2026 Discount All Day Inc. All rights reserved.
+                        {/* 위 회사명과 같은 사실이라 함께 교체. 원본: "© 2026 Discount All Day Inc. All rights reserved." */}
+                        © 2026 DS Hub Inc. All rights reserved.
                     </div>
                 </div>
             </footer>

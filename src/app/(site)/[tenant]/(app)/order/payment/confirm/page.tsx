@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { endpoints } from "@/lib/api/endpoints";
+import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 
 type ConfirmResponse = {
     ok?: boolean;
@@ -56,7 +56,8 @@ export default function TossPaymentConfirmPage() {
                     method: "GET",
                     credentials: "include",
                     cache: "no-store",
-                    headers: { Accept: "application/json" },
+                    // 링커 서브도메인에서 호스트가 경로 tenant 를 덮어써 400 이 나므로 명시 전송
+                    headers: { Accept: "application/json", ...tenantHeader(tenant) },
                 });
 
                 const json = (await res.json().catch(() => ({}))) as ConfirmResponse;

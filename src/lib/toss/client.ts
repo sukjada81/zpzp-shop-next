@@ -5,6 +5,8 @@
  * clientKey 는 API 프록시를 통해 서버에서 받음 (env 직접 노출 방지).
  */
 
+import { tenantHeader } from "@/lib/api/endpoints";
+
 declare global {
     interface Window {
         TossPayments?: (clientKey: string) => {
@@ -53,7 +55,8 @@ export async function fetchTossClientKey(tenant: string): Promise<string> {
             method: "GET",
             credentials: "include",
             cache: "no-store",
-            headers: { Accept: "application/json" },
+            // 링커 서브도메인에서 호스트가 경로 tenant 를 덮어써 400 이 나므로 명시 전송 — tenantHeader 주석 참조
+            headers: { Accept: "application/json", ...tenantHeader(tenant) },
         })
             .then(async (res) => {
                 const data = await res.json().catch(() => ({}));

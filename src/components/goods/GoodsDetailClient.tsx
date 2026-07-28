@@ -462,7 +462,11 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
         const draftItems = selectedLines.map((line) => ({
             id: String(data.id),
+            // GoodsDetailData 에 name 은 없다(title 하나뿐). 죽은 폴백이라 제거.
             title: String(data.title ?? "상품"),
+            // SelectedLine 의 단가 필드는 price 가 아니라 unitPrice.
+            // 팀장 승인: 옵션 단가 우선 반영 — 옵션마다 가격이 다른 상품에서
+            // 상품 정가(data.price)가 아니라 선택한 옵션의 단가로 주문 금액을 잡는다.
             price: Number(line.unitPrice ?? data.price ?? 0),
             qty: Number(line.quantity ?? 0),
             optionId: toOptionalNumberId(line.rawOptionId),

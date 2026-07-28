@@ -334,15 +334,21 @@ function formatKoreanSaleEndDate(value?: Date | null): string | undefined {
     return `공구마감일: ${text}`;
 }
 
+// 줍줍은 배송 전용, 정책 변경 대비 보존 — 상품 목록 응답의 픽업 배지(metaRight) 노출 중단.
+// 사유: 이 값은 카피가 아니라 API 가 내려주는 값이라 비회원 목록 화면(GoodsCard/ProductCard metaRight,
+// 상품상세 pickup)에 그대로 노출된다. 픽업 기능 자체는 제거하지 않고(팀장 지시: 제거 금지·주석처리)
+// 문자열 생성만 막는다. 픽업 재개 시 아래 원본 3줄을 되살리면 된다.
 function buildPickupBadgeText(input: {
     pickupOnly?: boolean | null;
     pickupStartAt?: Date | null;
     pickupEndAt?: Date | null;
 }) {
-    const dateText = formatMMDDDay(input.pickupStartAt) || formatMMDDDay(input.pickupEndAt);
-    if (dateText) return `픽업일: ${dateText}~`;
-    if (input.pickupOnly) return "픽업일: 바로 픽업 가능";
+    void input;
     return undefined;
+    // const dateText = formatMMDDDay(input.pickupStartAt) || formatMMDDDay(input.pickupEndAt);
+    // if (dateText) return `픽업일: ${dateText}~`;
+    // if (input.pickupOnly) return "픽업일: 바로 픽업 가능";
+    // return undefined;
 }
 
 function buildPublicGoodsWhere(tenantId: bigint): Prisma.mallRN_goodsWhereInput {
@@ -734,13 +740,16 @@ export async function publicProductRoutes(app: FastifyInstance) {
             categoryLabel: categoryLabelFromCate(row.cate),
             meta: {
                 timeLeft: hideScheduleMeta ? undefined : calcTimeLeftFromEnd(row.sale_end_at ?? null),
-                pickup: hideScheduleMeta
-                    ? undefined
-                    : hasPickupPeriod
-                        ? undefined
-                        : row.pickup_only
-                            ? "바로 픽업 가능 / 주문 후 매장에서 바로 수령"
-                            : undefined,
+                // 줍줍은 배송 전용, 정책 변경 대비 보존 — 상품상세 응답의 픽업 안내 문구 노출 중단.
+                // 위 buildPickupBadgeText 와 같은 사유(API 가 내려주는 값이라 화면에 그대로 노출됨).
+                pickup: undefined,
+                // pickup: hideScheduleMeta
+                //     ? undefined
+                //     : hasPickupPeriod
+                //         ? undefined
+                //         : row.pickup_only
+                //             ? "바로 픽업 가능 / 주문 후 매장에서 바로 수령"
+                //             : undefined,
                 pickupStartAt: hideScheduleMeta ? null : formatDbDateTime(row.pickup_start_at),
                 pickupEndAt: hideScheduleMeta ? null : formatDbDateTime(row.pickup_end_at),
                 pickupNote: hideScheduleMeta ? null : (row.pickup_note ? String(row.pickup_note) : null),
