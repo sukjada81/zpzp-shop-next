@@ -7,6 +7,8 @@ import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
 import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import HomeProfileGate from "@/components/profile/HomeProfileGate";
 import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/home/OngoingGroupBuySection";
+import GoodsCard from "@/components/goods/GoodsCard";
+import type { GoodsListItem } from "@/components/goods/GoodsListClient";
 import { endpoints } from "@/lib/api/endpoints";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse, PublicProductListItem, PublicProductDetailResponse } from "@/lib/types/goods";
@@ -119,6 +121,25 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
     }));
 }
 
+// 첫 화면 '전체 상품' 그리드용 매퍼. /goods 목록과 같은 카드(GoodsCard)를 쓰므로
+// 매핑 규칙도 goods/page.tsx 와 동일하게 맞춘다.
+function toGoodsListItems(items: PublicProductsResponse["items"]): GoodsListItem[] {
+    return (items ?? []).map((p) => ({
+        id: String(p.id ?? ""),
+        title: String(p.title ?? ""),
+        // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "?????원"으로 표시된다
+        price: p.price == null ? null : Number(p.price),
+        masked: p.masked ?? p.price == null,
+        badgeLeft: undefined,
+        badgeRight: undefined,
+        metaLeft: p.metaLeft,
+        metaRight: p.metaRight,
+        thumbnailUrl: p.thumbnailUrl,
+        categoryLabel: displayCategoryLabel(p.categoryLabel),
+        cate: p.cate ?? null,
+    }));
+}
+
 function toOngoingItems(
     products: PublicProductListItem[],
     tenant: string,
@@ -202,9 +223,12 @@ export default async function HomePage({
     if (!tenant) notFound();
 
     // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 상품 조회 중단(fetchProducts type:"pickup")
-    const [todayProducts, recentOrders] = await Promise.all([
+    // 첫 화면 기본 = 진열 전체(type 미전달). 공구 딜이 없으면 홈이 빈 화면으로 보이던 문제를
+    // /goods 의 노출 플랜B(기본 탭 '전체')와 같은 기준으로 홈에도 적용한다.
+    const [todayProducts, allProducts, recentOrders] = await Promise.all([
         fetchProducts(tenant, { take: 10, type: "today" }),
         // fetchProducts(tenant, { take: 8, type: "pickup" }),
+        fetchProducts(tenant, { take: 100 }),
         fetchRecentOrders(tenant, 10),
     ]);
 
@@ -218,6 +242,8 @@ export default async function HomePage({
         href: `/${tenant}/goods?tab=today`,
         items: toCardItems(todayProducts),
     };
+
+    const allItems = toGoodsListItems(allProducts);
 
     // 줍줍은 배송 전용, 정책 변경 대비 보존 — "바로 픽업 가능" 섹션 정의/노출 중단
     // const pickupSection: GridSection = {
@@ -237,12 +263,17 @@ export default async function HomePage({
                 <HomeCategoryIcons tenant={tenant} />
             </div>
 
-            <SectionTitle
-                title={todaySection.title}
-                href={todaySection.href}
-                description={todaySection.description}
-            />
-            <Grid2 tenant={tenant} items={todaySection.items} emptyText="등록된 상품이 없습니다." />
+            {/* 공구 딜이 있을 때만 '오늘의 공구' 섹션을 렌더한다. 딜이 없으면 아래 전체 진열이 첫 화면이 된다. */}
+            {todaySection.items.length > 0 && (
+                <>
+                    <SectionTitle
+                        title={todaySection.title}
+                        href={todaySection.href}
+                        description={todaySection.description}
+                    />
+                    <Grid2 tenant={tenant} items={todaySection.items} emptyText="등록된 상품이 없습니다." />
+                </>
+            )}
 
             {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — "바로 픽업 가능" 섹션 노출 중단
             <SectionTitle
@@ -259,7 +290,14 @@ export default async function HomePage({
                 />
             )}
 
+            <SectionTitleStatic title="전체 상품" />
+            <GridAll tenant={tenant} items={allItems} emptyText="등록된 상품이 없습니다." />
+
+            {/* DAD 잔재 정리 — 추천서비스/클로버 모집 블록 노출 중단(대체 콘텐츠 확정 전까지).
+                DAD 포인트 카피·discountallday.co.kr 외부 링크·외부 이미지가 들어 있어 호출만 끊는다.
+                컴포넌트 본문(RecommendedBlock)은 재개 대비 그대로 보존.
             <RecommendedBlock tenant={tenant} />
+            */}
         </main>
     );
 }
@@ -289,6 +327,46 @@ function SectionTitle({
             {description ? (
                 <div className="mt-1 text-sm font-medium text-[color:var(--muted)]">{description}</div>
             ) : null}
+        </section>
+    );
+}
+
+// '전체 상품' 섹션 제목. '더보기' 링크가 없다는 점만 SectionTitle 과 다르다
+// (홈에서 전체 진열을 이미 다 보여주므로 더보기가 갈 곳이 없다).
+function SectionTitleStatic({ title }: { title: string }) {
+    return (
+        <section className="mt-6">
+            <div className="text-xl font-bold text-neutral-1">{title}</div>
+        </section>
+    );
+}
+
+// 전체 진열 상품을 세로 2열로 쭉 나열한다. Grid2(가로 스크롤)와 달리 목록형이라
+// 공구 딜이 없을 때 첫 화면이 상품 리스트로 채워진다. 카드는 /goods 목록과 동일(GoodsCard).
+function GridAll({
+                     tenant,
+                     items,
+                     emptyText,
+                 }: {
+    tenant: string;
+    items: GoodsListItem[];
+    emptyText: string;
+}) {
+    if (!items.length) {
+        return (
+            <section className="mt-3">
+                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm font-semibold text-[color:var(--muted)]">
+                    {emptyText}
+                </div>
+            </section>
+        );
+    }
+
+    return (
+        <section className="mt-3 grid grid-cols-2 gap-3">
+            {items.map((it) => (
+                <GoodsCard key={it.id} tenant={tenant} item={it} />
+            ))}
         </section>
     );
 }
