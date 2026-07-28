@@ -26,7 +26,32 @@ function safeTenantSlug(raw: string) {
     return t;
 }
 
+/**
+ * tenant 를 서브도메인으로 조립하면 안 되는 슬러그(middleware.ts RESERVED_SUBDOMAINS 와 동일).
+ * hq 가 대표 사례 — 링커 스토어의 라우트 tenant 가 hq 라서 https://hq.zpzp.kr/home 이
+ * 만들어지면 404 다. callback/route.ts 에 같은 목록이 있다(두 라우트가 각각 URL 을 만든다).
+ */
+const NON_TENANT_SLUGS = new Set([
+    "www",
+    "admin",
+    "auth",
+    "api",
+    "select-tenant",
+    "seller",
+    "hq",
+]);
+
+function isNonTenantSlug(tenant: string) {
+    const t = (tenant || "").trim().toLowerCase();
+    return !t || NON_TENANT_SLUGS.has(t);
+}
+
 function buildTenantHome(originProtocol: string, tenant: string) {
+    // 서브도메인으로 세울 수 없는 슬러그면 점포 선택으로 보낸다.
+    if (isNonTenantSlug(tenant)) {
+        return process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.zpzp.kr";
+    }
+
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "zpzp.kr";
     const port =
         process.env.NEXT_PUBLIC_LOCAL_TENANT_PORT ||
@@ -51,10 +76,11 @@ export async function GET(req: NextRequest) {
         );
     }
 
+    // DAD 잔재였던 하드코딩 기본값 "a" 제거 — 존재하지 않는 점포다.
+    // 빈 값이면 buildTenantHome 이 점포 선택으로 폴백한다.
     const tenant =
         safeTenantSlug(req.nextUrl.searchParams.get("tenant") || "") ||
-        safeTenantSlug(req.cookies.get("selectedTenant")?.value || "") ||
-        "a";
+        safeTenantSlug(req.cookies.get("selectedTenant")?.value || "");
 
     const defaultReturnTo = buildTenantHome(req.nextUrl.protocol, tenant);
     const returnTo = req.nextUrl.searchParams.get("returnTo") || defaultReturnTo;
