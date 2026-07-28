@@ -34,7 +34,8 @@ type AuthSession = {
     user?: { id: string; provider: string } | null;
 };
 
-const BRAND_NAME = "디스카운트 올데이";
+// DAD 잔재 정리 — 원본: "디스카운트 올데이"
+const BRAND_NAME = "줍줍링크";
 const HIDE_POINTS_MENU = false;
 const HIDE_SELECT_TENANT_MENU = true;
 const HIDE_AUTH_BUTTON = false;

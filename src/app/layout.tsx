@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-    title: "디스카운트 올데이",
+    // DAD 잔재 정리 — 원본: "디스카운트 올데이"
+    title: "줍줍링크",
     description: "지점별 공동구매 플랫폼",
     icons: { icon: "/favicon.ico" },
 };
