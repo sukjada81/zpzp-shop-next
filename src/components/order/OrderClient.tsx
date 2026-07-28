@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints } from "@/lib/api/endpoints";
 import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
@@ -43,6 +43,13 @@ function joinPhone(a: string, b: string, c: string) {
     return [a, b, c].map(onlyDigits).filter(Boolean).join("");
 }
 
+/** Toss requestPayment customerMobilePhone — 숫자만, 8~11자리 */
+function formatTossMobilePhone(phone: string) {
+    const digits = onlyDigits(phone);
+    if (digits.length < 8) return undefined;
+    return digits.slice(0, 11);
+}
+
 function nowLocalDateTimeInputValue() {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -61,6 +68,8 @@ function toApiDateTime(value: string) {
 function buildLoginHref(tenant: string, returnTo: string) {
     return `/${tenant}/login?returnTo=${encodeURIComponent(returnTo)}`;
 }
+
+const ORDER_DRAFT_KEY = (tenant: string) => `zpzp_order_draft_${tenant}`;
 
 function getMaxSelectableQty(item?: { qtyType?: number; stockQty?: number }) {
     if (!item) return Number.POSITIVE_INFINITY;
@@ -94,10 +103,12 @@ export default function OrderClient(props: {
     const { tenant } = props;
     const router = useRouter();
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const cart = useCart();
 
     const initialItems = props.initialItems ?? [];
 
+    const [draftItems, setDraftItems] = useState<OrderItem[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [payError, setPayError] = useState("");
 
@@ -183,7 +194,27 @@ export default function OrderClient(props: {
         };
     }, [tenant]);
 
+    // 상품상세 "주문하기" → PG 주문서로 넘길 때 sessionStorage 임시 보관
+    useEffect(() => {
+        if (searchParams.get("direct") !== "1") return;
+        try {
+            const raw = sessionStorage.getItem(ORDER_DRAFT_KEY(tenant));
+            if (!raw) return;
+            const parsed = JSON.parse(raw) as OrderItem[];
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                setDraftItems(parsed);
+            }
+            sessionStorage.removeItem(ORDER_DRAFT_KEY(tenant));
+        } catch {
+            // ignore malformed draft
+        }
+    }, [tenant, searchParams]);
+
     const items = useMemo<OrderItem[]>(() => {
+        if (draftItems.length > 0) {
+            return draftItems;
+        }
+
         if (initialItems.length > 0) {
             return initialItems;
         }
@@ -204,7 +235,7 @@ export default function OrderClient(props: {
         }
 
         return [];
-    }, [initialItems, cart.items]);
+    }, [draftItems, initialItems, cart.items]);
 
     const subtotal = useMemo(
         () => items.reduce((sum, it) => sum + Number(it.price ?? 0) * Number(it.qty ?? 0), 0),
@@ -212,7 +243,7 @@ export default function OrderClient(props: {
     );
 
     const canSubmit = items.length > 0 && !submitting;
-    const isDirectOrder = initialItems.length > 0;
+    const isDirectOrder = draftItems.length > 0 || initialItems.length > 0;
 
     function redirectToLogin() {
         const returnTo = pathname || `/${tenant}/order`;
@@ -354,6 +385,8 @@ export default function OrderClient(props: {
             // 2. Toss 결제창 — success/fail URL 은 tenant 서브도메인 기준
             const payment = await initTossPayment(tenant);
 
+            const customerMobilePhone = formatTossMobilePhone(normalizedBuyerPhone);
+
             await payment.requestPayment({
                 method: "CARD",
                 amount: { currency: "KRW", value: payAmount },
@@ -363,6 +396,7 @@ export default function OrderClient(props: {
                 failUrl: `${window.location.origin}/${tenant}/order/payment/fail`,
                 customerName: normalizedBuyerName,
                 customerEmail: String(auth.member?.email ?? "guest@example.com"),
+                ...(customerMobilePhone ? { customerMobilePhone } : {}),
                 card: { flowMode: "DEFAULT" },
             });
         } catch (e: any) {
@@ -572,6 +606,28 @@ export default function OrderClient(props: {
                         className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
                     />
                 </div>
+            </section>
+
+            <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-[16px] font-extrabold text-slate-900">결제수단</div>
+                <div className="mt-3 rounded-2xl border-2 border-[color:var(--accent)] bg-[color:var(--accent)]/5 p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-lg shadow-sm">
+                            💳
+                        </div>
+                        <div>
+                            <div className="text-[14px] font-extrabold text-slate-900">
+                                토스페이먼츠
+                            </div>
+                            <div className="mt-0.5 text-[12px] font-semibold text-slate-600">
+                                카드 · 계좌이체 · 간편결제 (토스페이, 카카오페이 등)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p className="mt-3 text-[12px] font-semibold leading-5 text-slate-500">
+                    아래 버튼을 누르면 토스 결제창이 열립니다. 결제 완료 후 주문내역으로 이동합니다.
+                </p>
             </section>
 
             <button

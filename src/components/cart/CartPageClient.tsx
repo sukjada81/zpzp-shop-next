@@ -3,21 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { useCart } from "@/lib/cart/CartProvider";
-import { endpoints } from "@/lib/api/endpoints";
-import { saveGuestOrderRef } from "@/lib/orders/guestOrderRefs";
-import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
-
-type CreateOrderResponse = {
-    ok: boolean;
-    orderNum?: string;
-    status?: number;
-    statusLabel?: string;
-    message?: string;
-    error?: string;
-    detail?: string;
-};
 
 function getOptionKey(item: { optionId?: number | string; optionName?: string }) {
     if (item.optionId != null && String(item.optionId).trim() !== "") {
@@ -38,80 +24,7 @@ function getMaxSelectableQty(item?: { qtyType?: number; stockQty?: number }) {
 
 export default function CartPageClient({ tenant }: { tenant: string }) {
     const router = useRouter();
-    const { items, totalPrice, updateQuantity, removeItem, clear } = useCart();
-    const [submitting, setSubmitting] = useState(false);
-
-    async function handleDirectOrder() {
-        if (!items.length || submitting) return;
-
-        const profile = readQuickOrderProfile(tenant);
-        if (!profile) {
-            alert("주문을 하려면 설정에서 닉네임을 먼저 저장해 주세요.");
-            router.push(`/${tenant}/settings`);
-            return;
-        }
-
-        try {
-            setSubmitting(true);
-
-            const res = await fetch(endpoints.createOrder(tenant), {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                },
-                credentials: "include",
-                cache: "no-store",
-                body: JSON.stringify({
-                    buyerName: profile.nickname,
-                    buyerPhone: profile.phone || "",
-                    receiverName: profile.nickname,
-                    receiverPhone: profile.phone || "",
-                    pickupAt: null,
-                    message: "",
-                    memo: "장바구니 바로주문",
-                    direct: 1,
-                    items: items.map((it) => ({
-                        productId: Number(it.productId),
-                        optionId:
-                            it.optionId != null && String(it.optionId).trim() !== ""
-                                ? Number(it.optionId)
-                                : undefined,
-                        optionName: it.optionName ?? "",
-                        qty: Number(it.quantity ?? 0),
-                    })),
-                }),
-            });
-
-            const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
-
-            if (!res.ok || json?.ok === false || !json?.orderNum) {
-                throw new Error(
-                    json?.message ||
-                    json?.error ||
-                    json?.detail ||
-                    `주문 생성 실패 (HTTP ${res.status})`
-                );
-            }
-
-            const orderNum = json.orderNum;
-
-            saveGuestOrderRef({
-                tenant,
-                orderNum,
-                phone: profile.phone || "",
-                buyerName: profile.nickname || "",
-                createdAt: new Date().toISOString(),
-            });
-
-            clear();
-            router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(orderNum)}`);
-        } catch (e: any) {
-            alert(e?.message || "주문 처리 중 오류가 발생했습니다.");
-        } finally {
-            setSubmitting(false);
-        }
-    }
+    const { items, totalPrice, updateQuantity, removeItem } = useCart();
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24 pt-3">
@@ -179,7 +92,7 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                                                         optionKey
                                                     )
                                                 }
-                                                disabled={submitting}
+                                                disabled={false}
                                                 className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
                                             >
                                                 -
@@ -196,7 +109,7 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                                                         optionKey
                                                     )
                                                 }
-                                                disabled={submitting || !!item.soldout || isMaxReached}
+                                                disabled={!!item.soldout || isMaxReached}
                                                 className="h-8 w-8 rounded-full border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-40"
                                             >
                                                 +
@@ -207,7 +120,7 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                                     <button
                                         type="button"
                                         onClick={() => removeItem(item.productId, optionKey)}
-                                        disabled={submitting}
+                                        disabled={false}
                                         className="mt-3 text-xs font-bold text-rose-600 disabled:opacity-40"
                                     >
                                         삭제
@@ -226,11 +139,11 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
 
                     <button
                         type="button"
-                        onClick={handleDirectOrder}
-                        disabled={submitting || items.length === 0}
+                        onClick={() => router.push(`/${tenant}/order`)}
+                        disabled={items.length === 0}
                         className="mt-4 w-full rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white disabled:opacity-50"
                     >
-                        {submitting ? "주문 처리 중..." : "주문하기"}
+                        주문하기
                     </button>
                 </>
             )}

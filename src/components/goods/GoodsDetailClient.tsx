@@ -457,103 +457,26 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         showToast("장바구니에 담았어요.");
     }
 
-    async function submitQuickOrder() {
-        if (!isActive || submitting) return;
+    function submitQuickOrder() {
+        if (!isActive || allSoldout) return;
 
-        try {
-            setSubmitting(true);
+        const draftItems = selectedLines.map((line) => ({
+            id: String(data.id),
+            title: String(data.title ?? data.name ?? "상품"),
+            price: Number(line.price ?? data.price ?? 0),
+            qty: Number(line.quantity ?? 0),
+            optionId: toOptionalNumberId(line.rawOptionId),
+            optionName: line.optionName,
+            qtyType: line.qtyType,
+            stockQty: line.qty,
+            soldout: line.soldout,
+            stockNote: line.stockNote,
+        }));
 
-            const auth = await fetchAuthSession();
-            if (!auth?.loggedIn || !auth?.member?.uid) {
-                redirectToLogin();
-                return;
-            }
+        if (!draftItems.length) return;
 
-            const profile = readQuickOrderProfile(tenant);
-            if (!isQuickOrderProfileComplete(profile)) {
-                redirectToSettingsWithToast("주문자 정보를 먼저 설정해 주세요.");
-                return;
-            }
-
-            const buyerName =
-                String(profile?.nickname ?? "").trim() || String(auth.member?.name ?? "").trim();
-            const buyerPhone =
-                String(profile?.phone ?? "").trim() || String(auth.member?.phone ?? "").trim();
-
-            if (!buyerName || !buyerPhone) {
-                redirectToSettingsWithToast("주문자 정보를 먼저 설정해 주세요.");
-                return;
-            }
-
-            const res = await fetch(endpoints.createOrder(tenant), {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                },
-                credentials: "include",
-                cache: "no-store",
-                body: JSON.stringify({
-                    buyerName,
-                    buyerPhone,
-                    receiverName: buyerName,
-                    receiverPhone: buyerPhone,
-                    pickupAt: null,
-                    message: "",
-                    memo: "상품상세 빠른주문",
-                    direct: 1,
-                    items: selectedLines.map((line) => ({
-                        productId: Number(data.id),
-                        optionId: toOptionalNumberId(line.rawOptionId),
-                        optionName: line.optionName,
-                        qty: Number(line.quantity),
-                    })),
-                }),
-            });
-
-            const json = (await res.json().catch(() => ({}))) as CreateOrderResponse;
-
-            if (res.status === 401) {
-                redirectToLogin();
-                return;
-            }
-
-            if (!res.ok || json?.ok === false || !json?.orderNum) {
-                throw new Error(
-                    json?.message ||
-                    json?.error ||
-                    json?.detail ||
-                    `주문 생성 실패 (HTTP ${res.status})`
-                );
-            }
-
-            saveGuestOrderRef({
-                tenant,
-                orderNum: json.orderNum,
-                phone: buyerPhone,
-                buyerName,
-                createdAt: new Date().toISOString(),
-            });
-
-            setQty((prev) => {
-                const next = { ...prev };
-                Object.keys(next).forEach((key) => {
-                    next[key] = 0;
-                });
-                return next;
-            });
-
-            showToast("주문이 완료되었어요.");
-
-            window.setTimeout(() => {
-                router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(json.orderNum ?? "")}`);
-            }, 900);
-        } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : "주문 처리 중 오류가 발생했습니다.";
-            showToast(message, "error");
-        } finally {
-            setSubmitting(false);
-        }
+        sessionStorage.setItem(`zpzp_order_draft_${tenant}`, JSON.stringify(draftItems));
+        router.push(`/${tenant}/order?direct=1`);
     }
 
     function handleTouchStart(e: React.TouchEvent) {
