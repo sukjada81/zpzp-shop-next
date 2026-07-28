@@ -98,7 +98,9 @@ export default function LoginPage() {
 
                 <div className="space-y-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
                     <div className="whitespace-pre-line text-center font-medium leading-6 text-slate-700">
-                        {"🍀 필수 · 선택 모두 동의하기 눌러주셔야\n🔔 픽업 안내 알림톡을 발송해드릴 수 있어요!"}
+                        {/* 줍줍은 배송 전용, 정책 변경 대비 보존 — "픽업 안내" → "주문·배송 안내"
+                            원본: "🍀 필수 · 선택 모두 동의하기 눌러주셔야\n🔔 픽업 안내 알림톡을 발송해드릴 수 있어요!" */}
+                        {"🍀 필수 · 선택 모두 동의하기 눌러주셔야\n🔔 주문·배송 안내 알림톡을 발송해드릴 수 있어요!"}
                     </div>
                 </div>
 

@@ -4,7 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { Menu } from "lucide-react";
 
-const BRAND_NAME = "디스카운트 올데이";
+// DAD 잔재 정리 — 원본: "디스카운트 올데이"
+const BRAND_NAME = "줍줍링크";
 
 const LOGO_H = 32;
 const LOGO_W = Math.round(LOGO_H * 3.05);

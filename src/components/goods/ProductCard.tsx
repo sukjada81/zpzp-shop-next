@@ -34,7 +34,8 @@ export default function ProductCard({
                 ) : null}
 
                 <div className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
-                    DISCOUNT ALLDAY
+                    {/* DAD 잔재 정리 — 원본: "DISCOUNT ALLDAY" */}
+                    ZPZP LINK
                 </div>
             </div>
 

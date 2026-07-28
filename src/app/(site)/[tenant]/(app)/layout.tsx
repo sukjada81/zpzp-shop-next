@@ -67,7 +67,8 @@ export async function generateMetadata({
     const tenant = normalizeTenant(resolved?.tenant || "");
     const { name: tenantName, primaryDomain } = await fetchTenantInfo(tenant);
 
-    const title = tenantName ? `디스카운트 올데이 - ${tenantName}` : "디스카운트 올데이";
+    // DAD 잔재 정리 — 표시 브랜드는 "줍줍링크"로 통일(원본: "디스카운트 올데이")
+    const title = tenantName ? `줍줍링크 - ${tenantName}` : "줍줍링크";
     const description = tenantName
         ? `${tenantName} | 365일 초특가 할인매장`
         : "365일 초특가 할인매장";
@@ -84,9 +85,9 @@ export async function generateMetadata({
             title,
             description,
             url: canonicalUrl,
-            siteName: "디스카운트 올데이",
+            siteName: "줍줍링크",
             type: "website",
-            images: [{ url: "/og_image.jpg", width: 1200, height: 630, alt: "디스카운트 올데이" }],
+            images: [{ url: "/og_image.jpg", width: 1200, height: 630, alt: "줍줍링크" }],
         },
     };
 }
