@@ -462,8 +462,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
         const draftItems = selectedLines.map((line) => ({
             id: String(data.id),
-            title: String(data.title ?? data.name ?? "상품"),
-            price: Number(line.price ?? data.price ?? 0),
+            title: String(data.title ?? "상품"),
+            price: Number(line.unitPrice ?? data.price ?? 0),
             qty: Number(line.quantity ?? 0),
             optionId: toOptionalNumberId(line.rawOptionId),
             optionName: line.optionName,
