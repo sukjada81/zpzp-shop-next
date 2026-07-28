@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
-import { endpoints } from "@/lib/api/endpoints";
+import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
 import { initTossPayment } from "@/lib/toss/client";
 
@@ -352,6 +352,8 @@ export default function OrderClient(props: {
                 headers: {
                     "Content-Type": "application/json",
                     Accept: "application/json",
+                    // 링커 서브도메인에서 호스트가 경로 tenant 를 덮어써 400 이 나므로 명시 전송
+                    ...tenantHeader(tenant),
                 },
                 credentials: "include",
                 cache: "no-store",
