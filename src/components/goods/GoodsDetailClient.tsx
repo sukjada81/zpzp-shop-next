@@ -429,7 +429,28 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         });
     }
 
+    /**
+     * 비회원이면 주문 흐름에 태우지 않고 로그인으로 보낸다.
+     *
+     * 비회원에겐 서버가 price=null + masked=true 로 내리고(§8 마스킹), 계산부는 null 을
+     * 0 으로 접는다. 그 상태로 주문서까지 가면 0원짜리 주문 draft 가 만들어진다.
+     * 서버측 게이트(middleware needsAuth: cart/order/orders)는 그대로 두고,
+     * 클라이언트에서 한 겹 더 막아 0원 draft 자체가 안 생기게 한다.
+     */
+    function requireMemberForOrder() {
+        if (!data.masked) return false;
+
+        showToast("로그인 후 이용할 수 있습니다.", "error");
+
+        const returnTo = typeof window !== "undefined" ? window.location.pathname : `/${tenant}/home`;
+        router.push(`/${tenant}/login?returnTo=${encodeURIComponent(returnTo)}`);
+
+        return true;
+    }
+
     function submitCart() {
+        if (requireMemberForOrder()) return;
+
         if (!isActive) {
             showToast("옵션을 선택해주세요.", "error");
             return;
@@ -458,6 +479,8 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
     }
 
     function submitQuickOrder() {
+        if (requireMemberForOrder()) return;
+
         if (!isActive || allSoldout) return;
 
         const draftItems = selectedLines.map((line) => ({

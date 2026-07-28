@@ -4,8 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Menu } from "lucide-react";
 
-// DAD 잔재 정리 — 원본: "디스카운트 올데이"
-const BRAND_NAME = "줍줍링크";
+import { BRAND_NAME, USE_TEXT_LOGO } from "@/lib/brand";
 
 const LOGO_H = 32;
 const LOGO_W = Math.round(LOGO_H * 3.05);
@@ -69,13 +68,23 @@ export default function MobileHeader({
                                     className="inline-flex items-center"
                                     aria-label={BRAND_NAME}
                                 >
-                                    <Image
-                                        src="/logo_top.png"
-                                        alt={BRAND_NAME}
-                                        width={LOGO_W}
-                                        height={LOGO_H}
-                                        priority
-                                    />
+                                    {USE_TEXT_LOGO ? (
+                                        // 줍줍 로고 파일 수령 전 임시 워드마크 — lib/brand.ts USE_TEXT_LOGO
+                                        <span
+                                            className="inline-flex items-center text-[20px] font-extrabold tracking-[-0.03em] text-[color:var(--brand)]"
+                                            style={{ height: `${LOGO_H}px` }}
+                                        >
+                                            {BRAND_NAME}
+                                        </span>
+                                    ) : (
+                                        <Image
+                                            src="/logo_top.png"
+                                            alt={BRAND_NAME}
+                                            width={LOGO_W}
+                                            height={LOGO_H}
+                                            priority
+                                        />
+                                    )}
                                 </Link>
 
                                 <div className="mt-1 max-w-[108px] truncate text-[10px] font-medium tracking-[-0.01em] text-neutral-400">

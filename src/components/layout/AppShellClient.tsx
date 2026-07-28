@@ -6,8 +6,7 @@ import MobileHeader from "./MobileHeader";
 import SideDrawer from "./SideDrawer";
 import Footer from "./Footer";
 
-// DAD 잔재 정리 — 원본: "디스카운트 올데이"
-const BRAND_NAME = "줍줍링크";
+import { BRAND_NAME } from "@/lib/brand";
 
 function normalizeTenant(raw: string) {
     const t = (raw || "").trim().toLowerCase();

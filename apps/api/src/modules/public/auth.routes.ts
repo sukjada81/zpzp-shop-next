@@ -95,9 +95,12 @@ async function resolveTenantIdBySlug(app: FastifyInstance, tenantSlug: string) {
         console.log("STEP3_IN_MEMORY_MATCH", tenant);
     }
 
-    if (!tenant && allTenants.length > 0) {
-        tenant = allTenants[0];
-        console.log("STEP4_FALLBACK_FIRST_TENANT", tenant);
+    // (제거됨) STEP4 — 해석 실패 시 allTenants[0] 로 조용히 붙던 폴백.
+    // id asc 정렬이라 항상 tenant 1(일산장항점)이 잡혀서, 모르는 slug 로 로그인하면
+    // 엉뚱한 매장 이름으로 세션이 붙는 계정 혼선이 났다(2026-07-28 발견).
+    // fail-closed 로 되돌린다 — 호출부가 tenant=null 이면 400 TENANT_NOT_RESOLVED 를 낸다.
+    if (!tenant) {
+        console.log("TENANT_UNRESOLVED_NO_FALLBACK", { slug });
     }
 
     console.log("RESOLVE_TENANT_FINAL", tenant);

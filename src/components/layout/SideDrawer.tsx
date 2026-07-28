@@ -34,8 +34,7 @@ type AuthSession = {
     user?: { id: string; provider: string } | null;
 };
 
-// DAD 잔재 정리 — 원본: "디스카운트 올데이"
-const BRAND_NAME = "줍줍링크";
+import { BRAND_NAME, USE_TEXT_LOGO } from "@/lib/brand";
 const HIDE_POINTS_MENU = false;
 const HIDE_SELECT_TENANT_MENU = true;
 const HIDE_AUTH_BUTTON = false;
@@ -202,15 +201,26 @@ export default function SideDrawer({
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                             <div className="flex items-center gap-3">
-                                <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-[color:var(--border)] bg-white">
-                                    <Image
-                                        src="/logo_side.png"
-                                        alt={BRAND_NAME}
-                                        fill
-                                        sizes="40px"
-                                        className="object-contain p-1"
-                                        priority
-                                    />
+                                <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-[color:var(--border)] bg-white">
+                                    {USE_TEXT_LOGO ? (
+                                        // 줍줍 로고 파일 수령 전 임시 배지 — lib/brand.ts USE_TEXT_LOGO
+                                        // 옆에 BRAND_NAME 텍스트가 이미 있으므로 여기선 이니셜만.
+                                        <span
+                                            aria-hidden="true"
+                                            className="text-[15px] font-extrabold tracking-[-0.03em] text-[color:var(--brand)]"
+                                        >
+                                            줍
+                                        </span>
+                                    ) : (
+                                        <Image
+                                            src="/logo_side.png"
+                                            alt={BRAND_NAME}
+                                            fill
+                                            sizes="40px"
+                                            className="object-contain p-1"
+                                            priority
+                                        />
+                                    )}
                                 </div>
 
                                 <div className="min-w-0">

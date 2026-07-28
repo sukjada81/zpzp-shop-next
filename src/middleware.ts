@@ -608,8 +608,15 @@ export async function middleware(req: NextRequest) {
 
     const authOrigin = getEnvOrigin("AUTH");
     const loginUrl = new URL("/login", authOrigin);
-    // 원래 방문 서브도메인(호스트)을 유지 — 로그인 후 사용자가 자기 샵 URL로 돌아와야 함
-    loginUrl.searchParams.set("tenant", subdomain);
+    // tenant 와 복귀 주소는 역할이 다르다 — 섞으면 안 된다.
+    //  - tenant: 카탈로그 테넌트(effectiveTenant). 그대로 카카오 state 를 타고
+    //    API /v1/auth/kakao/complete 의 tenantSlug 가 된다. 여기에 링커 slug 를 넣으면
+    //    API 가 해석하지 못한다(링커 slug 는 tenant 가 아니다).
+    //    예전엔 API 가 조용히 첫 테넌트로 폴백해 "다른 매장으로 로그인되는" 혼선이 났고,
+    //    그 폴백을 제거했으므로 이제 올바른 값을 넘겨야 한다.
+    //  - returnTo: 원래 방문한 링커 서브도메인의 절대 URL. 로그인 후 자기 샵으로
+    //    돌아오는 건 이쪽이 책임진다(아래 buildTenantHomeAbs 는 subdomain 유지).
+    loginUrl.searchParams.set("tenant", effectiveTenant);
     loginUrl.searchParams.set("returnTo", buildTenantHomeAbs(req, subdomain));
 
     return addDebug(

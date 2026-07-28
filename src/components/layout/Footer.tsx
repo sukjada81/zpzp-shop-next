@@ -3,6 +3,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { BRAND_NAME, USE_TEXT_LOGO } from "@/lib/brand";
 
 export default function Footer() {
     const [showTopButton, setShowTopButton] = useState(false);
@@ -33,15 +34,22 @@ export default function Footer() {
                 <div className="mx-auto w-full max-w-[520px] px-6 py-8">
                     <div className="mb-6">
                         <div className="mb-4">
-                            <div className="relative h-8 w-[150px]">
-                                <Image
-                                    src="/logo_top.png"
-                                    alt="줍줍링크"
-                                    fill
-                                    sizes="150px"
-                                    className="object-contain object-left"
-                                    priority
-                                />
+                            <div className="relative flex h-8 w-[150px] items-center">
+                                {USE_TEXT_LOGO ? (
+                                    // 줍줍 로고 파일 수령 전 임시 워드마크 — lib/brand.ts USE_TEXT_LOGO
+                                    <span className="text-[18px] font-extrabold tracking-[-0.03em] text-[#4b4f58]">
+                                        {BRAND_NAME}
+                                    </span>
+                                ) : (
+                                    <Image
+                                        src="/logo_top.png"
+                                        alt={BRAND_NAME}
+                                        fill
+                                        sizes="150px"
+                                        className="object-contain object-left"
+                                        priority
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>
