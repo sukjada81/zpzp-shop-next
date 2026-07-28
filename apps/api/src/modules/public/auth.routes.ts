@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { captureRefFromRequest } from "../attribution/capture.js";
+import { resolveStoreSlug } from "../../lib/tenant/resolveStoreSlug.js";
 
 console.log("AUTH_ROUTES_LOADED_20260316_DEBUG");
 
@@ -37,112 +38,36 @@ async function generateUniqueMemberId(app: FastifyInstance, preferred?: string) 
     return `kakao_${Date.now()}`;
 }
 
+/**
+ * 카카오 complete 용 tenant 해석 — 공용 리졸버(resolveStoreSlug)에 위임한다.
+ *
+ * 규칙(점포 slug / 링커 slug / fail-closed)은 전부 lib/tenant/resolveStoreSlug.ts 에 있다.
+ * 예전엔 여기에 STEP1~4 가 인라인으로 있었고, STEP4 가 "모르면 첫 점포"로 붙는
+ * fail-open 이라 엉뚱한 매장으로 세션이 생겼다. 규칙을 라우트에 복제하지 말 것.
+ */
 async function resolveTenantIdBySlug(app: FastifyInstance, tenantSlug: string) {
-    const raw = String(tenantSlug || "");
-    const slug = raw.trim().toLowerCase();
+    const resolved = await resolveStoreSlug(app.prisma, tenantSlug);
 
-    console.log("KAKAO_COMPLETE_TENANT_SLUG_RAW", raw);
-    console.log("KAKAO_COMPLETE_TENANT_SLUG_NORMALIZED", slug);
-
-    const allTenants = await app.prisma.tenant.findMany({
-        select: {
-            id: true,
-            slug: true,
-            name: true,
-            status: true,
-        },
-        orderBy: { id: "asc" },
-        take: 20,
-    });
-
-    console.log("DEBUG_TENANTS_FROM_PRISMA", allTenants);
-
-    let tenant = await app.prisma.tenant.findFirst({
-        where: {
-            slug,
-            status: "active",
-        },
-        select: {
-            id: true,
-            slug: true,
-            name: true,
-            status: true,
-        },
-    });
-
-    console.log("STEP1_STRICT_MATCH", tenant);
-
-    if (!tenant) {
-        tenant = await app.prisma.tenant.findFirst({
-            where: { slug },
-            select: {
-                id: true,
-                slug: true,
-                name: true,
-                status: true,
-            },
+    if (!resolved.ok) {
+        console.log("KAKAO_COMPLETE_TENANT_UNRESOLVED", {
+            tenantSlug,
+            reason: resolved.reason,
         });
-
-        console.log("STEP2_SLUG_ONLY_MATCH", tenant);
+        return null;
     }
 
-    if (!tenant && allTenants.length > 0) {
-        tenant =
-            allTenants.find(
-                (t: any) => String(t.slug || "").trim().toLowerCase() === slug
-            ) || null;
-
-        console.log("STEP3_IN_MEMORY_MATCH", tenant);
-    }
-
-    // 링커 slug → 카탈로그 tenant 해석.
-    // 링커 스토어(아이디.zpzp.kr)의 slug 는 tenant 가 아니라 zpzp_linker.shop_slug 다.
-    // 여기까지 링커 slug 가 올라오는 경로가 남아 있어(로그인 URL·쿠키 등) 정당한 통로를 연다.
-    // 승인된(active) 링커만 통과시키고, 링커에 tenant_id 가 지정돼 있으면 그 점포,
-    // 없으면 본사몰(hq) 카탈로그로 붙인다. pending/rejected/미존재는 통과시키지 않는다.
-    if (!tenant && slug) {
-        const linker = await app.prisma.zpzp_linker.findFirst({
-            where: { shop_slug: slug, status: "active" },
-            select: { uid: true, shop_slug: true, tenant_id: true },
-        });
-
-        if (linker) {
-            const catalogSlug = "hq";
-
-            tenant = linker.tenant_id
-                ? await app.prisma.tenant.findFirst({
-                      where: { id: linker.tenant_id, status: "active" },
-                      select: { id: true, slug: true, name: true, status: true },
-                  })
-                : null;
-
-            if (!tenant) {
-                tenant = await app.prisma.tenant.findFirst({
-                    where: { slug: catalogSlug, status: "active" },
-                    select: { id: true, slug: true, name: true, status: true },
-                });
-            }
-
-            console.log("STEP_LINKER_SLUG_MATCH", { slug, linkerUid: String(linker.uid), tenant });
-        }
-    }
-
-    // (제거됨) 기존 STEP4 — 해석 실패 시 allTenants[0] 로 조용히 붙던 폴백.
-    // id asc 정렬이라 항상 tenant 1(일산장항점)이 잡혀서, 모르는 slug 로 로그인하면
-    // 엉뚱한 매장 이름으로 세션이 붙는 계정 혼선이 났다(2026-07-28 발견).
-    // fail-closed 유지 — 호출부가 tenant=null 이면 400 TENANT_NOT_RESOLVED 를 낸다.
-    if (!tenant) {
-        console.log("TENANT_UNRESOLVED_NO_FALLBACK", { slug });
-    }
-
-    console.log("RESOLVE_TENANT_FINAL", tenant);
-
-    if (!tenant) return null;
+    console.log("KAKAO_COMPLETE_TENANT_RESOLVED", {
+        tenantSlug,
+        kind: resolved.kind,
+        tenantId: String(resolved.tenantId),
+        resolvedSlug: resolved.tenantSlug,
+        linkerSlug: resolved.linkerSlug ?? null,
+    });
 
     return {
-        id: tenant.id,
-        slug: tenant.slug,
-        name: tenant.name,
+        id: resolved.tenantId,
+        slug: resolved.tenantSlug,
+        name: resolved.tenantName,
     };
 }
 
