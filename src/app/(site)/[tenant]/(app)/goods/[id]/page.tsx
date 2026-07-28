@@ -2,6 +2,7 @@
 import { notFound } from "next/navigation";
 import GoodsDetailClient, { type GoodsDetailData } from "@/components/goods/GoodsDetailClient";
 import { endpoints } from "@/lib/api/endpoints";
+import { ssrHeaders } from "@/lib/api/ssrHeaders";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductDetailResponse, PublicProductsResponse } from "@/lib/types/goods";
 
@@ -15,7 +16,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
     {
         const path = endpoints.publicProductDetail(tenant, id);
         const url = new URL(path, origin);
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
 
         if (res.ok) {
             const data = (await res.json().catch(() => null)) as PublicProductDetailResponse | null;
@@ -81,7 +82,7 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
         const path = endpoints.publicProducts(tenant, { take: 200 });
         const url = new URL(path, origin);
 
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
         if (!res.ok) return null;
 
         const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;

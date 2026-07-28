@@ -2,6 +2,7 @@
 import { notFound } from "next/navigation";
 import GoodsListClient, { type GoodsListItem } from "@/components/goods/GoodsListClient";
 import { endpoints } from "@/lib/api/endpoints";
+import { ssrHeaders } from "@/lib/api/ssrHeaders";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse } from "@/lib/types/goods";
 
@@ -40,7 +41,7 @@ async function fetchProducts(
     });
 
     const url = new URL(path, origin);
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
 
     if (!res.ok) return [];
 

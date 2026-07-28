@@ -27,7 +27,10 @@ export default function LoginPage() {
         return new URLSearchParams(window.location.search);
     }, []);
 
-    const tenant = params.get("tenant") || "a";
+    // DAD 잔재였던 하드코딩 기본값 "a" 제거 — 존재하지 않는 점포라서,
+    // tenant 폴백을 fail-closed 로 바꾼 뒤로는 "a" 가 그대로 400 TENANT_NOT_RESOLVED 가 됐다.
+    // 비우면 /auth/kakao/login 이 selectedTenant 쿠키 → 점포선택 순으로 폴백한다.
+    const tenant = params.get("tenant") || "";
     const returnToParam = params.get("returnTo") || "/home";
 
     const returnTo = useMemo(() => {
@@ -81,7 +84,8 @@ export default function LoginPage() {
 
     function startKakaoLogin() {
         const qs = new URLSearchParams();
-        qs.set("tenant", tenant);
+        // 빈 tenant 를 보내면 안 된다 — 라우트가 쿠키 폴백을 못 타고 빈 값 그대로 state 에 실린다.
+        if (tenant) qs.set("tenant", tenant);
         qs.set("returnTo", returnTo);
         window.location.href = `/auth/kakao/login?${qs.toString()}`;
     }

@@ -95,10 +95,42 @@ async function resolveTenantIdBySlug(app: FastifyInstance, tenantSlug: string) {
         console.log("STEP3_IN_MEMORY_MATCH", tenant);
     }
 
-    // (제거됨) STEP4 — 해석 실패 시 allTenants[0] 로 조용히 붙던 폴백.
+    // 링커 slug → 카탈로그 tenant 해석.
+    // 링커 스토어(아이디.zpzp.kr)의 slug 는 tenant 가 아니라 zpzp_linker.shop_slug 다.
+    // 여기까지 링커 slug 가 올라오는 경로가 남아 있어(로그인 URL·쿠키 등) 정당한 통로를 연다.
+    // 승인된(active) 링커만 통과시키고, 링커에 tenant_id 가 지정돼 있으면 그 점포,
+    // 없으면 본사몰(hq) 카탈로그로 붙인다. pending/rejected/미존재는 통과시키지 않는다.
+    if (!tenant && slug) {
+        const linker = await app.prisma.zpzp_linker.findFirst({
+            where: { shop_slug: slug, status: "active" },
+            select: { uid: true, shop_slug: true, tenant_id: true },
+        });
+
+        if (linker) {
+            const catalogSlug = "hq";
+
+            tenant = linker.tenant_id
+                ? await app.prisma.tenant.findFirst({
+                      where: { id: linker.tenant_id, status: "active" },
+                      select: { id: true, slug: true, name: true, status: true },
+                  })
+                : null;
+
+            if (!tenant) {
+                tenant = await app.prisma.tenant.findFirst({
+                    where: { slug: catalogSlug, status: "active" },
+                    select: { id: true, slug: true, name: true, status: true },
+                });
+            }
+
+            console.log("STEP_LINKER_SLUG_MATCH", { slug, linkerUid: String(linker.uid), tenant });
+        }
+    }
+
+    // (제거됨) 기존 STEP4 — 해석 실패 시 allTenants[0] 로 조용히 붙던 폴백.
     // id asc 정렬이라 항상 tenant 1(일산장항점)이 잡혀서, 모르는 slug 로 로그인하면
     // 엉뚱한 매장 이름으로 세션이 붙는 계정 혼선이 났다(2026-07-28 발견).
-    // fail-closed 로 되돌린다 — 호출부가 tenant=null 이면 400 TENANT_NOT_RESOLVED 를 낸다.
+    // fail-closed 유지 — 호출부가 tenant=null 이면 400 TENANT_NOT_RESOLVED 를 낸다.
     if (!tenant) {
         console.log("TENANT_UNRESOLVED_NO_FALLBACK", { slug });
     }

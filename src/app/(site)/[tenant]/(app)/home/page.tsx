@@ -10,6 +10,7 @@ import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/h
 import GoodsCard from "@/components/goods/GoodsCard";
 import type { GoodsListItem } from "@/components/goods/GoodsListClient";
 import { endpoints } from "@/lib/api/endpoints";
+import { ssrHeaders } from "@/lib/api/ssrHeaders";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse, PublicProductListItem, PublicProductDetailResponse } from "@/lib/types/goods";
 
@@ -54,7 +55,7 @@ async function fetchProducts(
         const path = endpoints.publicProducts(tenant, q);
         const url = new URL(path, origin);
 
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
         if (!res.ok) return [] as PublicProductsResponse["items"];
 
         const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
@@ -72,7 +73,7 @@ async function fetchRecentOrders(tenant: string, take = 10): Promise<RecentOrder
         const path = endpoints.publicRecentOrders(tenant, { take });
         const url = new URL(path, origin);
 
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
         if (!res.ok) return [];
 
         const data = (await res.json().catch(() => null)) as RecentOrdersResponse | null;
@@ -91,7 +92,7 @@ async function fetchProductDetail(
     try {
         const origin = getInternalOrigin();
         const url = new URL(endpoints.publicProductDetail(tenant, id), origin);
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
         if (!res.ok) return null;
         const data = (await res.json().catch(() => null)) as PublicProductDetailResponse | null;
         return data?.product ?? null;

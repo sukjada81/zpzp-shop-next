@@ -2,6 +2,7 @@
 import { notFound } from "next/navigation";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import { endpoints } from "@/lib/api/endpoints";
+import { ssrHeaders } from "@/lib/api/ssrHeaders";
 import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/home/OngoingGroupBuySection";
 import type { RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import type { PublicProductsResponse, PublicProductListItem, PublicProductDetailResponse } from "@/lib/types/goods";
@@ -16,7 +17,7 @@ async function fetchRecentOrders(tenant: string): Promise<RecentOrderTickerItem[
     try {
         const origin = getInternalOrigin();
         const url = new URL(endpoints.publicRecentOrders(tenant, { take: 10 }), origin);
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
         if (!res.ok) return [];
         const data = await res.json().catch(() => null);
         if (!data?.ok || !Array.isArray(data.items)) return [];
@@ -33,7 +34,7 @@ async function fetchProductDetail(
     try {
         const origin = getInternalOrigin();
         const url = new URL(endpoints.publicProductDetail(tenant, id), origin);
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
         if (!res.ok) return null;
         const data = (await res.json().catch(() => null)) as PublicProductDetailResponse | null;
         return data?.product ?? null;
@@ -108,7 +109,7 @@ async function fetchOngoingItems(tenant: string): Promise<OngoingGroupBuyItem[]>
     try {
         const origin = getInternalOrigin();
         const url = new URL(endpoints.publicOngoingProducts(tenant, { take: 20 }), origin);
-        const res = await fetch(url.toString(), { cache: "no-store" });
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
         if (!res.ok) return [];
 
         const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
