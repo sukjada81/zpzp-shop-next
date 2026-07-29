@@ -14,6 +14,7 @@ import {
 } from "@/lib/profile/quickOrderProfile";
 import { useTickerItems, formatAgo as tickerFormatAgo, type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import { formatDisplayPrice } from "@/lib/price";
+import { MOBILE_BOTTOM_ACTION_BAR_PAD, MOBILE_BOTTOM_ACTION_BAR_SPACER } from "@/lib/ui/mobile-action-bar";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -586,7 +587,7 @@ export default function OngoingGroupBuySection({
 
     return (
         <>
-            <section className="mt-6 pb-0">
+            <section className={`mt-6 ${showOrderBar && displayItems.length ? MOBILE_BOTTOM_ACTION_BAR_PAD : "pb-0"}`}>
                 <div className="text-xl font-bold text-[color:var(--fg)]">{title}</div>
 
                 {!displayItems.length ? (
@@ -606,6 +607,10 @@ export default function OngoingGroupBuySection({
                         ))}
                     </div>
                 )}
+
+                {showOrderBar && displayItems.length ? (
+                    <div aria-hidden className={MOBILE_BOTTOM_ACTION_BAR_SPACER} />
+                ) : null}
 
                 {showOrderBar && displayItems.length ? (
                     <div className="fixed inset-x-0 bottom-0 z-30 px-3">

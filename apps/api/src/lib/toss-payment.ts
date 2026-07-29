@@ -184,12 +184,14 @@ export async function tossCancelPaymentFull(
     secretKey: string,
     paymentKey: string,
     orderId: string,
-    cancelReason: string
+    cancelReason: string,
+    idempotencySeed?: string
 ): Promise<TossApiResult> {
+    const seed = idempotencySeed ?? `${orderId}:${paymentKey}:auto`;
     return tossApiPost(
         `https://api.tosspayments.com/v1/payments/${encodeURIComponent(paymentKey)}/cancel`,
         { cancelReason },
         secretKey,
-        `auto-cancel-${hashSha256(`${orderId}:${paymentKey}`)}`
+        `cancel-${hashSha256(seed)}`
     );
 }

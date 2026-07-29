@@ -14,6 +14,7 @@ import {
 } from "@/lib/profile/quickOrderProfile";
 import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import { formatDisplayPrice } from "@/lib/price";
+import { MOBILE_BOTTOM_ACTION_BAR_PAD, MOBILE_BOTTOM_ACTION_BAR_SPACER } from "@/lib/ui/mobile-action-bar";
 
 type GoodsOption = {
     id: string;
@@ -544,7 +545,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
 
     return (
         <>
-            <main className="mx-auto w-full max-w-[520px] bg-white pb-28">
+            <main className={`mx-auto w-full max-w-[520px] bg-white ${MOBILE_BOTTOM_ACTION_BAR_PAD}`}>
                 <section className="bg-white px-4 pb-5 pt-4">
                     <div className="overflow-hidden rounded-[24px] border border-[color:var(--border)] bg-white shadow-sm">
                         <div className="relative bg-white">
@@ -780,6 +781,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                             );
                         })}
                     </div>
+                    <div aria-hidden className={MOBILE_BOTTOM_ACTION_BAR_SPACER} />
                 </section>
 
                 <div className="fixed inset-x-0 bottom-0 z-30 px-3">

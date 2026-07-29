@@ -10,8 +10,10 @@ import {
 } from "./coupon.service.js";
 import {
     buildGoodsStatusLabel,
+    isOnlinePrepaidOrder,
     resolveCustomerOrderDisplay,
 } from "../../lib/order/customer-order-display.js";
+import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -423,6 +425,88 @@ async function writeOrderActionLog(
             meta_json: input.metaJson ?? null,
         },
     });
+}
+
+type CustomerCancelOrderRow = {
+    pay_type?: string | null;
+    pay_status?: string | null;
+    pay_info?: string | null;
+    name?: string | null;
+};
+
+/** 배송준비 전 고객 즉시 취소 — 온라인 선결제는 Toss PG 취소 성공 후 DB 반영 */
+async function executeCustomerImmediateCancel(input: {
+    prisma: FastifyInstance["prisma"];
+    tenantId: bigint;
+    orderNum: string;
+    orderRow: CustomerCancelOrderRow;
+    cancelDisplay: ReturnType<typeof resolveCustomerOrderDisplay>;
+    actorRole: "member" | "guest";
+    actorMemberUid?: bigint | number | null;
+    actorNickname: string;
+    now: number;
+}): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
+    const payType = toSafeString(input.orderRow.pay_type, "B");
+    const payStatus = toSafeString(input.orderRow.pay_status, "A");
+    const payInfo = toSafeString(input.orderRow.pay_info, "");
+    const isOnlinePrepaid = isOnlinePrepaidOrder(payType, payStatus, payInfo);
+
+    if (isOnlinePrepaid) {
+        const pgResult = await cancelTossPaymentForOrder(input.prisma, {
+            orderNum: input.orderNum,
+            cancelReason: "고객 주문 취소",
+            requestKey: `customer-cancel-${input.orderNum}`,
+            requestSource: input.actorRole === "guest" ? "guest" : "member",
+            requestedBy: input.actorNickname,
+        });
+
+        if (!pgResult.ok) {
+            return {
+                ok: false,
+                code: pgResult.code,
+                message: pgResult.message,
+            };
+        }
+    }
+
+    await input.prisma.$transaction(async (tx: any) => {
+        await tx.mallRN_order_info.updateMany({
+            where: {
+                tenant_id: input.tenantId,
+                platform_type: PLATFORM_TYPE,
+                order_num: input.orderNum,
+            },
+            data: {
+                status_date: input.now,
+            },
+        });
+
+        await tx.mallRN_order_goods.updateMany({
+            where: {
+                tenant_id: input.tenantId,
+                platform_type: PLATFORM_TYPE,
+                order_num: input.orderNum,
+            },
+            data: {
+                status: STATUS_CANCELED,
+                status2: STATUS_CANCELED,
+                status_date: input.now,
+            },
+        });
+
+        await writeOrderActionLog(tx, {
+            tenantId: input.tenantId,
+            eventType: "cancel",
+            orderNum: input.orderNum,
+            actorRole: input.actorRole,
+            actorMemberUid: input.actorMemberUid ?? null,
+            actorNickname: input.actorNickname,
+            beforeStatus: input.cancelDisplay.effectiveGoodsStatus,
+            afterStatus: STATUS_CANCELED,
+        });
+    });
+
+    return { ok: true };
 }
 
 type ClaimGoodsRow = {
@@ -1395,42 +1479,24 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
-                await prisma.$transaction(async (tx: any) => {
-                    await tx.mallRN_order_info.updateMany({
-                        where: {
-                            tenant_id: tenantId,
-                            platform_type: PLATFORM_TYPE,
-                            order_num: orderNum,
-                        },
-                        data: {
-                            status_date: now,
-                        },
-                    });
-
-                    await tx.mallRN_order_goods.updateMany({
-                        where: {
-                            tenant_id: tenantId,
-                            platform_type: PLATFORM_TYPE,
-                            order_num: orderNum,
-                        },
-                        data: {
-                            status: STATUS_CANCELED,
-                            status2: STATUS_CANCELED,
-                            status_date: now,
-                        },
-                    });
-
-                    await writeOrderActionLog(tx, {
-                        tenantId,
-                        eventType: "cancel",
-                        orderNum,
-                        actorRole: "guest",
-                        actorMemberUid: null,
-                        actorNickname: toSafeString(row.name, "비회원"),
-                        beforeStatus: cancelDisplay.effectiveGoodsStatus,
-                        afterStatus: STATUS_CANCELED,
-                    });
+                const cancelResult = await executeCustomerImmediateCancel({
+                    prisma,
+                    tenantId,
+                    orderNum,
+                    orderRow: row,
+                    cancelDisplay,
+                    actorRole: "guest",
+                    actorNickname: toSafeString(row.name, "비회원"),
+                    now,
                 });
+
+                if (!cancelResult.ok) {
+                    return reply.code(502).send({
+                        ok: false,
+                        error: cancelResult.code,
+                        message: cancelResult.message,
+                    });
+                }
 
                 return reply.send({
                     ok: true,
@@ -1538,43 +1604,25 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     "회원"
                 );
 
-                await prisma.$transaction(async (tx: any) => {
-                    await tx.mallRN_order_info.updateMany({
-                        where: {
-                            tenant_id: tenantId,
-                            platform_type: PLATFORM_TYPE,
-                            member_uid: memberUid,
-                            order_num: orderNum,
-                        },
-                        data: {
-                            status_date: now,
-                        },
-                    });
-
-                    await tx.mallRN_order_goods.updateMany({
-                        where: {
-                            tenant_id: tenantId,
-                            platform_type: PLATFORM_TYPE,
-                            order_num: orderNum,
-                        },
-                        data: {
-                            status: STATUS_CANCELED,
-                            status2: STATUS_CANCELED,
-                            status_date: now,
-                        },
-                    });
-
-                    await writeOrderActionLog(tx, {
-                        tenantId,
-                        eventType: "cancel",
-                        orderNum,
-                        actorRole: "member",
-                        actorMemberUid: memberUid,
-                        actorNickname,
-                        beforeStatus: cancelDisplay.effectiveGoodsStatus,
-                        afterStatus: STATUS_CANCELED,
-                    });
+                const cancelResult = await executeCustomerImmediateCancel({
+                    prisma,
+                    tenantId,
+                    orderNum,
+                    orderRow: rawOrder,
+                    cancelDisplay,
+                    actorRole: "member",
+                    actorMemberUid: memberUid,
+                    actorNickname,
+                    now,
                 });
+
+                if (!cancelResult.ok) {
+                    return reply.code(502).send({
+                        ok: false,
+                        error: cancelResult.code,
+                        message: cancelResult.message,
+                    });
+                }
 
                 return reply.send({
                     ok: true,

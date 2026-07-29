@@ -426,11 +426,7 @@ export default function OrderDetailPage() {
                         disabled={canceling}
                         className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-[14px] font-extrabold text-rose-600 disabled:opacity-50"
                     >
-                        {canceling
-                            ? "처리 중..."
-                            : order.cancelMode === "request"
-                              ? "취소 요청"
-                              : "주문 취소"}
+                        {canceling ? "처리 중..." : "주문 취소"}
                     </button>
                 ) : null}
 

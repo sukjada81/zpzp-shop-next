@@ -187,10 +187,8 @@ export function resolveCustomerOrderActions(input: {
     const online = isOnlinePrepaidOrder(input.payType, input.payStatus, input.payInfo);
     const canCancel = canCustomerCancelOrder(input.goodsStatus);
 
-    let cancelMode: CustomerOrderActions["cancelMode"] = "none";
-    if (canCancel) {
-        cancelMode = online && input.goodsStatus === 1 ? "request" : "immediate";
-    }
+    // 배송준비(2) 전까지는 토스 포함 즉시 취소 — PG 취소는 API에서 선행 처리
+    const cancelMode: CustomerOrderActions["cancelMode"] = canCancel ? "immediate" : "none";
 
     const canClaim = canCustomerReturnOrExchange(input.goodsStatus, input.goodsStatus2);
 
