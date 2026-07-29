@@ -1,11 +1,17 @@
 // src/components/order/OrderClient.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints, tenantHeader } from "@/lib/api/endpoints";
-import { persistQuickOrderProfile, readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
+import {
+    mergeQuickOrderProfile,
+    persistQuickOrderProfile,
+    readQuickOrderProfile,
+    saveQuickOrderProfile,
+    type QuickOrderProfile,
+} from "@/lib/profile/quickOrderProfile";
 import { initTossPayment } from "@/lib/toss/client";
 import DaumPostcodeSearch from "@/components/order/DaumPostcodeSearch";
 
@@ -97,6 +103,73 @@ async function fetchAuthSession(): Promise<AuthSessionResponse | null> {
     }
 }
 
+function applyPhoneParts(
+    phone: string,
+    setA: (v: string) => void,
+    setB: (v: string) => void,
+    setC: (v: string) => void
+) {
+    const digits = onlyDigits(phone);
+    if (digits.length < 10) return;
+    const a = digits.slice(0, 3);
+    const b = digits.length === 10 ? digits.slice(3, 6) : digits.slice(3, 7);
+    const c = digits.length === 10 ? digits.slice(6, 10) : digits.slice(7, 11);
+    setA(a || "010");
+    setB(b);
+    setC(c);
+}
+
+function fillProfileFields(
+    profile: QuickOrderProfile,
+    setters: {
+        setBuyerName: (v: string) => void;
+        setReceiverName: (v: string) => void;
+        setBuyerPhoneA: (v: string) => void;
+        setBuyerPhoneB: (v: string) => void;
+        setBuyerPhoneC: (v: string) => void;
+        setReceiverPhoneA: (v: string) => void;
+        setReceiverPhoneB: (v: string) => void;
+        setReceiverPhoneC: (v: string) => void;
+        setBuyerPostcode: (v: string) => void;
+        setBuyerAddress1: (v: string) => void;
+        setBuyerAddress2: (v: string) => void;
+        setPostcode: (v: string) => void;
+        setAddress1: (v: string) => void;
+        setAddress2: (v: string) => void;
+    }
+) {
+    const nickname = String(profile.nickname ?? "").trim();
+    const phone = String(profile.phone ?? "").trim();
+    const postcode = String(profile.postcode ?? "").trim();
+    const address1 = String(profile.address1 ?? "").trim();
+    const address2 = String(profile.address2 ?? "").trim();
+
+    if (nickname) {
+        setters.setBuyerName(nickname);
+        setters.setReceiverName(nickname);
+    }
+
+    applyPhoneParts(
+        phone,
+        setters.setBuyerPhoneA,
+        setters.setBuyerPhoneB,
+        setters.setBuyerPhoneC
+    );
+    applyPhoneParts(
+        phone,
+        setters.setReceiverPhoneA,
+        setters.setReceiverPhoneB,
+        setters.setReceiverPhoneC
+    );
+
+    if (postcode) setters.setBuyerPostcode(postcode);
+    if (address1) setters.setBuyerAddress1(address1);
+    if (address2) setters.setBuyerAddress2(address2);
+    if (postcode) setters.setPostcode(postcode);
+    if (address1) setters.setAddress1(address1);
+    if (address2) setters.setAddress2(address2);
+}
+
 export default function OrderClient(props: {
     tenant: string;
     initialItems?: OrderItem[];
@@ -131,20 +204,11 @@ export default function OrderClient(props: {
     const [address1, setAddress1] = useState("");
     const [address2, setAddress2] = useState("");
 
-    function applyBuyerAddress(next: { postcode?: string; address1?: string; address2?: string }) {
-        const nextPostcode = String(next.postcode ?? "").trim();
-        const nextAddress1 = String(next.address1 ?? "").trim();
-        const nextAddress2 = String(next.address2 ?? "").trim();
+    const profileReadyRef = useRef(false);
+    const userEditedRef = useRef(false);
 
-        if (nextPostcode) setBuyerPostcode((prev) => prev || nextPostcode);
-        if (nextAddress1) setBuyerAddress1((prev) => prev || nextAddress1);
-        if (nextAddress2) setBuyerAddress2((prev) => prev || nextAddress2);
-
-        if (receiverSame) {
-            if (nextPostcode) setPostcode((prev) => prev || nextPostcode);
-            if (nextAddress1) setAddress1((prev) => prev || nextAddress1);
-            if (nextAddress2) setAddress2((prev) => prev || nextAddress2);
-        }
+    function markUserEdited() {
+        userEditedRef.current = true;
     }
 
     function syncDeliveryFromBuyer(
@@ -179,6 +243,7 @@ export default function OrderClient(props: {
     ]);
 
     const persistBuyerProfile = useCallback(async () => {
+        if (!profileReadyRef.current || !userEditedRef.current) return;
         const profile = buildBuyerProfile();
         const hasCore =
             !!profile.nickname ||
@@ -188,8 +253,9 @@ export default function OrderClient(props: {
         await persistQuickOrderProfile(tenant, profile);
     }, [tenant, buildBuyerProfile]);
 
-    // 주문자 정보(이름·연락처·주소) 입력 시 프로필에 저장 → 다음 주문·내 정보 설정에서 재사용
+    // 사용자가 주문자 정보를 수정할 때만 저장 (초기 로드 직후 빈 주소로 덮어쓰지 않음)
     useEffect(() => {
+        if (!profileReadyRef.current || !userEditedRef.current) return;
         const timer = window.setTimeout(() => {
             void persistBuyerProfile();
         }, 600);
@@ -202,129 +268,92 @@ export default function OrderClient(props: {
     const [memo, setMemo] = useState("");
 
     useEffect(() => {
-        const profile = readQuickOrderProfile(tenant);
-        if (!profile) return;
+        profileReadyRef.current = false;
+        userEditedRef.current = false;
 
-        const nickname = String(profile.nickname ?? "").trim();
-        const phone = onlyDigits(String(profile.phone ?? ""));
-
-        if (nickname) {
-            setBuyerName((prev) => prev || nickname);
-            setReceiverName((prev) => prev || nickname);
-        }
-
-        if (phone.length >= 10) {
-            const a = phone.slice(0, 3);
-            const b = phone.length === 10 ? phone.slice(3, 6) : phone.slice(3, 7);
-            const c = phone.length === 10 ? phone.slice(6, 10) : phone.slice(7, 11);
-
-            setBuyerPhoneA((prev) => prev || a || "010");
-            setBuyerPhoneB((prev) => prev || b);
-            setBuyerPhoneC((prev) => prev || c);
-
-            setReceiverPhoneA((prev) => prev || a || "010");
-            setReceiverPhoneB((prev) => prev || b);
-            setReceiverPhoneC((prev) => prev || c);
-        }
-
-        applyBuyerAddress({
-            postcode: profile.postcode,
-            address1: profile.address1,
-            address2: profile.address2,
-        });
-    }, [tenant]);
-
-    // 로컬 저장값이 없으면 DB(세션)에서 주문자명/연락처/주소를 채운다 (다른 기기/브라우저 대응)
-    useEffect(() => {
         let cancelled = false;
-        (async () => {
+
+        async function hydrateProfile() {
+            let merged: QuickOrderProfile = readQuickOrderProfile(tenant) ?? {};
+
             try {
-                const res = await fetch("/auth/session", { cache: "no-store" });
+                const res = await fetch("/auth/session", { cache: "no-store", credentials: "include" });
                 const data = await res.json().catch(() => null);
-                if (cancelled || !data?.loggedIn || !data?.member) return;
-
-                const member = data.member as {
-                    name?: string;
-                    phone?: string;
-                    postcode?: string;
-                    address1?: string;
-                    address2?: string;
-                };
-
-                const name = String(member.name ?? "").trim();
-                const phone = onlyDigits(String(member.phone ?? ""));
-
-                if (name) {
-                    setBuyerName((prev) => prev || name);
-                    setReceiverName((prev) => prev || name);
+                if (!cancelled && data?.loggedIn && data?.member) {
+                    const member = data.member as {
+                        name?: string;
+                        phone?: string;
+                        postcode?: string;
+                        address1?: string;
+                        address2?: string;
+                    };
+                    merged = mergeQuickOrderProfile(
+                        {
+                            nickname: String(member.name ?? "").trim(),
+                            phone: onlyDigits(String(member.phone ?? "")),
+                            postcode: String(member.postcode ?? "").trim(),
+                            address1: String(member.address1 ?? "").trim(),
+                            address2: String(member.address2 ?? "").trim(),
+                        },
+                        merged
+                    );
                 }
+            } catch {
+                // ignore
+            }
 
-                if (phone.length >= 10) {
-                    const a = phone.slice(0, 3);
-                    const b = phone.length === 10 ? phone.slice(3, 6) : phone.slice(3, 7);
-                    const c = phone.length === 10 ? phone.slice(6, 10) : phone.slice(7, 11);
-
-                    setBuyerPhoneA((prev) => prev || a || "010");
-                    setBuyerPhoneB((prev) => prev || b);
-                    setBuyerPhoneC((prev) => prev || c);
-
-                    setReceiverPhoneA((prev) => prev || a || "010");
-                    setReceiverPhoneB((prev) => prev || b);
-                    setReceiverPhoneC((prev) => prev || c);
-                }
-
-                applyBuyerAddress({
-                    postcode: member.postcode,
-                    address1: member.address1,
-                    address2: member.address2,
-                });
-
+            try {
                 const profileRes = await fetch("/api/proxy/v1/public/member/profile", {
                     cache: "no-store",
+                    credentials: "include",
                     headers: tenantHeader(tenant),
                 });
                 const profileData = await profileRes.json().catch(() => null);
-                if (cancelled || !profileData?.ok || !profileData?.profile) return;
-
-                const dbProfile = profileData.profile as {
-                    nickname?: string;
-                    phone?: string;
-                    postcode?: string;
-                    address1?: string;
-                    address2?: string;
-                };
-
-                const dbName = String(dbProfile.nickname ?? "").trim();
-                const dbPhone = onlyDigits(String(dbProfile.phone ?? ""));
-
-                if (dbName) {
-                    setBuyerName((prev) => prev || dbName);
-                    setReceiverName((prev) => prev || dbName);
+                if (!cancelled && profileData?.ok && profileData?.profile) {
+                    const dbProfile = profileData.profile as QuickOrderProfile;
+                    merged = mergeQuickOrderProfile(
+                        {
+                            nickname: String(dbProfile.nickname ?? "").trim(),
+                            phone: onlyDigits(String(dbProfile.phone ?? "")),
+                            postcode: String(dbProfile.postcode ?? "").trim(),
+                            address1: String(dbProfile.address1 ?? "").trim(),
+                            address2: String(dbProfile.address2 ?? "").trim(),
+                        },
+                        merged
+                    );
                 }
-
-                if (dbPhone.length >= 10) {
-                    const a = dbPhone.slice(0, 3);
-                    const b = dbPhone.length === 10 ? dbPhone.slice(3, 6) : dbPhone.slice(3, 7);
-                    const c = dbPhone.length === 10 ? dbPhone.slice(6, 10) : dbPhone.slice(7, 11);
-
-                    setBuyerPhoneA((prev) => prev || a || "010");
-                    setBuyerPhoneB((prev) => prev || b);
-                    setBuyerPhoneC((prev) => prev || c);
-
-                    setReceiverPhoneA((prev) => prev || a || "010");
-                    setReceiverPhoneB((prev) => prev || b);
-                    setReceiverPhoneC((prev) => prev || c);
-                }
-
-                applyBuyerAddress({
-                    postcode: dbProfile.postcode,
-                    address1: dbProfile.address1,
-                    address2: dbProfile.address2,
-                });
             } catch {
-                // 세션 조회 실패 시 무시 (로컬값/수동입력 사용)
+                // ignore
             }
-        })();
+
+            if (cancelled) return;
+
+            fillProfileFields(merged, {
+                setBuyerName,
+                setReceiverName,
+                setBuyerPhoneA,
+                setBuyerPhoneB,
+                setBuyerPhoneC,
+                setReceiverPhoneA,
+                setReceiverPhoneB,
+                setReceiverPhoneC,
+                setBuyerPostcode,
+                setBuyerAddress1,
+                setBuyerAddress2,
+                setPostcode,
+                setAddress1,
+                setAddress2,
+            });
+
+            if (merged.nickname || merged.phone || merged.address1) {
+                saveQuickOrderProfile(tenant, merged);
+            }
+
+            profileReadyRef.current = true;
+        }
+
+        void hydrateProfile();
+
         return () => {
             cancelled = true;
         };
@@ -464,7 +493,8 @@ export default function OrderClient(props: {
         setPayError("");
 
         try {
-            await persistBuyerProfile();
+            userEditedRef.current = true;
+            await persistQuickOrderProfile(tenant, buildBuyerProfile());
 
             const auth = await fetchAuthSession();
             if (!auth?.loggedIn || !auth?.member?.uid) {
@@ -655,24 +685,36 @@ export default function OrderClient(props: {
                 <div className="mt-3 space-y-3">
                     <input
                         value={buyerName}
-                        onChange={(e) => setBuyerName(e.target.value)}
+                        onChange={(e) => {
+                            markUserEdited();
+                            setBuyerName(e.target.value);
+                        }}
                         placeholder="주문자 이름"
                         className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
                     />
                     <div className="grid grid-cols-3 gap-2">
                         <input
                             value={buyerPhoneA}
-                            onChange={(e) => setBuyerPhoneA(onlyDigits(e.target.value).slice(0, 3))}
+                            onChange={(e) => {
+                                markUserEdited();
+                                setBuyerPhoneA(onlyDigits(e.target.value).slice(0, 3));
+                            }}
                             className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none"
                         />
                         <input
                             value={buyerPhoneB}
-                            onChange={(e) => setBuyerPhoneB(onlyDigits(e.target.value).slice(0, 4))}
+                            onChange={(e) => {
+                                markUserEdited();
+                                setBuyerPhoneB(onlyDigits(e.target.value).slice(0, 4));
+                            }}
                             className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none"
                         />
                         <input
                             value={buyerPhoneC}
-                            onChange={(e) => setBuyerPhoneC(onlyDigits(e.target.value).slice(0, 4))}
+                            onChange={(e) => {
+                                markUserEdited();
+                                setBuyerPhoneC(onlyDigits(e.target.value).slice(0, 4));
+                            }}
                             className="h-12 rounded-2xl border border-slate-200 px-4 text-sm outline-none"
                         />
                     </div>
@@ -693,6 +735,7 @@ export default function OrderClient(props: {
                                 <DaumPostcodeSearch
                                     disabled={submitting}
                                     onSelect={(result) => {
+                                        markUserEdited();
                                         setBuyerPostcode(result.postcode);
                                         setBuyerAddress1(result.address1);
                                         if (receiverSame) {
@@ -722,6 +765,7 @@ export default function OrderClient(props: {
                             <input
                                 value={buyerAddress2}
                                 onChange={(e) => {
+                                    markUserEdited();
                                     const next = e.target.value;
                                     setBuyerAddress2(next);
                                     if (receiverSame) {

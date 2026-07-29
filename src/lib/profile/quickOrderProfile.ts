@@ -1,4 +1,6 @@
 // src/lib/profile/quickOrderProfile.ts
+import { tenantHeader } from "@/lib/api/endpoints";
+
 export type QuickOrderProfile = {
     nickname?: string;
     phone?: string;
@@ -95,27 +97,66 @@ export function saveQuickOrderProfile(tenant: string, profile: QuickOrderProfile
     window.localStorage.removeItem(dismissedKey(tenant));
 }
 
+export function mergeQuickOrderProfile(
+    incoming: QuickOrderProfile,
+    existing?: QuickOrderProfile | null
+): QuickOrderProfile {
+    const pick = (next?: string, prev?: string) => String(next ?? "").trim() || String(prev ?? "").trim();
+
+    return {
+        nickname: pick(incoming.nickname, existing?.nickname),
+        phone: normalizeQuickOrderPhone(incoming.phone || existing?.phone),
+        recommenderNickname: pick(incoming.recommenderNickname, existing?.recommenderNickname),
+        postcode: pick(incoming.postcode, existing?.postcode),
+        address1: pick(incoming.address1, existing?.address1),
+        address2: pick(incoming.address2, existing?.address2),
+    };
+}
+
 /** 로컬 프로필 + 회원 DB(mallRN_member)에 함께 저장 */
-export async function persistQuickOrderProfile(tenant: string, profile: QuickOrderProfile) {
-    saveQuickOrderProfile(tenant, profile);
+export async function persistQuickOrderProfile(
+    tenant: string,
+    profile: QuickOrderProfile,
+    options?: { overwriteEmptyAddress?: boolean }
+) {
+    const existing = readQuickOrderProfile(tenant);
+    const merged = options?.overwriteEmptyAddress
+        ? {
+              nickname: String(profile.nickname ?? "").trim(),
+              phone: normalizeQuickOrderPhone(profile.phone),
+              recommenderNickname: String(profile.recommenderNickname ?? "").trim(),
+              postcode: String(profile.postcode ?? "").trim(),
+              address1: String(profile.address1 ?? "").trim(),
+              address2: String(profile.address2 ?? "").trim(),
+          }
+        : mergeQuickOrderProfile(profile, existing);
+
+    saveQuickOrderProfile(tenant, merged);
 
     const body: Record<string, string> = {};
-    const nickname = String(profile.nickname ?? "").trim();
-    const phone = normalizeQuickOrderPhone(profile.phone);
-    const reference = String(profile.recommenderNickname ?? "").trim();
+    if (merged.nickname) body.nickname = merged.nickname;
+    if (merged.phone) body.phone = merged.phone;
+    if (merged.recommenderNickname) body.reference = merged.recommenderNickname;
 
-    if (nickname) body.nickname = nickname;
-    if (phone) body.phone = phone;
-    if (reference) body.reference = reference;
-    if (profile.postcode !== undefined) body.postcode = String(profile.postcode ?? "").trim();
-    if (profile.address1 !== undefined) body.address1 = String(profile.address1 ?? "").trim();
-    if (profile.address2 !== undefined) body.address2 = String(profile.address2 ?? "").trim();
+    if (options?.overwriteEmptyAddress) {
+        if (profile.postcode !== undefined) body.postcode = String(profile.postcode ?? "").trim();
+        if (profile.address1 !== undefined) body.address1 = String(profile.address1 ?? "").trim();
+        if (profile.address2 !== undefined) body.address2 = String(profile.address2 ?? "").trim();
+    } else {
+        if (merged.postcode) body.postcode = merged.postcode;
+        if (merged.address1) body.address1 = merged.address1;
+        if (merged.address2) body.address2 = merged.address2;
+    }
 
     if (Object.keys(body).length === 0) return;
 
     await fetch("/api/proxy/v1/public/member/reference", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+            ...tenantHeader(tenant),
+        },
         body: JSON.stringify(body),
     }).catch(() => null);
 }

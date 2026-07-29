@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import BottomToast, { BottomToastTone } from "@/components/ui/BottomToast";
 import DaumPostcodeSearch from "@/components/order/DaumPostcodeSearch";
+import { tenantHeader } from "@/lib/api/endpoints";
 import {
+    mergeQuickOrderProfile,
     persistQuickOrderProfile,
     readQuickOrderProfile,
 } from "@/lib/profile/quickOrderProfile";
@@ -91,37 +93,56 @@ export default function SettingsPage() {
                     return;
                 }
 
-                const profile = readQuickOrderProfile(tenant);
-                // 닉네임/전화번호는 로컬 저장값 우선, 없으면 DB(세션)에서 불러온다 (다른 기기/브라우저 대응)
+                let merged = readQuickOrderProfile(tenant) ?? {};
                 const sessName = String(data.member?.name ?? "").trim();
                 const sessPhone = String(data.member?.phone ?? "").replace(/[^\d]/g, "");
-                const lsNick = String(profile?.nickname ?? "").trim();
-                const lsPhone = String(profile?.phone ?? "").trim();
-                setNickname(lsNick || sessName);
-                setPhone(lsPhone || sessPhone);
-                if (profile?.recommenderNickname) {
-                    setRecommenderNickname(String(profile.recommenderNickname ?? ""));
-                    if (profile.recommenderNickname.trim()) {
+                merged = mergeQuickOrderProfile(
+                    { nickname: sessName, phone: sessPhone },
+                    merged
+                );
+                setNickname(String(merged.nickname ?? ""));
+                setPhone(String(merged.phone ?? ""));
+                if (merged.recommenderNickname) {
+                    setRecommenderNickname(String(merged.recommenderNickname ?? ""));
+                    if (merged.recommenderNickname.trim()) {
                         setNicknameCheckState("ok");
                     }
                 }
-                if (profile?.postcode) setPostcode(String(profile.postcode));
-                if (profile?.address1) setAddress1(String(profile.address1));
-                if (profile?.address2) setAddress2(String(profile.address2));
+                if (merged.postcode) setPostcode(String(merged.postcode));
+                if (merged.address1) setAddress1(String(merged.address1));
+                if (merged.address2) setAddress2(String(merged.address2));
 
                 const profileRes = await fetch("/api/proxy/v1/public/member/profile", {
                     cache: "no-store",
+                    credentials: "include",
+                    headers: tenantHeader(tenant),
                 }).catch(() => null);
                 if (profileRes?.ok) {
                     const profileData = await profileRes.json().catch(() => null);
                     const dbProfile = profileData?.profile as {
+                        nickname?: string;
+                        phone?: string;
                         postcode?: string;
                         address1?: string;
                         address2?: string;
                     } | null;
-                    if (dbProfile?.postcode) setPostcode((prev) => prev || String(dbProfile.postcode));
-                    if (dbProfile?.address1) setAddress1((prev) => prev || String(dbProfile.address1));
-                    if (dbProfile?.address2) setAddress2((prev) => prev || String(dbProfile.address2));
+                    if (dbProfile) {
+                        merged = mergeQuickOrderProfile(
+                            {
+                                nickname: String(dbProfile.nickname ?? "").trim(),
+                                phone: String(dbProfile.phone ?? "").replace(/[^\d]/g, ""),
+                                postcode: String(dbProfile.postcode ?? "").trim(),
+                                address1: String(dbProfile.address1 ?? "").trim(),
+                                address2: String(dbProfile.address2 ?? "").trim(),
+                            },
+                            merged
+                        );
+                        setNickname(String(merged.nickname ?? ""));
+                        setPhone(String(merged.phone ?? ""));
+                        if (merged.postcode) setPostcode(String(merged.postcode));
+                        if (merged.address1) setAddress1(String(merged.address1));
+                        if (merged.address2) setAddress2(String(merged.address2));
+                    }
                 }
 
                 const tenantRes = await fetch(`/api/proxy/${tenant}/v1/public/tenant`, {
@@ -200,14 +221,18 @@ export default function SettingsPage() {
         }
 
         try {
-            await persistQuickOrderProfile(tenant, {
-                nickname: normalizedNickname,
-                phone: normalizedPhone,
-                recommenderNickname: recommenderNickname.trim(),
-                postcode: postcode.trim(),
-                address1: address1.trim(),
-                address2: address2.trim(),
-            });
+            await persistQuickOrderProfile(
+                tenant,
+                {
+                    nickname: normalizedNickname,
+                    phone: normalizedPhone,
+                    recommenderNickname: recommenderNickname.trim(),
+                    postcode: postcode.trim(),
+                    address1: address1.trim(),
+                    address2: address2.trim(),
+                },
+                { overwriteEmptyAddress: true }
+            );
 
             setSavedAt(Date.now());
             showToast("저장 되었습니다.");
