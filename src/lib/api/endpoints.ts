@@ -35,6 +35,8 @@ export const endpoints = {
         q?: {
             q?: string;
             take?: number;
+            /** 무한 스크롤 페이징 offset. 0은 기본값이라 굳이 붙이지 않는다. */
+            skip?: number;
             cursor?: string;
             type?: "today" | "pickup" | "ongoing";
         }
@@ -42,6 +44,7 @@ export const endpoints = {
         const url = new URL(apiProxy(`${tenant}/v1/public/products`), "http://local");
         if (q?.q) url.searchParams.set("q", q.q);
         if (q?.take) url.searchParams.set("take", String(q.take));
+        if (q?.skip) url.searchParams.set("skip", String(q.skip));
         if (q?.cursor) url.searchParams.set("cursor", q.cursor);
         if (q?.type) url.searchParams.set("type", q.type);
         return url.pathname + (url.search ? url.search : "");

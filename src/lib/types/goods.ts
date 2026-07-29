@@ -48,6 +48,12 @@ export type PublicProductsResponse = {
     category?: string | null;
     cate?: number | null;
     items: PublicProductListItem[];
+    // 무한 스크롤 페이징 메타(구버전 API 호환을 위해 전부 옵셔널)
+    total?: number;
+    skip?: number;
+    take?: number;
+    hasMore?: boolean;
+    nextSkip?: number | null;
 };
 
 export type PublicProductDetailResponse = {

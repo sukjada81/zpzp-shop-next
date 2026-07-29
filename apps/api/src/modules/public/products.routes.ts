@@ -515,6 +515,9 @@ export async function publicProductRoutes(app: FastifyInstance) {
             .object({
                 q: z.string().optional(),
                 take: z.coerce.number().min(1).max(200).default(20),
+                // 무한 스크롤 페이징(offset 방식). 정렬 키가 sort_order/moddate 복합이라
+                // cursor(키셋)로는 링커 진열순 재정렬과 합치기 어려워 skip 을 쓴다.
+                skip: z.coerce.number().int().min(0).max(100000).default(0),
                 type: z.enum(["today", "pickup", "ongoing"]).optional(),
                 tab: z.enum(["today", "pickup", "ongoing"]).optional(),
                 category: z.string().optional(),
@@ -550,47 +553,81 @@ export async function publicProductRoutes(app: FastifyInstance) {
         applySegmentFilter(where, segment);
         applyCategoryFilter(where, q.category, q.cate != null ? BigInt(q.cate) : null);
 
-        const queriedRows = await app.prisma.mallRN_goods.findMany({
-            where,
-            orderBy: buildProductOrderBy(segment),
-            // 링커 선택 상품을 진열 순서대로 재정렬할 수 있도록 선택 건수만큼 후보를 확보한다.
-            take: linkerSelection ? Math.min(1000, q.take + linkerSelection.ids.length) : q.take,
-            select: {
-                uid: true,
-                tenant_id: true,
-                cate: true,
-                name: true,
-                price: true,
-                image1: true,
-                pickup_only: true,
-                option_use: true,
-                icon: true,
-                sale_start_at: true,
-                sale_end_at: true,
-                pickup_start_at: true,
-                pickup_end_at: true,
-                pickup_note: true,
-            },
-        });
+        const listSelect = {
+            uid: true,
+            tenant_id: true,
+            cate: true,
+            name: true,
+            price: true,
+            image1: true,
+            pickup_only: true,
+            option_use: true,
+            icon: true,
+            sale_start_at: true,
+            sale_end_at: true,
+            pickup_start_at: true,
+            pickup_end_at: true,
+            pickup_note: true,
+        } as const;
+
+        type ListRow = Awaited<
+            ReturnType<typeof app.prisma.mallRN_goods.findMany<{ select: typeof listSelect }>>
+        >[number];
+
+        let total = 0;
+        let rows: ListRow[] = [];
+
+        if (linkerSelection) {
+            // 링커 진열순(display_order)은 DB orderBy 로 표현할 수 없어 JS 재정렬이 필요하다.
+            // 페이지를 잘라도 순서가 흔들리지 않도록, 조건에 맞는 uid 전체로 최종 순서를 먼저
+            // 확정한 뒤 해당 페이지 구간의 uid 만 본조회한다(전체 조회는 uid 한 컬럼뿐).
+            const idRows = await app.prisma.mallRN_goods.findMany({
+                where,
+                orderBy: buildProductOrderBy(segment),
+                select: { uid: true },
+            });
+
+            const displayOrder = new Map(
+                linkerSelection.rows.map((row, index) => [row.product_uid, index])
+            );
+
+            const orderedUids = [...idRows]
+                .sort((a, b) => {
+                    const aOrder = displayOrder.get(a.uid);
+                    const bOrder = displayOrder.get(b.uid);
+                    if (aOrder != null && bOrder != null) return aOrder - bOrder;
+                    if (aOrder != null) return -1;
+                    if (bOrder != null) return 1;
+                    return 0;
+                })
+                .map((row) => row.uid);
+
+            total = orderedUids.length;
+
+            const pageUids = orderedUids.slice(q.skip, q.skip + q.take);
+            const pageRows = pageUids.length
+                ? await app.prisma.mallRN_goods.findMany({
+                    where: { uid: { in: pageUids } },
+                    select: listSelect,
+                })
+                : [];
+
+            const byUid = new Map(pageRows.map((row) => [row.uid, row]));
+            rows = pageUids
+                .map((uid) => byUid.get(uid))
+                .filter((row): row is ListRow => !!row);
+        } else {
+            total = await app.prisma.mallRN_goods.count({ where });
+            rows = await app.prisma.mallRN_goods.findMany({
+                where,
+                orderBy: buildProductOrderBy(segment),
+                skip: q.skip,
+                take: q.take,
+                select: listSelect,
+            });
+        }
 
         const masked = !isMemberLoggedIn(req); // 비회원이면 실판매가 미전송
-        const rows = linkerSelection
-            ? (() => {
-                const displayOrder = new Map(
-                    linkerSelection.rows.map((row, index) => [row.product_uid, index])
-                );
-                return [...queriedRows]
-                    .sort((a, b) => {
-                        const aOrder = displayOrder.get(a.uid);
-                        const bOrder = displayOrder.get(b.uid);
-                        if (aOrder != null && bOrder != null) return aOrder - bOrder;
-                        if (aOrder != null) return -1;
-                        if (bOrder != null) return 1;
-                        return 0;
-                    })
-                    .slice(0, q.take);
-            })()
-            : queriedRows;
 
         const items = rows.map((r) => {
             const thumb = goodsImageUrl(r.image1);
@@ -629,6 +666,8 @@ export async function publicProductRoutes(app: FastifyInstance) {
             };
         });
 
+        const nextSkip = q.skip + rows.length;
+
         return {
             ok: true,
             tenant: tenantSlug,
@@ -636,6 +675,12 @@ export async function publicProductRoutes(app: FastifyInstance) {
             category: q.category ?? null,
             cate: q.cate ?? null,
             items,
+            // 무한 스크롤 페이징 메타. hasMore 가 false 면 프론트는 더 이상 호출하지 않는다.
+            total,
+            skip: q.skip,
+            take: q.take,
+            hasMore: nextSkip < total,
+            nextSkip: nextSkip < total ? nextSkip : null,
         };
     });
 

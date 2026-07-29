@@ -2,9 +2,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatDisplayPrice } from "@/lib/price";
+import { useInfiniteProducts } from "@/lib/goods/useInfiniteProducts";
 
 export type GoodsListItem = {
     id: string;
@@ -53,14 +54,41 @@ function categoryBadgeColor(label?: string) {
     return "bg-slate-700 text-white";
 }
 
-export default function GoodsListClient(props: { tenant: string; initialItems: GoodsListItem[] }) {
-    const { tenant, initialItems } = props;
+export default function GoodsListClient(props: {
+    tenant: string;
+    initialItems: GoodsListItem[];
+    /** 무한 스크롤 — SSR 첫 페이지 뒤에 더 있는지 */
+    initialHasMore?: boolean;
+    pageSize?: number;
+    /** SSR 첫 페이지와 같은 조건이어야 다음 페이지 offset 이 어긋나지 않는다 */
+    listType?: "today" | "ongoing";
+    listQuery?: string;
+}) {
+    const { tenant, initialItems, initialHasMore, pageSize, listType, listQuery } = props;
     const router = useRouter();
     const sp = useSearchParams();
 
     const tabFromUrl = sp?.get("tab");
     const [q, setQ] = useState("");
     const [tab, setTab] = useState<TabKey>(isTabKey(tabFromUrl) ? tabFromUrl : "all");
+
+    // 무한 스크롤: 아래 filtered 는 이 items(SSR 첫 페이지 + 추가 로드분) 위에서 돈다.
+    // 추가 로드분도 서버가 내려준 price/masked 를 그대로 쓰므로 비회원 마스킹이 유지된다.
+    const {
+        items,
+        hasMore,
+        loading: loadingMore,
+        error: loadMoreError,
+        retry: retryLoadMore,
+        sentinelRef,
+    } = useInfiniteProducts({
+        tenant,
+        initialItems,
+        initialHasMore: !!initialHasMore,
+        pageSize: pageSize ?? 20,
+        type: listType,
+        q: listQuery,
+    });
 
     useEffect(() => {
         const t = sp?.get("tab");
@@ -95,10 +123,10 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
             return true;
         };
 
-        return (initialItems ?? [])
+        return (items ?? [])
             .filter(tabFilter)
             .filter((it) => (qq ? (it.title ?? "").toLowerCase().includes(qq) : true));
-    }, [initialItems, q, tab]);
+    }, [items, q, tab]);
 
     // 노출 플랜B: '전체' 헤더 문구 추가. 줍줍은 배송 전용 — 픽업 헤더 분기는 비활성 유지
     const headerTitle =
@@ -201,8 +229,61 @@ export default function GoodsListClient(props: { tenant: string; initialItems: G
                         ))}
                     </div>
                 )}
+
+                {/* 무한 스크롤 감시 지점 — 목록이 비어 있어도(검색 필터로 다 걸러져도)
+                    다음 페이지를 계속 당겨오도록 항상 렌더한다. */}
+                <InfiniteScrollFooter
+                    sentinelRef={sentinelRef}
+                    hasMore={hasMore}
+                    loading={loadingMore}
+                    error={loadMoreError}
+                    onRetry={retryLoadMore}
+                    showEnd={filtered.length > 0}
+                />
             </section>
         </main>
+    );
+}
+
+export function InfiniteScrollFooter(props: {
+    sentinelRef: RefObject<HTMLDivElement | null>;
+    hasMore: boolean;
+    loading: boolean;
+    error: string | null;
+    onRetry: () => void;
+    showEnd?: boolean;
+}) {
+    const { sentinelRef, hasMore, loading, error, onRetry, showEnd } = props;
+
+    return (
+        <div className="mt-6">
+            <div ref={sentinelRef} aria-hidden className="h-px w-full" />
+
+            {loading ? (
+                <div className="py-4 text-center text-xs font-bold text-[color:var(--muted)]">
+                    상품을 불러오는 중…
+                </div>
+            ) : null}
+
+            {error ? (
+                <div className="py-4 text-center">
+                    <div className="text-xs font-bold text-[color:var(--muted)]">{error}</div>
+                    <button
+                        type="button"
+                        onClick={onRetry}
+                        className="mt-2 rounded-xl border border-[color:var(--border)] bg-white px-4 py-2 text-xs font-extrabold text-[color:var(--brand)]"
+                    >
+                        다시 시도
+                    </button>
+                </div>
+            ) : null}
+
+            {!hasMore && !loading && !error && showEnd ? (
+                <div className="py-4 text-center text-xs font-semibold text-[color:var(--muted)]">
+                    모든 상품을 확인했어요.
+                </div>
+            ) : null}
+        </div>
     );
 }
 

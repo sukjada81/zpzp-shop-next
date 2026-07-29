@@ -4,6 +4,7 @@ import GoodsListClient, { type GoodsListItem } from "@/components/goods/GoodsLis
 import { endpoints } from "@/lib/api/endpoints";
 import { ssrHeaders } from "@/lib/api/ssrHeaders";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
+import { toGoodsListItems } from "@/lib/goods/listItem";
 import type { PublicProductsResponse } from "@/lib/types/goods";
 
 function getInternalOrigin() {
@@ -25,16 +26,19 @@ function normalizeTab(tab?: string): "all" | "today" | "ongoing" {
     return "all";
 }
 
+// 무한 스크롤 한 페이지 크기. SSR 은 첫 페이지만 그리고 나머지는 스크롤 시 클라가 이어붙인다.
+const PAGE_SIZE = 20;
+
 async function fetchProducts(
     tenant: string,
     searchParams?: GoodsPageSearchParams
-): Promise<GoodsListItem[]> {
+): Promise<{ items: GoodsListItem[]; hasMore: boolean }> {
     const origin = getInternalOrigin();
     const tab = normalizeTab(searchParams?.tab);
     const q = String(searchParams?.q ?? "").trim();
 
     const path = endpoints.publicProducts(tenant, {
-        take: 200,
+        take: PAGE_SIZE,
         // '전체'(all)는 segment 미전달 → API가 진열 전체를 반환한다. today/ongoing만 type을 보낸다.
         ...(tab === "all" ? {} : { type: tab }),
         ...(q ? { q } : {}),
@@ -43,25 +47,19 @@ async function fetchProducts(
     const url = new URL(path, origin);
     const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
 
-    if (!res.ok) return [];
+    if (!res.ok) return { items: [], hasMore: false };
 
     const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
-    if (!data?.ok) return [];
+    if (!data?.ok) return { items: [], hasMore: false };
 
-    return (data.items ?? []).map((p) => ({
-        id: String(p.id),
-        title: String(p.title ?? ""),
-        // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "?????원"으로 표시된다
-        price: p.price == null ? null : Number(p.price),
-        masked: p.masked ?? p.price == null,
-        badgeLeft: undefined,
-        badgeRight: undefined,
-        metaLeft: p.metaLeft,
-        metaRight: p.metaRight,
-        thumbnailUrl: p.thumbnailUrl,
-        cate: p.cate ?? null,
-        categoryLabel: (p as any).categoryLabel ?? undefined,
-    }));
+    return {
+        // 비회원 마스킹(§8)은 공용 매퍼가 담당 — 추가 로드분과 같은 규칙을 쓴다
+        items: toGoodsListItems(data.items),
+        hasMore:
+            typeof data.hasMore === "boolean"
+                ? data.hasMore
+                : (data.items?.length ?? 0) >= PAGE_SIZE,
+    };
 }
 
 export default async function GoodsPage({
@@ -77,7 +75,19 @@ export default async function GoodsPage({
     const tenant = normalizeTenant(resolvedParams?.tenant);
     if (!tenant) notFound();
 
-    const items = await fetchProducts(tenant, resolvedSearchParams);
+    const tab = normalizeTab(resolvedSearchParams?.tab);
+    const listQuery = String(resolvedSearchParams?.q ?? "").trim();
+    const { items, hasMore } = await fetchProducts(tenant, resolvedSearchParams);
 
-    return <GoodsListClient tenant={tenant} initialItems={items} />;
+    return (
+        <GoodsListClient
+            tenant={tenant}
+            initialItems={items}
+            initialHasMore={hasMore}
+            pageSize={PAGE_SIZE}
+            // 다음 페이지도 SSR 첫 페이지와 같은 조건으로 이어받아야 offset 이 어긋나지 않는다
+            listType={tab === "all" ? undefined : tab}
+            listQuery={listQuery || undefined}
+        />
+    );
 }

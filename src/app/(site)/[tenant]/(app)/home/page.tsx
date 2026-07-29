@@ -7,10 +7,10 @@ import HomeCategoryIcons from "@/components/home/HomeCategoryIcons";
 import RecentOrderTicker, { type RecentOrderTickerItem } from "@/components/home/RecentOrderTicker";
 import HomeProfileGate from "@/components/profile/HomeProfileGate";
 import OngoingGroupBuySection, { type OngoingGroupBuyItem } from "@/components/home/OngoingGroupBuySection";
-import GoodsCard from "@/components/goods/GoodsCard";
-import type { GoodsListItem } from "@/components/goods/GoodsListClient";
+import AllProductsGrid from "@/components/home/AllProductsGrid";
 import { endpoints } from "@/lib/api/endpoints";
 import { ssrHeaders } from "@/lib/api/ssrHeaders";
+import { toGoodsListItems } from "@/lib/goods/listItem";
 import { normalizeTenant } from "@/lib/tenant/getTenant";
 import type { PublicProductsResponse, PublicProductListItem, PublicProductDetailResponse } from "@/lib/types/goods";
 
@@ -67,6 +67,36 @@ async function fetchProducts(
     }
 }
 
+// 홈 '전체 상품' 무한 스크롤 한 페이지 크기. SSR 은 첫 페이지만 그린다.
+const ALL_PAGE_SIZE = 20;
+
+/** 전체 진열 첫 페이지 + 다음 페이지 존재 여부 */
+async function fetchAllProductsFirstPage(
+    tenant: string
+): Promise<{ items: PublicProductListItem[]; hasMore: boolean }> {
+    try {
+        const origin = getInternalOrigin();
+        const path = endpoints.publicProducts(tenant, { take: ALL_PAGE_SIZE });
+        const url = new URL(path, origin);
+
+        const res = await fetch(url.toString(), { cache: "no-store", headers: await ssrHeaders() });
+        if (!res.ok) return { items: [], hasMore: false };
+
+        const data = (await res.json().catch(() => null)) as PublicProductsResponse | null;
+        if (!data?.ok) return { items: [], hasMore: false };
+
+        return {
+            items: data.items ?? [],
+            hasMore:
+                typeof data.hasMore === "boolean"
+                    ? data.hasMore
+                    : (data.items?.length ?? 0) >= ALL_PAGE_SIZE,
+        };
+    } catch {
+        return { items: [], hasMore: false };
+    }
+}
+
 async function fetchRecentOrders(tenant: string, take = 10): Promise<RecentOrderTickerItem[]> {
     try {
         const origin = getInternalOrigin();
@@ -119,25 +149,6 @@ function toCardItems(items: PublicProductsResponse["items"]): CardItem[] {
         cate: p.cate ?? null,
         categoryLabel: displayCategoryLabel(p.categoryLabel),
         tags: [...(p.metaLeft ? [p.metaLeft] : []), ...(p.metaRight ? [p.metaRight] : [])].slice(0, 2),
-    }));
-}
-
-// 첫 화면 '전체 상품' 그리드용 매퍼. /goods 목록과 같은 카드(GoodsCard)를 쓰므로
-// 매핑 규칙도 goods/page.tsx 와 동일하게 맞춘다.
-function toGoodsListItems(items: PublicProductsResponse["items"]): GoodsListItem[] {
-    return (items ?? []).map((p) => ({
-        id: String(p.id ?? ""),
-        title: String(p.title ?? ""),
-        // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "?????원"으로 표시된다
-        price: p.price == null ? null : Number(p.price),
-        masked: p.masked ?? p.price == null,
-        badgeLeft: undefined,
-        badgeRight: undefined,
-        metaLeft: p.metaLeft,
-        metaRight: p.metaRight,
-        thumbnailUrl: p.thumbnailUrl,
-        categoryLabel: displayCategoryLabel(p.categoryLabel),
-        cate: p.cate ?? null,
     }));
 }
 
@@ -226,10 +237,11 @@ export default async function HomePage({
     // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 상품 조회 중단(fetchProducts type:"pickup")
     // 첫 화면 기본 = 진열 전체(type 미전달). 공구 딜이 없으면 홈이 빈 화면으로 보이던 문제를
     // /goods 의 노출 플랜B(기본 탭 '전체')와 같은 기준으로 홈에도 적용한다.
-    const [todayProducts, allProducts, recentOrders] = await Promise.all([
+    const [todayProducts, allFirstPage, recentOrders] = await Promise.all([
         fetchProducts(tenant, { take: 10, type: "today" }),
         // fetchProducts(tenant, { take: 8, type: "pickup" }),
-        fetchProducts(tenant, { take: 100 }),
+        // 전체 진열은 첫 페이지만 SSR — 나머지는 AllProductsGrid 가 스크롤 시 이어붙인다
+        fetchAllProductsFirstPage(tenant),
         fetchRecentOrders(tenant, 10),
     ]);
 
@@ -244,7 +256,7 @@ export default async function HomePage({
         items: toCardItems(todayProducts),
     };
 
-    const allItems = toGoodsListItems(allProducts);
+    const allItems = toGoodsListItems(allFirstPage.items);
 
     // 줍줍은 배송 전용, 정책 변경 대비 보존 — "바로 픽업 가능" 섹션 정의/노출 중단
     // const pickupSection: GridSection = {
@@ -292,7 +304,13 @@ export default async function HomePage({
             )}
 
             <SectionTitleStatic title="전체 상품" />
-            <GridAll tenant={tenant} items={allItems} emptyText="등록된 상품이 없습니다." />
+            <AllProductsGrid
+                tenant={tenant}
+                initialItems={allItems}
+                initialHasMore={allFirstPage.hasMore}
+                pageSize={ALL_PAGE_SIZE}
+                emptyText="등록된 상품이 없습니다."
+            />
 
             {/* DAD 잔재 정리 — 추천서비스/클로버 모집 블록 노출 중단(대체 콘텐츠 확정 전까지).
                 DAD 포인트 카피·discountallday.co.kr 외부 링크·외부 이미지가 들어 있어 호출만 끊는다.
@@ -342,35 +360,8 @@ function SectionTitleStatic({ title }: { title: string }) {
     );
 }
 
-// 전체 진열 상품을 세로 2열로 쭉 나열한다. Grid2(가로 스크롤)와 달리 목록형이라
-// 공구 딜이 없을 때 첫 화면이 상품 리스트로 채워진다. 카드는 /goods 목록과 동일(GoodsCard).
-function GridAll({
-                     tenant,
-                     items,
-                     emptyText,
-                 }: {
-    tenant: string;
-    items: GoodsListItem[];
-    emptyText: string;
-}) {
-    if (!items.length) {
-        return (
-            <section className="mt-3">
-                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm font-semibold text-[color:var(--muted)]">
-                    {emptyText}
-                </div>
-            </section>
-        );
-    }
-
-    return (
-        <section className="mt-3 grid grid-cols-2 gap-3">
-            {items.map((it) => (
-                <GoodsCard key={it.id} tenant={tenant} item={it} />
-            ))}
-        </section>
-    );
-}
+// 전체 진열 상품 그리드(세로 2열 + 무한 스크롤)는 클라 컴포넌트로 분리됐다.
+// → src/components/home/AllProductsGrid.tsx
 
 function Grid2({
                    tenant,
