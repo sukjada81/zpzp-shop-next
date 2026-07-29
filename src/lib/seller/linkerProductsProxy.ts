@@ -8,6 +8,8 @@ export async function proxyLinkerProducts(
     request: NextRequest,
     tenant: string,
     path: string,
+    /** 연결 실패 안내에 쓰는 기능 이름. 정산 등 다른 셀러 API도 이 프록시를 공유한다. */
+    label = "링커 상품",
 ) {
     if (!tenant) {
         return NextResponse.json({ ok: false, message: "tenant is required" }, { status: 400 });
@@ -33,6 +35,6 @@ export async function proxyLinkerProducts(
         const payload = await response.json().catch(() => ({ ok: false, message: "잘못된 API 응답입니다." }));
         return NextResponse.json(payload, { status: response.status });
     } catch {
-        return NextResponse.json({ ok: false, message: "링커 상품 API에 연결할 수 없습니다." }, { status: 502 });
+        return NextResponse.json({ ok: false, message: `${label} API에 연결할 수 없습니다.` }, { status: 502 });
     }
 }

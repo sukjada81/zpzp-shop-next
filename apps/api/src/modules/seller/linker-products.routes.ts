@@ -3,19 +3,15 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
+import { getLinker, memberUidFromSession } from "./linker.js";
 
 const HQ_TENANT_ID = BigInt(0);
 const DEFAULT_SLOT_LIMIT = 20;
 const MAX_FILTERED_ALL_RESULTS = 10_000;
 const GOODS_STATUS_SELLING = "published"; // product active
 
-type SessionMember = { uid?: string | number };
-
-function memberUid(req: FastifyRequest): number {
-    const member = (req as any).session?.member as SessionMember | undefined;
-    const uid = Number(member?.uid ?? 0);
-    return Number.isInteger(uid) && uid > 0 ? uid : 0;
-}
+// 링커 판별(getLinker)·세션 uid 추출은 ./linker.js 공용 — 정산 라우트와 규칙을 하나로 유지한다.
+const memberUid = memberUidFromSession;
 
 function isSelling(row: {
     status: string;
@@ -68,26 +64,6 @@ function requestMeta(req: FastifyRequest) {
         ip_address: req.ip || null,
         user_agent: String(req.headers["user-agent"] ?? "").slice(0, 500) || null,
     };
-}
-
-async function getLinker(app: FastifyInstance, req: FastifyRequest) {
-    const uid = memberUid(req);
-    if (!uid) return null;
-
-    const tenantId = (req as any).tenantId as bigint | undefined;
-    const tenantSlug = String((req as any).tenantSlug ?? "").trim();
-    const tenantScope: Array<{ tenant_id: bigint } | { shop_slug: string }> = [];
-    if (tenantId != null) tenantScope.push({ tenant_id: tenantId });
-    if (tenantSlug) tenantScope.push({ shop_slug: tenantSlug });
-    if (tenantScope.length === 0) return null;
-
-    return app.prisma.zpzp_linker.findFirst({
-        where: {
-            member_uid: uid,
-            status: "active",
-            OR: tenantScope,
-        },
-    });
 }
 
 export async function getLinkerSlotPolicy(

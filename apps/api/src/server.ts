@@ -29,6 +29,7 @@ import { sellerTenantsRoutes } from "./modules/seller/tenants.routes.js";
 import { sellerApplicationsRoutes } from "./modules/seller/applications.routes.js";
 import { sellerGlobalRoutes } from "./modules/seller/global.routes.js";
 import { sellerLinkerProductsRoutes } from "./modules/seller/linker-products.routes.js";
+import { sellerSettlementRoutes } from "./modules/seller/settlement.routes.js";
 import { publicAuthRoutes } from "./modules/public/auth.routes.js";
 import { publicMemberRoutes } from "./modules/public/member.routes.js";
 import { publicResolveRoutes } from "./modules/public/resolve.routes.js";
@@ -85,6 +86,7 @@ await sellerSalesRoutes(app);
 await sellerMembersRoutes(app);
 await sellerOrderRoutes(app);
 await sellerLinkerProductsRoutes(app);
+await sellerSettlementRoutes(app);
 
 app.register(
     async (tenantScoped) => {
