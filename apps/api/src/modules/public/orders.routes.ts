@@ -18,6 +18,9 @@ type PublicCreateOrderBody = {
     buyerPhone?: string;
     receiverName?: string;
     receiverPhone?: string;
+    postcode?: string;
+    address1?: string;
+    address2?: string;
     pickupAt?: string | null;
     message?: string;
     memo?: string;
@@ -774,9 +777,9 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 email: "",
                                 name2: toSafeString(body.receiverName, body.buyerName || "수령인"),
                                 cell2: toSafeString(body.receiverPhone, body.buyerPhone || ""),
-                                postcode: "",
-                                address1: "",
-                                address2: "",
+                                postcode: toSafeString(body.postcode, ""),
+                                address1: toSafeString(body.address1, ""),
+                                address2: toSafeString(body.address2, ""),
                                 message: toSafeString(body.message, ""),
                                 memo: toSafeString(body.memo, ""),
                                 passwd: "",

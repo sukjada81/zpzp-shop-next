@@ -51,6 +51,9 @@ type PrepareBody = {
     buyerPhone?: string;
     receiverName?: string;
     receiverPhone?: string;
+    postcode?: string;
+    address1?: string;
+    address2?: string;
     pickupAt?: string | null;
     message?: string;
     memo?: string;
@@ -175,6 +178,9 @@ type StoredPrepareForm = {
     buyerPhone: string;
     receiverName: string;
     receiverPhone: string;
+    postcode: string;
+    address1: string;
+    address2: string;
     pickupAt?: string | null;
     message?: string;
     memo?: string;
@@ -203,6 +209,9 @@ function parsePrepareForm(raw: string | null | undefined): StoredPrepareForm | n
             buyerPhone: toSafeString(data.buyerPhone, ""),
             receiverName: toSafeString(data.receiverName, data.buyerName || "수령인"),
             receiverPhone: toSafeString(data.receiverPhone, data.buyerPhone || ""),
+            postcode: toSafeString(data.postcode, ""),
+            address1: toSafeString(data.address1, ""),
+            address2: toSafeString(data.address2, ""),
             pickupAt: data.pickupAt ?? null,
             message: toSafeString(data.message, ""),
             memo: toSafeString(data.memo, ""),
@@ -312,6 +321,13 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 });
             }
 
+            if (!toSafeString(body.address1)) {
+                return reply.code(400).send({
+                    ok: false,
+                    msg: "배송지 주소를 입력해 주세요.",
+                });
+            }
+
             // 쿠폰 적용(W-1). body.amount 는 할인 전 상품합계이므로 위 가드는 그대로 두고,
             // 여기서 할인을 적용해 '실제 승인액'을 만든다. 프론트 선택값은 신뢰하지 않는다.
             const couponUids = toCouponUidList(body.couponUids);
@@ -342,6 +358,9 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 buyerPhone: toSafeString(body.buyerPhone, ""),
                 receiverName: toSafeString(body.receiverName, body.buyerName || "수령인"),
                 receiverPhone: toSafeString(body.receiverPhone, body.buyerPhone || ""),
+                postcode: toSafeString(body.postcode, ""),
+                address1: toSafeString(body.address1, ""),
+                address2: toSafeString(body.address2, ""),
                 pickupAt: body.pickupAt ?? null,
                 message: toSafeString(body.message, ""),
                 memo: toSafeString(body.memo, ""),
@@ -654,6 +673,9 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                         buyerPhone: form.buyerPhone,
                         receiverName: form.receiverName,
                         receiverPhone: form.receiverPhone,
+                        postcode: form.postcode,
+                        address1: form.address1,
+                        address2: form.address2,
                         pickupAt: form.pickupAt,
                         message: form.message,
                         memo: form.memo,

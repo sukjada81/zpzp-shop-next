@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
 import { initTossPayment } from "@/lib/toss/client";
+import DaumPostcodeSearch from "@/components/order/DaumPostcodeSearch";
 
 export type OrderItem = {
     id: string;
@@ -122,6 +123,10 @@ export default function OrderClient(props: {
     const [receiverPhoneA, setReceiverPhoneA] = useState("010");
     const [receiverPhoneB, setReceiverPhoneB] = useState("");
     const [receiverPhoneC, setReceiverPhoneC] = useState("");
+
+    const [postcode, setPostcode] = useState("");
+    const [address1, setAddress1] = useState("");
+    const [address2, setAddress2] = useState("");
 
     // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 희망일시 입력 비활성(주문 시 pickupAt=null 전송)
     // const [pickupAt, setPickupAt] = useState(nowLocalDateTimeInputValue());
@@ -305,6 +310,15 @@ export default function OrderClient(props: {
             return;
         }
 
+        const normalizedPostcode = postcode.trim();
+        const normalizedAddress1 = address1.trim();
+        const normalizedAddress2 = address2.trim();
+
+        if (!normalizedAddress1) {
+            alert("배송지 주소를 입력해 주세요.");
+            return;
+        }
+
         if (!items.length) {
             alert("주문할 상품이 없습니다.");
             return;
@@ -330,6 +344,9 @@ export default function OrderClient(props: {
                 buyerPhone: normalizedBuyerPhone,
                 receiverName: normalizedReceiverName,
                 receiverPhone: normalizedReceiverPhone,
+                postcode: normalizedPostcode,
+                address1: normalizedAddress1,
+                address2: normalizedAddress2,
                 pickupAt: null,
                 message: message.trim(),
                 memo: memo.trim(),
@@ -576,6 +593,43 @@ export default function OrderClient(props: {
                     <div className="text-[12px] font-semibold text-slate-500">
                         입력 연락처: {receiverPhonePreview || "-"}
                     </div>
+                </div>
+            </section>
+
+            <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-[16px] font-extrabold text-slate-900">배송지</div>
+
+                <div className="mt-3 space-y-3">
+                    <div className="flex gap-2">
+                        <input
+                            value={postcode}
+                            readOnly
+                            placeholder="우편번호"
+                            className="h-12 w-28 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none"
+                        />
+                        <DaumPostcodeSearch
+                            disabled={submitting}
+                            onSelect={(result) => {
+                                setPostcode(result.postcode);
+                                setAddress1(result.address1);
+                            }}
+                            className="h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-extrabold text-slate-800 disabled:opacity-40"
+                        />
+                    </div>
+
+                    <input
+                        value={address1}
+                        readOnly
+                        placeholder="기본 주소 (주소 검색으로 입력)"
+                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none"
+                    />
+
+                    <input
+                        value={address2}
+                        onChange={(e) => setAddress2(e.target.value)}
+                        placeholder="상세 주소 (동·호수 등)"
+                        className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
+                    />
                 </div>
             </section>
 

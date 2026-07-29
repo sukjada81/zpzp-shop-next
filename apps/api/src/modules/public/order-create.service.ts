@@ -46,6 +46,10 @@ export type CreateStoreOrderInput = {
     buyerPhone: string;
     receiverName: string;
     receiverPhone: string;
+    /** mallRN_order_info.postcode / address1 / address2 — shop-php order_post.php 와 동일 */
+    postcode?: string;
+    address1?: string;
+    address2?: string;
     pickupAt?: string | null;
     message?: string;
     memo?: string;
@@ -219,9 +223,9 @@ export async function createStoreOrder(
                         email: "",
                         name2: toSafeString(input.receiverName, input.buyerName || "수령인"),
                         cell2: toSafeString(input.receiverPhone, input.buyerPhone || ""),
-                        postcode: "",
-                        address1: "",
-                        address2: "",
+                        postcode: toSafeString(input.postcode, ""),
+                        address1: toSafeString(input.address1, ""),
+                        address2: toSafeString(input.address2, ""),
                         message: toSafeString(input.message, ""),
                         memo: toSafeString(input.memo, ""),
                         passwd: "",
@@ -289,7 +293,7 @@ export async function createStoreOrder(
                             discount: 0,
                             discount_info: "",
                             status: goodsStatus,
-                            status2: goodsStatus,
+                            status2: 0,
                             status_date: now,
                             reals: isPaid ? 1 : 0,
                             signdate: now,
