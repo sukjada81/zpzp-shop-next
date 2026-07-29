@@ -95,6 +95,31 @@ export function saveQuickOrderProfile(tenant: string, profile: QuickOrderProfile
     window.localStorage.removeItem(dismissedKey(tenant));
 }
 
+/** 로컬 프로필 + 회원 DB(mallRN_member)에 함께 저장 */
+export async function persistQuickOrderProfile(tenant: string, profile: QuickOrderProfile) {
+    saveQuickOrderProfile(tenant, profile);
+
+    const body: Record<string, string> = {};
+    const nickname = String(profile.nickname ?? "").trim();
+    const phone = normalizeQuickOrderPhone(profile.phone);
+    const reference = String(profile.recommenderNickname ?? "").trim();
+
+    if (nickname) body.nickname = nickname;
+    if (phone) body.phone = phone;
+    if (reference) body.reference = reference;
+    if (profile.postcode !== undefined) body.postcode = String(profile.postcode ?? "").trim();
+    if (profile.address1 !== undefined) body.address1 = String(profile.address1 ?? "").trim();
+    if (profile.address2 !== undefined) body.address2 = String(profile.address2 ?? "").trim();
+
+    if (Object.keys(body).length === 0) return;
+
+    await fetch("/api/proxy/v1/public/member/reference", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    }).catch(() => null);
+}
+
 export function dismissProfilePrompt(tenant: string) {
     if (!canUseStorage()) return;
     window.localStorage.setItem(dismissedKey(tenant), "1");

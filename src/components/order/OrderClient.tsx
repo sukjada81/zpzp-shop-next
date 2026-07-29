@@ -1,11 +1,11 @@
 // src/components/order/OrderClient.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart/CartProvider";
 import { endpoints, tenantHeader } from "@/lib/api/endpoints";
-import { readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
+import { persistQuickOrderProfile, readQuickOrderProfile } from "@/lib/profile/quickOrderProfile";
 import { initTossPayment } from "@/lib/toss/client";
 import DaumPostcodeSearch from "@/components/order/DaumPostcodeSearch";
 
@@ -156,6 +156,45 @@ export default function OrderClient(props: {
         setAddress1(nextAddress1);
         setAddress2(nextAddress2);
     }
+
+    const buildBuyerProfile = useCallback(() => {
+        const existing = readQuickOrderProfile(tenant);
+        return {
+            nickname: buyerName.trim(),
+            phone: joinPhone(buyerPhoneA, buyerPhoneB, buyerPhoneC),
+            recommenderNickname: String(existing?.recommenderNickname ?? "").trim(),
+            postcode: buyerPostcode.trim(),
+            address1: buyerAddress1.trim(),
+            address2: buyerAddress2.trim(),
+        };
+    }, [
+        tenant,
+        buyerName,
+        buyerPhoneA,
+        buyerPhoneB,
+        buyerPhoneC,
+        buyerPostcode,
+        buyerAddress1,
+        buyerAddress2,
+    ]);
+
+    const persistBuyerProfile = useCallback(async () => {
+        const profile = buildBuyerProfile();
+        const hasCore =
+            !!profile.nickname ||
+            profile.phone.length >= 10 ||
+            !!profile.address1;
+        if (!hasCore) return;
+        await persistQuickOrderProfile(tenant, profile);
+    }, [tenant, buildBuyerProfile]);
+
+    // 주문자 정보(이름·연락처·주소) 입력 시 프로필에 저장 → 다음 주문·내 정보 설정에서 재사용
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void persistBuyerProfile();
+        }, 600);
+        return () => window.clearTimeout(timer);
+    }, [persistBuyerProfile]);
 
     // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 희망일시 입력 비활성(주문 시 pickupAt=null 전송)
     // const [pickupAt, setPickupAt] = useState(nowLocalDateTimeInputValue());
@@ -425,6 +464,8 @@ export default function OrderClient(props: {
         setPayError("");
 
         try {
+            await persistBuyerProfile();
+
             const auth = await fetchAuthSession();
             if (!auth?.loggedIn || !auth?.member?.uid) {
                 redirectToLogin();
@@ -657,6 +698,15 @@ export default function OrderClient(props: {
                                         if (receiverSame) {
                                             syncDeliveryFromBuyer(result.postcode, result.address1, buyerAddress2);
                                         }
+                                        const existing = readQuickOrderProfile(tenant);
+                                        void persistQuickOrderProfile(tenant, {
+                                            nickname: buyerName.trim(),
+                                            phone: joinPhone(buyerPhoneA, buyerPhoneB, buyerPhoneC),
+                                            recommenderNickname: String(existing?.recommenderNickname ?? "").trim(),
+                                            postcode: result.postcode,
+                                            address1: result.address1,
+                                            address2: buyerAddress2.trim(),
+                                        });
                                     }}
                                     className="h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-extrabold text-slate-800 disabled:opacity-40"
                                 />
@@ -698,6 +748,7 @@ export default function OrderClient(props: {
                                 setReceiverSame(checked);
                                 if (checked) {
                                     syncDeliveryFromBuyer();
+                                    void persistBuyerProfile();
                                 }
                             }}
                         />

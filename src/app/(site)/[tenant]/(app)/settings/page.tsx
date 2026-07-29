@@ -6,8 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import BottomToast, { BottomToastTone } from "@/components/ui/BottomToast";
 import DaumPostcodeSearch from "@/components/order/DaumPostcodeSearch";
 import {
+    persistQuickOrderProfile,
     readQuickOrderProfile,
-    saveQuickOrderProfile,
 } from "@/lib/profile/quickOrderProfile";
 
 type AuthSession = {
@@ -200,7 +200,7 @@ export default function SettingsPage() {
         }
 
         try {
-            saveQuickOrderProfile(tenant, {
+            await persistQuickOrderProfile(tenant, {
                 nickname: normalizedNickname,
                 phone: normalizedPhone,
                 recommenderNickname: recommenderNickname.trim(),
@@ -208,19 +208,6 @@ export default function SettingsPage() {
                 address1: address1.trim(),
                 address2: address2.trim(),
             });
-
-            await fetch("/api/proxy/v1/public/member/reference", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    nickname: normalizedNickname,
-                    reference: recommenderNickname.trim(),
-                    phone: normalizedPhone,
-                    postcode: postcode.trim(),
-                    address1: address1.trim(),
-                    address2: address2.trim(),
-                }),
-            }).catch(() => null);
 
             setSavedAt(Date.now());
             showToast("저장 되었습니다.");
