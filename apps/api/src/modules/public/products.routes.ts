@@ -483,7 +483,13 @@ export async function publicProductRoutes(app: FastifyInstance) {
             orderBy: [{ display_order: "asc" }, { selected_at: "desc" }],
             select: { product_uid: true, display_order: true },
         });
-        if (rows.length === 0) return { linkerUid: linker.uid, rows, ids: [] as number[] };
+        // 정책: "링커가 진열하지 않으면 본사 전체 상품을 노출한다"(링커에게 안내해온 동작).
+        // null 을 돌려주면 호출부가 링커 필터 자체를 걸지 않아 본사 카탈로그가 그대로 보인다.
+        // 예전엔 여기서 ids:[] 를 돌려줬는데, 그러면 호출부가 `uid IN ()` 으로 본사 상품을
+        // 전부 걸러 스토어가 빈 목록이 됐다(링커 slug 는 카탈로그 tenant=hq 로 해석되고
+        // hq tenant 소유 상품은 0건이라 구조적으로 0건). 상세 라우트도 같은 반환값을 쓰므로
+        // 상세 진입 차단까지 함께 풀려 목록/상세 정합이 맞는다.
+        if (rows.length === 0) return null;
 
         const sellingProducts = await app.prisma.mallRN_goods.findMany({
             where: {
@@ -500,6 +506,9 @@ export async function publicProductRoutes(app: FastifyInstance) {
         });
         const sellingIds = new Set(sellingProducts.map((product) => product.uid));
         const visibleSelling = rows.filter((row) => sellingIds.has(row.product_uid));
+        // 진열은 했지만 전부 판매종료·미노출이 된 경우도 사용자 눈에는 "빈 스토어"로 같다.
+        // 위와 같은 이유로 전체 노출로 폴백한다.
+        if (visibleSelling.length === 0) return null;
         return {
             linkerUid: linker.uid,
             rows: visibleSelling,

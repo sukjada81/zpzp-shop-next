@@ -19,6 +19,7 @@ import {
     Wallet,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { sellerBasePrefix } from "@/lib/seller/getSellerHref";
 
 type SessionResponse = {
     ok?: boolean;
@@ -98,13 +99,9 @@ export default function SellerShell({
     const [tenants, setTenants] = useState<TenantItem[]>([]);
     const [tenantSwitcherOpen, setTenantSwitcherOpen] = useState(false);
 
-    // 콘솔은 두 경로공간에서 열린다.
-    //   ① seller.zpzp.kr/{tenant}/...          — 미들웨어가 /seller/{tenant}/... 로 rewrite
-    //   ② {링커slug}.zpzp.kr/seller/{tenant}/... — isSellerInternalPath 분기로 직접 렌더
-    // 내비 href 를 항상 접두어 없는 `/{tenant}/...` 로 만들면 ②에서 스토어프론트 경로공간으로
-    // 떨어져 `/{카탈로그tenant}/{slug}/products` 로 rewrite 되고 404 가 난다(모바일 드로어 404 원인).
-    // 지금 서 있는 경로공간을 그대로 따라간다(①에서는 빈 문자열이라 기존 동작 그대로).
-    const basePrefix = pathname === "/seller" || pathname.startsWith("/seller/") ? "/seller" : "";
+    // 두 경로공간(seller 호스트 / 링커 서브도메인) 대응 — 근거는 sellerBasePrefix 주석 참고.
+    // 링크를 접두어 없이 만들면 링커 서브도메인에서 스토어프론트 경로로 떨어져 404 가 난다.
+    const basePrefix = sellerBasePrefix(pathname);
 
     const dashboardHref = `${basePrefix}/${tenant}`;
     const salesHref = `${basePrefix}/${tenant}/sales`;
