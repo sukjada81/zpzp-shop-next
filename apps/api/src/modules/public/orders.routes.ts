@@ -425,6 +425,79 @@ async function writeOrderActionLog(
     });
 }
 
+type ClaimGoodsRow = {
+    uid: number;
+    vendor: string;
+    status: number;
+    status2: number;
+};
+
+/** shop-php statusX1 — 본사 교환/반품/취소접수(order_change_list) 연동 */
+async function writeClaimStatusChangeRecords(
+    tx: {
+        mallRN_order_status_change: {
+            findFirst: (args: unknown) => Promise<{ uid: number } | null>;
+            create: (args: unknown) => Promise<unknown>;
+        };
+        mallRN_order_log: { create: (args: unknown) => Promise<unknown> };
+    },
+    goodsRows: ClaimGoodsRow[],
+    input: {
+        orderNum: string;
+        memberId: string;
+        memberName: string;
+        claimStatus: number;
+        reason: string;
+        now: number;
+    }
+) {
+    const reason = toSafeString(input.reason, "고객 요청").slice(0, 100);
+    const memberId = toSafeString(input.memberId, "").slice(0, 50) || "회원";
+    const memberName = toSafeString(input.memberName, "회원").slice(0, 50);
+
+    for (const row of goodsRows) {
+        const existing = await tx.mallRN_order_status_change.findFirst({
+            where: {
+                order_num: input.orderNum,
+                og_uid: row.uid,
+                status: input.claimStatus,
+                status2: STATUS2_REQUEST,
+            },
+            select: { uid: true },
+        });
+        if (existing) continue;
+
+        await tx.mallRN_order_status_change.create({
+            data: {
+                id: memberId,
+                name: memberName,
+                vendor: toSafeString(row.vendor, "").slice(0, 50),
+                order_num: input.orderNum,
+                og_uid: row.uid,
+                reason,
+                bank_info: "",
+                status: input.claimStatus,
+                status2: STATUS2_REQUEST,
+                status_date: 0,
+                signdate: input.now,
+            },
+        });
+
+        await tx.mallRN_order_log.create({
+            data: {
+                order_num: input.orderNum,
+                og_uid: row.uid,
+                id: memberId,
+                prev_status: row.status,
+                prev_status2: row.status2,
+                status: input.claimStatus,
+                status2: STATUS2_REQUEST,
+                signdate: input.now,
+            },
+        });
+    }
+}
+
 function getObject(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== "object") return null;
     return value as Record<string, unknown>;
@@ -1664,9 +1737,25 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             const nextStatus = claimType === "return" ? STATUS_RETURN : STATUS_EXCHANGE;
             const memberRow = await prisma.mallRN_member.findFirst({
                 where: { uid: Number(memberUid) },
-                select: { name: true },
+                select: { name: true, id: true },
             });
             const actorNickname = toSafeString(memberRow?.name || rawOrder.name, "회원");
+            const claimReason = reason || (claimType === "return" ? "반품 요청" : "교환 요청");
+
+            const claimGoodsRows = await prisma.mallRN_order_goods.findMany({
+                where: {
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                    order_num: orderNum,
+                    reals: 1,
+                },
+                select: {
+                    uid: true,
+                    vendor: true,
+                    status: true,
+                    status2: true,
+                },
+            });
 
             await prisma.$transaction(async (tx: any) => {
                 await tx.mallRN_order_info.updateMany({
@@ -1691,6 +1780,24 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     },
                 });
 
+                await writeClaimStatusChangeRecords(
+                    tx,
+                    claimGoodsRows.map((row: ClaimGoodsRow) => ({
+                        uid: Number(row.uid),
+                        vendor: toSafeString(row.vendor, ""),
+                        status: toInt(row.status, 0),
+                        status2: toInt(row.status2, 0),
+                    })),
+                    {
+                        orderNum,
+                        memberId: toSafeString(memberRow?.id || rawOrder.id, ""),
+                        memberName: actorNickname,
+                        claimStatus: nextStatus,
+                        reason: claimReason,
+                        now,
+                    }
+                );
+
                 await writeOrderActionLog(tx, {
                     tenantId,
                     eventType: "cancel",
@@ -1700,7 +1807,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     actorNickname,
                     beforeStatus: display.effectiveGoodsStatus,
                     afterStatus: nextStatus,
-                    reason: reason || `${claimType}_request`,
+                    reason: claimReason,
                     metaJson: JSON.stringify({ claimType }),
                 });
             });

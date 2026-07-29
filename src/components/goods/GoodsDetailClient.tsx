@@ -306,6 +306,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         () => Object.fromEntries(data.options.map((o) => [o.id, 0]))
     );
     const [submitting, setSubmitting] = useState(false);
+    const [cartConfirmOpen, setCartConfirmOpen] = useState(false);
     const [toastOpen, setToastOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState("주문이 완료되었어요.");
     const [toastTone, setToastTone] = useState<BottomToastTone>("success");
@@ -452,6 +453,10 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
         return true;
     }
 
+    function resetSelectedQty() {
+        setQty(Object.fromEntries(data.options.map((o) => [o.id, 0])));
+    }
+
     function submitCart() {
         if (requireMemberForOrder()) return;
 
@@ -479,7 +484,18 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
             }))
         );
 
-        showToast("장바구니에 담았어요.");
+        setCartConfirmOpen(true);
+    }
+
+    function handleCartConfirmStay() {
+        setCartConfirmOpen(false);
+        resetSelectedQty();
+    }
+
+    function handleCartConfirmGo() {
+        setCartConfirmOpen(false);
+        resetSelectedQty();
+        router.push(`/${tenant}/cart`);
     }
 
     function submitQuickOrder() {
@@ -822,6 +838,40 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     </div>
                 </div>
             </main>
+
+            {cartConfirmOpen ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="cart-confirm-title"
+                        className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.3)]"
+                    >
+                        <h2
+                            id="cart-confirm-title"
+                            className="text-center text-lg font-extrabold text-slate-900"
+                        >
+                            장바구니로 이동할래?
+                        </h2>
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={handleCartConfirmStay}
+                                className="rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700"
+                            >
+                                취소
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCartConfirmGo}
+                                className="rounded-xl bg-[color:var(--accent)] py-3 text-sm font-semibold text-white"
+                            >
+                                확인
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             <BottomToast
                 open={toastOpen}
