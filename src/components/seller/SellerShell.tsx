@@ -98,18 +98,26 @@ export default function SellerShell({
     const [tenants, setTenants] = useState<TenantItem[]>([]);
     const [tenantSwitcherOpen, setTenantSwitcherOpen] = useState(false);
 
-    const dashboardHref = `/${tenant}`;
-    const salesHref = `/${tenant}/sales`;
-    const ordersHref = `/${tenant}/orders`;
-    const membersHref = `/${tenant}/members`;
+    // 콘솔은 두 경로공간에서 열린다.
+    //   ① seller.zpzp.kr/{tenant}/...          — 미들웨어가 /seller/{tenant}/... 로 rewrite
+    //   ② {링커slug}.zpzp.kr/seller/{tenant}/... — isSellerInternalPath 분기로 직접 렌더
+    // 내비 href 를 항상 접두어 없는 `/{tenant}/...` 로 만들면 ②에서 스토어프론트 경로공간으로
+    // 떨어져 `/{카탈로그tenant}/{slug}/products` 로 rewrite 되고 404 가 난다(모바일 드로어 404 원인).
+    // 지금 서 있는 경로공간을 그대로 따라간다(①에서는 빈 문자열이라 기존 동작 그대로).
+    const basePrefix = pathname === "/seller" || pathname.startsWith("/seller/") ? "/seller" : "";
+
+    const dashboardHref = `${basePrefix}/${tenant}`;
+    const salesHref = `${basePrefix}/${tenant}/sales`;
+    const ordersHref = `${basePrefix}/${tenant}/orders`;
+    const membersHref = `${basePrefix}/${tenant}/members`;
     const isLinker = role === "linker";
     const canManageProducts = isLinker || Boolean(linkerShopSlug);
     const productsTenant = linkerShopSlug || tenant;
-    const productsHref = `/${productsTenant}/products`;
+    const productsHref = `${basePrefix}/${productsTenant}/products`;
     // 정산은 링커 본인 기능이라 상품관리와 같은 노출 조건·같은 tenant 세그먼트를 쓴다.
-    const settlementHref = `/${productsTenant}/settlement`;
-    const applicationsHref = `/${tenant}/applications`;
-    const tenantsHref = `/${tenant}/tenants`;
+    const settlementHref = `${basePrefix}/${productsTenant}/settlement`;
+    const applicationsHref = `${basePrefix}/${tenant}/applications`;
+    const tenantsHref = `${basePrefix}/${tenant}/tenants`;
 
     const isDashboardActive = pathname === `/${tenant}` || pathname === `/seller/${tenant}`;
     const isSalesActive =
