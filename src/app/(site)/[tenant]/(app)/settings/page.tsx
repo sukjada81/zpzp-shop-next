@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import BottomToast, { BottomToastTone } from "@/components/ui/BottomToast";
+import DaumPostcodeSearch from "@/components/order/DaumPostcodeSearch";
 import {
     readQuickOrderProfile,
     saveQuickOrderProfile,
@@ -33,6 +34,9 @@ export default function SettingsPage() {
     const [nickname, setNickname] = useState("");
     const [phone, setPhone] = useState("");
     const [recommenderNickname, setRecommenderNickname] = useState("");
+    const [postcode, setPostcode] = useState("");
+    const [address1, setAddress1] = useState("");
+    const [address2, setAddress2] = useState("");
     const [savedAt, setSavedAt] = useState<number | null>(null);
 
     const [openchatUrl, setOpenchatUrl] = useState<string | null>(null);
@@ -100,6 +104,24 @@ export default function SettingsPage() {
                     if (profile.recommenderNickname.trim()) {
                         setNicknameCheckState("ok");
                     }
+                }
+                if (profile?.postcode) setPostcode(String(profile.postcode));
+                if (profile?.address1) setAddress1(String(profile.address1));
+                if (profile?.address2) setAddress2(String(profile.address2));
+
+                const profileRes = await fetch("/api/proxy/v1/public/member/profile", {
+                    cache: "no-store",
+                }).catch(() => null);
+                if (profileRes?.ok) {
+                    const profileData = await profileRes.json().catch(() => null);
+                    const dbProfile = profileData?.profile as {
+                        postcode?: string;
+                        address1?: string;
+                        address2?: string;
+                    } | null;
+                    if (dbProfile?.postcode) setPostcode((prev) => prev || String(dbProfile.postcode));
+                    if (dbProfile?.address1) setAddress1((prev) => prev || String(dbProfile.address1));
+                    if (dbProfile?.address2) setAddress2((prev) => prev || String(dbProfile.address2));
                 }
 
                 const tenantRes = await fetch(`/api/proxy/${tenant}/v1/public/tenant`, {
@@ -182,6 +204,9 @@ export default function SettingsPage() {
                 nickname: normalizedNickname,
                 phone: normalizedPhone,
                 recommenderNickname: recommenderNickname.trim(),
+                postcode: postcode.trim(),
+                address1: address1.trim(),
+                address2: address2.trim(),
             });
 
             await fetch("/api/proxy/v1/public/member/reference", {
@@ -191,6 +216,9 @@ export default function SettingsPage() {
                     nickname: normalizedNickname,
                     reference: recommenderNickname.trim(),
                     phone: normalizedPhone,
+                    postcode: postcode.trim(),
+                    address1: address1.trim(),
+                    address2: address2.trim(),
                 }),
             }).catch(() => null);
 
@@ -241,13 +269,13 @@ export default function SettingsPage() {
                         • {helper.nickname}
                     </div>
 
-                    <button
+                    {/* <button
                         type="button"
                         className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[14px] font-extrabold text-slate-800 hover:bg-slate-50"
                         onClick={openChat}
                     >
                         오픈채팅방에서 닉네임 확인하기
-                    </button>
+                    </button> */}
 
                     <div className="mt-6 text-[13px] font-extrabold text-slate-900">전화번호</div>
                     <input
@@ -258,6 +286,42 @@ export default function SettingsPage() {
                         className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[14px] outline-none focus:border-slate-300"
                     />
                     <div className="mt-2 text-[12px] leading-5 text-slate-500">• {helper.phone}</div>
+
+                    <div className="mt-6 text-[13px] font-extrabold text-slate-900">
+                        배송지 <span className="font-medium text-slate-400">(선택)</span>
+                    </div>
+                    <div className="mt-2 space-y-3">
+                        <div className="flex gap-2">
+                            <input
+                                value={postcode}
+                                readOnly
+                                placeholder="우편번호"
+                                className="h-12 w-28 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[14px] outline-none"
+                            />
+                            <DaumPostcodeSearch
+                                onSelect={(result) => {
+                                    setPostcode(result.postcode);
+                                    setAddress1(result.address1);
+                                }}
+                                className="h-12 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[14px] font-extrabold text-slate-800"
+                            />
+                        </div>
+                        <input
+                            value={address1}
+                            readOnly
+                            placeholder="기본 주소 (주소 검색으로 입력)"
+                            className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-[14px] outline-none"
+                        />
+                        <input
+                            value={address2}
+                            onChange={(e) => setAddress2(e.target.value)}
+                            placeholder="상세 주소 (동·호수 등)"
+                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-[14px] outline-none focus:border-slate-300"
+                        />
+                    </div>
+                    <div className="mt-2 text-[12px] leading-5 text-slate-500">
+                        • 주문 시 주문자 정보에 자동으로 불러옵니다.
+                    </div>
 
                     <div className="mt-6 text-[13px] font-extrabold text-slate-900">
                         추천인 닉네임 <span className="font-medium text-slate-400">(선택)</span>

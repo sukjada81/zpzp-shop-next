@@ -12,6 +12,43 @@ function getSessionMemberUid(req: any): number | null {
 
 export async function publicMemberRoutes(app: FastifyInstance) {
     app.get(
+        "/v1/public/member/profile",
+        { preHandler: requireTenant() },
+        async (req: any, reply) => {
+            const memberUid = getSessionMemberUid(req);
+            if (!memberUid) {
+                return reply.code(401).send({ ok: false, message: "login required" });
+            }
+
+            const member = await app.prisma.mallRN_member.findUnique({
+                where: { uid: memberUid },
+                select: {
+                    name: true,
+                    cell: true,
+                    postcode: true,
+                    address1: true,
+                    address2: true,
+                },
+            });
+
+            if (!member) {
+                return reply.code(404).send({ ok: false, message: "member not found" });
+            }
+
+            return reply.send({
+                ok: true,
+                profile: {
+                    nickname: String(member.name ?? "").trim(),
+                    phone: String(member.cell ?? "").trim(),
+                    postcode: String(member.postcode ?? "").trim(),
+                    address1: String(member.address1 ?? "").trim(),
+                    address2: String(member.address2 ?? "").trim(),
+                },
+            });
+        }
+    );
+
+    app.get(
         "/v1/public/member/check-nickname",
         { preHandler: requireTenant() },
         async (req: any, reply) => {
@@ -68,6 +105,9 @@ export async function publicMemberRoutes(app: FastifyInstance) {
                     nickname: z.string().max(50).optional(),
                     reference: z.string().max(50).optional(),
                     phone: z.string().max(30).optional(),
+                    postcode: z.string().max(10).optional(),
+                    address1: z.string().max(100).optional(),
+                    address2: z.string().max(100).optional(),
                 })
                 .safeParse(req.body ?? {});
 
@@ -83,6 +123,9 @@ export async function publicMemberRoutes(app: FastifyInstance) {
             }
             if (body.data.reference !== undefined) data.reference = body.data.reference.trim();
             if (body.data.phone !== undefined) data.cell = body.data.phone.replace(/[^\d]/g, "");
+            if (body.data.postcode !== undefined) data.postcode = body.data.postcode.trim();
+            if (body.data.address1 !== undefined) data.address1 = body.data.address1.trim();
+            if (body.data.address2 !== undefined) data.address2 = body.data.address2.trim();
 
             if (Object.keys(data).length === 0) {
                 return reply.send({ ok: true });
@@ -101,6 +144,9 @@ export async function publicMemberRoutes(app: FastifyInstance) {
             if (sessionMember) {
                 if (data.name !== undefined) sessionMember.name = data.name;
                 if (data.cell !== undefined) sessionMember.phone = data.cell;
+                if (data.postcode !== undefined) sessionMember.postcode = data.postcode;
+                if (data.address1 !== undefined) sessionMember.address1 = data.address1;
+                if (data.address2 !== undefined) sessionMember.address2 = data.address2;
                 req.session.member = sessionMember;
                 await req.session.save();
             }

@@ -117,6 +117,9 @@ export default function OrderClient(props: {
     const [buyerPhoneA, setBuyerPhoneA] = useState("010");
     const [buyerPhoneB, setBuyerPhoneB] = useState("");
     const [buyerPhoneC, setBuyerPhoneC] = useState("");
+    const [buyerPostcode, setBuyerPostcode] = useState("");
+    const [buyerAddress1, setBuyerAddress1] = useState("");
+    const [buyerAddress2, setBuyerAddress2] = useState("");
 
     const [receiverSame, setReceiverSame] = useState(true);
     const [receiverName, setReceiverName] = useState("");
@@ -127,6 +130,32 @@ export default function OrderClient(props: {
     const [postcode, setPostcode] = useState("");
     const [address1, setAddress1] = useState("");
     const [address2, setAddress2] = useState("");
+
+    function applyBuyerAddress(next: { postcode?: string; address1?: string; address2?: string }) {
+        const nextPostcode = String(next.postcode ?? "").trim();
+        const nextAddress1 = String(next.address1 ?? "").trim();
+        const nextAddress2 = String(next.address2 ?? "").trim();
+
+        if (nextPostcode) setBuyerPostcode((prev) => prev || nextPostcode);
+        if (nextAddress1) setBuyerAddress1((prev) => prev || nextAddress1);
+        if (nextAddress2) setBuyerAddress2((prev) => prev || nextAddress2);
+
+        if (receiverSame) {
+            if (nextPostcode) setPostcode((prev) => prev || nextPostcode);
+            if (nextAddress1) setAddress1((prev) => prev || nextAddress1);
+            if (nextAddress2) setAddress2((prev) => prev || nextAddress2);
+        }
+    }
+
+    function syncDeliveryFromBuyer(
+        nextPostcode = buyerPostcode,
+        nextAddress1 = buyerAddress1,
+        nextAddress2 = buyerAddress2
+    ) {
+        setPostcode(nextPostcode);
+        setAddress1(nextAddress1);
+        setAddress2(nextAddress2);
+    }
 
     // 줍줍은 배송 전용, 정책 변경 대비 보존 — 픽업 희망일시 입력 비활성(주문 시 pickupAt=null 전송)
     // const [pickupAt, setPickupAt] = useState(nowLocalDateTimeInputValue());
@@ -158,9 +187,15 @@ export default function OrderClient(props: {
             setReceiverPhoneB((prev) => prev || b);
             setReceiverPhoneC((prev) => prev || c);
         }
+
+        applyBuyerAddress({
+            postcode: profile.postcode,
+            address1: profile.address1,
+            address2: profile.address2,
+        });
     }, [tenant]);
 
-    // 로컬 저장값이 없으면 DB(세션)에서 주문자명/연락처를 채운다 (다른 기기/브라우저 대응)
+    // 로컬 저장값이 없으면 DB(세션)에서 주문자명/연락처/주소를 채운다 (다른 기기/브라우저 대응)
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -169,8 +204,16 @@ export default function OrderClient(props: {
                 const data = await res.json().catch(() => null);
                 if (cancelled || !data?.loggedIn || !data?.member) return;
 
-                const name = String(data.member.name ?? "").trim();
-                const phone = onlyDigits(String(data.member.phone ?? ""));
+                const member = data.member as {
+                    name?: string;
+                    phone?: string;
+                    postcode?: string;
+                    address1?: string;
+                    address2?: string;
+                };
+
+                const name = String(member.name ?? "").trim();
+                const phone = onlyDigits(String(member.phone ?? ""));
 
                 if (name) {
                     setBuyerName((prev) => prev || name);
@@ -190,6 +233,55 @@ export default function OrderClient(props: {
                     setReceiverPhoneB((prev) => prev || b);
                     setReceiverPhoneC((prev) => prev || c);
                 }
+
+                applyBuyerAddress({
+                    postcode: member.postcode,
+                    address1: member.address1,
+                    address2: member.address2,
+                });
+
+                const profileRes = await fetch("/api/proxy/v1/public/member/profile", {
+                    cache: "no-store",
+                    headers: tenantHeader(tenant),
+                });
+                const profileData = await profileRes.json().catch(() => null);
+                if (cancelled || !profileData?.ok || !profileData?.profile) return;
+
+                const dbProfile = profileData.profile as {
+                    nickname?: string;
+                    phone?: string;
+                    postcode?: string;
+                    address1?: string;
+                    address2?: string;
+                };
+
+                const dbName = String(dbProfile.nickname ?? "").trim();
+                const dbPhone = onlyDigits(String(dbProfile.phone ?? ""));
+
+                if (dbName) {
+                    setBuyerName((prev) => prev || dbName);
+                    setReceiverName((prev) => prev || dbName);
+                }
+
+                if (dbPhone.length >= 10) {
+                    const a = dbPhone.slice(0, 3);
+                    const b = dbPhone.length === 10 ? dbPhone.slice(3, 6) : dbPhone.slice(3, 7);
+                    const c = dbPhone.length === 10 ? dbPhone.slice(6, 10) : dbPhone.slice(7, 11);
+
+                    setBuyerPhoneA((prev) => prev || a || "010");
+                    setBuyerPhoneB((prev) => prev || b);
+                    setBuyerPhoneC((prev) => prev || c);
+
+                    setReceiverPhoneA((prev) => prev || a || "010");
+                    setReceiverPhoneB((prev) => prev || b);
+                    setReceiverPhoneC((prev) => prev || c);
+                }
+
+                applyBuyerAddress({
+                    postcode: dbProfile.postcode,
+                    address1: dbProfile.address1,
+                    address2: dbProfile.address2,
+                });
             } catch {
                 // 세션 조회 실패 시 무시 (로컬값/수동입력 사용)
             }
@@ -310,9 +402,9 @@ export default function OrderClient(props: {
             return;
         }
 
-        const normalizedPostcode = postcode.trim();
-        const normalizedAddress1 = address1.trim();
-        const normalizedAddress2 = address2.trim();
+        const normalizedPostcode = (receiverSame ? buyerPostcode : postcode).trim();
+        const normalizedAddress1 = (receiverSame ? buyerAddress1 : address1).trim();
+        const normalizedAddress2 = (receiverSame ? buyerAddress2 : address2).trim();
 
         if (!normalizedAddress1) {
             alert("배송지 주소를 입력해 주세요.");
@@ -546,6 +638,51 @@ export default function OrderClient(props: {
                     <div className="text-[12px] font-semibold text-slate-500">
                         입력 연락처: {buyerPhonePreview || "-"}
                     </div>
+
+                    <div className="pt-1">
+                        <div className="text-[13px] font-bold text-slate-700">주문자 주소</div>
+                        <div className="mt-2 space-y-3">
+                            <div className="flex gap-2">
+                                <input
+                                    value={buyerPostcode}
+                                    readOnly
+                                    placeholder="우편번호"
+                                    className="h-12 w-28 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none"
+                                />
+                                <DaumPostcodeSearch
+                                    disabled={submitting}
+                                    onSelect={(result) => {
+                                        setBuyerPostcode(result.postcode);
+                                        setBuyerAddress1(result.address1);
+                                        if (receiverSame) {
+                                            syncDeliveryFromBuyer(result.postcode, result.address1, buyerAddress2);
+                                        }
+                                    }}
+                                    className="h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-extrabold text-slate-800 disabled:opacity-40"
+                                />
+                            </div>
+
+                            <input
+                                value={buyerAddress1}
+                                readOnly
+                                placeholder="기본 주소 (주소 검색으로 입력)"
+                                className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none"
+                            />
+
+                            <input
+                                value={buyerAddress2}
+                                onChange={(e) => {
+                                    const next = e.target.value;
+                                    setBuyerAddress2(next);
+                                    if (receiverSame) {
+                                        setAddress2(next);
+                                    }
+                                }}
+                                placeholder="상세 주소 (동·호수 등)"
+                                className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
+                            />
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -556,7 +693,13 @@ export default function OrderClient(props: {
                         <input
                             type="checkbox"
                             checked={receiverSame}
-                            onChange={(e) => setReceiverSame(e.target.checked)}
+                            onChange={(e) => {
+                                const checked = e.target.checked;
+                                setReceiverSame(checked);
+                                if (checked) {
+                                    syncDeliveryFromBuyer();
+                                }
+                            }}
                         />
                         주문자와 동일
                     </label>
@@ -598,17 +741,22 @@ export default function OrderClient(props: {
 
             <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-[16px] font-extrabold text-slate-900">배송지</div>
+                {receiverSame ? (
+                    <div className="mt-2 text-[12px] font-semibold text-slate-500">
+                        주문자와 동일한 주소로 배송됩니다.
+                    </div>
+                ) : null}
 
                 <div className="mt-3 space-y-3">
                     <div className="flex gap-2">
                         <input
-                            value={postcode}
+                            value={receiverSame ? buyerPostcode : postcode}
                             readOnly
                             placeholder="우편번호"
                             className="h-12 w-28 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none"
                         />
                         <DaumPostcodeSearch
-                            disabled={submitting}
+                            disabled={submitting || receiverSame}
                             onSelect={(result) => {
                                 setPostcode(result.postcode);
                                 setAddress1(result.address1);
@@ -618,17 +766,18 @@ export default function OrderClient(props: {
                     </div>
 
                     <input
-                        value={address1}
+                        value={receiverSame ? buyerAddress1 : address1}
                         readOnly
                         placeholder="기본 주소 (주소 검색으로 입력)"
                         className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none"
                     />
 
                     <input
-                        value={address2}
+                        value={receiverSame ? buyerAddress2 : address2}
                         onChange={(e) => setAddress2(e.target.value)}
+                        disabled={receiverSame}
                         placeholder="상세 주소 (동·호수 등)"
-                        className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none"
+                        className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none disabled:bg-slate-50"
                     />
                 </div>
             </section>

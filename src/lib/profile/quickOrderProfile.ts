@@ -3,6 +3,9 @@ export type QuickOrderProfile = {
     nickname?: string;
     phone?: string;
     recommenderNickname?: string;
+    postcode?: string;
+    address1?: string;
+    address2?: string;
 };
 
 function canUseStorage() {
@@ -48,12 +51,21 @@ function readFromObject(parsed: Record<string, unknown>): QuickOrderProfile | nu
         "recommendedBy",
     ]);
 
-    if (!nickname && !phone && !recommenderNickname) return null;
+    const postcode = pickFirstText(parsed, ["postcode", "zipcode"]);
+    const address1 = pickFirstText(parsed, ["address1", "addr1", "address"]);
+    const address2 = pickFirstText(parsed, ["address2", "addr2", "addressDetail"]);
+
+    if (!nickname && !phone && !recommenderNickname && !postcode && !address1 && !address2) {
+        return null;
+    }
 
     return {
         nickname,
         phone: phone || "",
         recommenderNickname,
+        postcode,
+        address1,
+        address2,
     };
 }
 
@@ -74,6 +86,9 @@ export function saveQuickOrderProfile(tenant: string, profile: QuickOrderProfile
         nickname: String(profile.nickname ?? "").trim(),
         phone: normalizeQuickOrderPhone(profile.phone),
         recommenderNickname: String(profile.recommenderNickname ?? "").trim(),
+        postcode: String(profile.postcode ?? "").trim(),
+        address1: String(profile.address1 ?? "").trim(),
+        address2: String(profile.address2 ?? "").trim(),
     };
 
     window.localStorage.setItem(profileKey(tenant), JSON.stringify(payload));

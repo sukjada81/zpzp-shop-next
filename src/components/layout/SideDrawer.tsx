@@ -35,7 +35,7 @@ type AuthSession = {
 };
 
 import { BRAND_NAME, BRAND_LOGO_SRC, USE_TEXT_LOGO } from "@/lib/brand";
-const HIDE_POINTS_MENU = false;
+const HIDE_POINTS_MENU = true;
 const HIDE_SELECT_TENANT_MENU = true;
 const HIDE_AUTH_BUTTON = false;
 
@@ -110,7 +110,7 @@ export default function SideDrawer({
     const itemsMenu: DrawerItemDef[] = useMemo(() => {
         const base: DrawerItemDef[] = [
             { href: `/${tenant}/home`, label: "홈", Icon: Home },
-            { href: `/${tenant}/groupbuys`, label: "진행 중인 공구", Icon: Flame },
+            // { href: `/${tenant}/groupbuys`, label: "진행 중인 공구", Icon: Flame },
             { href: `/${tenant}/orders`, label: "주문내역", Icon: Receipt },
             {
                 href: `/${tenant}/cart`,
