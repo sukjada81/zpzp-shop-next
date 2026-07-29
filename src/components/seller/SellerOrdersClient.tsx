@@ -13,7 +13,7 @@ import {
     ShoppingBag,
     Tag,
 } from "lucide-react";
-import { getSellerHref } from "@/lib/seller/getSellerHref";
+import { useSellerHref } from "@/lib/seller/getSellerHref";
 
 type SellerOrderLine = {
     productName?: string;
@@ -179,6 +179,7 @@ function getGroupBadge(item: SellerOrderItem) {
 }
 
 export default function SellerOrdersClient({ tenant }: { tenant: string }) {
+    const sellerHref = useSellerHref();
     const searchParams = useSearchParams();
     const initialQuery = (searchParams.get("query") || "").trim();
 
@@ -369,7 +370,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                             >
                                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                     <Link
-                                        href={getSellerHref(tenant, `/orders/${item.id}`)}
+                                        href={sellerHref(tenant, `/orders/${item.id}`)}
                                         className="min-w-0 flex-1"
                                     >
                                         <div className="truncate text-base font-bold tracking-[-0.02em] text-slate-900">
@@ -449,7 +450,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
 
                                         <div className="flex flex-wrap items-center gap-2">
                                             <Link
-                                                href={getSellerHref(tenant, `/orders/${item.id}`)}
+                                                href={sellerHref(tenant, `/orders/${item.id}`)}
                                                 className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
                                             >
                                                 상세보기

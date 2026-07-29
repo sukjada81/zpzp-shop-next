@@ -12,7 +12,7 @@ import {
     RefreshCw,
     User,
 } from "lucide-react";
-import { getSellerHref } from "@/lib/seller/getSellerHref";
+import { useSellerHref } from "@/lib/seller/getSellerHref";
 
 type OrderLine = {
     uid?: number;
@@ -165,6 +165,7 @@ export default function SellerOrderDetailClient({
     tenant: string;
     id: string;
 }) {
+    const sellerHref = useSellerHref();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -294,7 +295,7 @@ export default function SellerOrderDetailClient({
                 <div className="text-base font-bold">주문 정보를 불러오지 못했습니다.</div>
                 <div className="mt-2 text-sm">{error}</div>
                 <Link
-                    href={getSellerHref(tenant, "/orders")}
+                    href={sellerHref(tenant, "/orders")}
                     className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
                 >
                     <ArrowLeft className="h-4 w-4" />
@@ -329,7 +330,7 @@ export default function SellerOrderDetailClient({
 
                 <div className="flex items-center gap-2">
                     <Link
-                        href={getSellerHref(tenant, "/orders")}
+                        href={sellerHref(tenant, "/orders")}
                         className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
                     >
                         <ArrowLeft className="h-4 w-4" />

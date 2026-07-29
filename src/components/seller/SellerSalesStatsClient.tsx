@@ -29,7 +29,7 @@ import {
     Tooltip,
     Legend,
 } from "recharts";
-import { getSellerHref } from "@/lib/seller/getSellerHref";
+import { useSellerHref } from "@/lib/seller/getSellerHref";
 import type {
     SellerSalesResponse,
     SellerDashboardTone,
@@ -132,6 +132,7 @@ export default function SellerSalesStatsClient({
     const router = useRouter();
     const pathname = usePathname();
     const currentSearchParams = useSearchParams();
+    const sellerHref = useSellerHref();
 
     const filters = data.filters;
     const chart = data.summary.chart;
@@ -184,7 +185,7 @@ export default function SellerSalesStatsClient({
                     </div>
 
                     <Link
-                        href={getSellerHref(tenant)}
+                        href={sellerHref(tenant)}
                         className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                         대시보드로 이동
@@ -561,7 +562,7 @@ export default function SellerSalesStatsClient({
 
                                     <div className="shrink-0">
                                         <Link
-                                            href={getSellerHref(
+                                            href={sellerHref(
                                                 tenant,
                                                 `/orders?query=${encodeURIComponent(item.productName)}`
                                             )}

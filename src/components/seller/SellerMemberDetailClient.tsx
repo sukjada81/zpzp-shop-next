@@ -13,7 +13,7 @@ import {
     User,
     UserCircle2,
 } from "lucide-react";
-import { getSellerHref } from "@/lib/seller/getSellerHref";
+import { useSellerHref } from "@/lib/seller/getSellerHref";
 
 export type SellerMemberDetail = {
     id: string;
@@ -86,6 +86,7 @@ export default function SellerMemberDetailClient({
     item: SellerMemberDetail;
     tenant: string;
 }) {
+    const sellerHref = useSellerHref();
     const badge = memberStatusBadge(item.status);
     const hasAddress = !!(item.postcode || item.address1 || item.address2);
     const address = [item.address1, item.address2].filter(Boolean).join(" ");
@@ -106,7 +107,7 @@ export default function SellerMemberDetailClient({
                     </div>
                 </div>
                 <Link
-                    href={getSellerHref(tenant, "/members")}
+                    href={sellerHref(tenant, "/members")}
                     className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
                     <ArrowLeft className="h-4 w-4" />

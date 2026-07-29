@@ -16,8 +16,10 @@ import {
     ChevronsUpDown,
     Building2,
     PackageCheck,
+    Wallet,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { sellerBasePrefix } from "@/lib/seller/getSellerHref";
 
 type SessionResponse = {
     ok?: boolean;
@@ -97,16 +99,22 @@ export default function SellerShell({
     const [tenants, setTenants] = useState<TenantItem[]>([]);
     const [tenantSwitcherOpen, setTenantSwitcherOpen] = useState(false);
 
-    const dashboardHref = `/${tenant}`;
-    const salesHref = `/${tenant}/sales`;
-    const ordersHref = `/${tenant}/orders`;
-    const membersHref = `/${tenant}/members`;
+    // 두 경로공간(seller 호스트 / 링커 서브도메인) 대응 — 근거는 sellerBasePrefix 주석 참고.
+    // 링크를 접두어 없이 만들면 링커 서브도메인에서 스토어프론트 경로로 떨어져 404 가 난다.
+    const basePrefix = sellerBasePrefix(pathname);
+
+    const dashboardHref = `${basePrefix}/${tenant}`;
+    const salesHref = `${basePrefix}/${tenant}/sales`;
+    const ordersHref = `${basePrefix}/${tenant}/orders`;
+    const membersHref = `${basePrefix}/${tenant}/members`;
     const isLinker = role === "linker";
     const canManageProducts = isLinker || Boolean(linkerShopSlug);
     const productsTenant = linkerShopSlug || tenant;
-    const productsHref = `/${productsTenant}/products`;
-    const applicationsHref = `/${tenant}/applications`;
-    const tenantsHref = `/${tenant}/tenants`;
+    const productsHref = `${basePrefix}/${productsTenant}/products`;
+    // 정산은 링커 본인 기능이라 상품관리와 같은 노출 조건·같은 tenant 세그먼트를 쓴다.
+    const settlementHref = `${basePrefix}/${productsTenant}/settlement`;
+    const applicationsHref = `${basePrefix}/${tenant}/applications`;
+    const tenantsHref = `${basePrefix}/${tenant}/tenants`;
 
     const isDashboardActive = pathname === `/${tenant}` || pathname === `/seller/${tenant}`;
     const isSalesActive =
@@ -121,6 +129,9 @@ export default function SellerShell({
     const isProductsActive =
         pathname.startsWith(`/${productsTenant}/products`) ||
         pathname.startsWith(`/seller/${productsTenant}/products`);
+    const isSettlementActive =
+        pathname.startsWith(`/${productsTenant}/settlement`) ||
+        pathname.startsWith(`/seller/${productsTenant}/settlement`);
     const isApplicationsActive =
         pathname.startsWith(`/${tenant}/applications`) ||
         pathname.startsWith(`/seller/${tenant}/applications`);
@@ -283,7 +294,7 @@ export default function SellerShell({
                     {tenant === "__all__" ? "전체 지점" : tenant}
                 </div>
                 <div className="mt-2 text-sm text-slate-500">
-                    {isLinker ? "내 줍줍샵 상품과 슬롯 관리" : "지점 운영 / 주문 / 회원 / 매출 통계"}
+                    {isLinker ? "내 줍줍샵 상품·슬롯·정산 관리" : "지점 운영 / 주문 / 회원 / 매출 통계"}
                 </div>
                 {isAdmin ? (
                     <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700">
@@ -329,6 +340,13 @@ export default function SellerShell({
                     label="상품관리"
                     icon={PackageCheck}
                     active={isProductsActive}
+                    onClick={closeMobileMenu}
+                /> : null}
+                {canManageProducts ? <NavItem
+                    href={settlementHref}
+                    label="정산"
+                    icon={Wallet}
+                    active={isSettlementActive}
                     onClick={closeMobileMenu}
                 /> : null}
                 {isSuperAdmin ? (

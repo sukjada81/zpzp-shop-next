@@ -29,7 +29,7 @@ import {
     Tooltip,
     Legend,
 } from "recharts";
-import { getSellerHref } from "@/lib/seller/getSellerHref";
+import { getSellerHref, useSellerBasePrefix } from "@/lib/seller/getSellerHref";
 import type { SellerDashboardData, SellerDashboardTone } from "@/lib/types/seller";
 
 export type { SellerDashboardData };
@@ -111,27 +111,28 @@ function cardIcon(key: string) {
     }
 }
 
-function cardHref(tenant: string, key: string) {
+// basePrefix 는 컴포넌트 밖이라 훅을 못 쓴다 — 호출부에서 useSellerBasePrefix() 값을 넘긴다.
+function cardHref(tenant: string, key: string, basePrefix: string) {
     switch (key) {
         case "todaySignups":
         case "weekSignups":
         case "todayInflows":
         case "todayLogins":
-            return getSellerHref(tenant, "/members");
+            return getSellerHref(tenant, "/members", basePrefix);
         case "todayOrders":
         case "pendingOrders":
-            return getSellerHref(tenant, "/orders");
+            return getSellerHref(tenant, "/orders", basePrefix);
         case "todaySales":
         case "monthSales":
         case "yearSales":
         case "todaySalesOrders":
         case "rangeOrderCount":
-            return getSellerHref(tenant, "/sales");
+            return getSellerHref(tenant, "/sales", basePrefix);
         case "activeProducts":
         case "soldOutProducts":
-            return getSellerHref(tenant, "/products");
+            return getSellerHref(tenant, "/products", basePrefix);
         default:
-            return getSellerHref(tenant);
+            return getSellerHref(tenant, "", basePrefix);
     }
 }
 
@@ -199,6 +200,7 @@ export default function SellerDashboardClient({
     data: SellerDashboardData;
 }) {
     const [refreshing, setRefreshing] = useState(false);
+    const basePrefix = useSellerBasePrefix();
 
     const summary = data?.summary;
     const sales = summary?.sales;
@@ -251,7 +253,7 @@ export default function SellerDashboardClient({
                     {summary?.dateLabel}
                 </div>
                 <Link
-                    href={getSellerHref(tenant, "/members")}
+                    href={getSellerHref(tenant, "/members", basePrefix)}
                     className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
                 >
                     <span>업데이트: {summary?.updatedAt}</span>
@@ -266,7 +268,7 @@ export default function SellerDashboardClient({
                     return (
                         <Link
                             key={item.key}
-                            href={cardHref(tenant, item.key)}
+                            href={cardHref(tenant, item.key, basePrefix)}
                             className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-[1px] hover:shadow-md sm:rounded-[22px]"
                         >
                             <div className="mb-3 flex items-start justify-between gap-3">
@@ -310,7 +312,7 @@ export default function SellerDashboardClient({
                     </div>
 
                     <Link
-                        href={getSellerHref(tenant, "/orders")}
+                        href={getSellerHref(tenant, "/orders", basePrefix)}
                         className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
                     >
                         <span>주문 현황</span>
@@ -325,7 +327,7 @@ export default function SellerDashboardClient({
                         return (
                             <Link
                                 key={item.key}
-                                href={cardHref(tenant, item.key)}
+                                href={cardHref(tenant, item.key, basePrefix)}
                                 className="rounded-[20px] border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md sm:rounded-[22px]"
                             >
                                 <div className="mb-3 flex items-start justify-between gap-3">
@@ -358,7 +360,7 @@ export default function SellerDashboardClient({
 
                 <div className="mt-5 space-y-4">
                     {summary?.recentWeek?.rows?.map((row) => (
-                        <Link key={row.key} href={getSellerHref(tenant, "/orders")} className="block">
+                        <Link key={row.key} href={getSellerHref(tenant, "/orders", basePrefix)} className="block">
                             <div className="mb-2 grid grid-cols-[1fr_auto] items-center gap-3">
                                 <div className="text-sm font-semibold tracking-[-0.02em] text-slate-800">
                                     {row.label}
@@ -397,7 +399,7 @@ export default function SellerDashboardClient({
                         </div>
 
                         <Link
-                            href={getSellerHref(tenant, "/sales")}
+                            href={getSellerHref(tenant, "/sales", basePrefix)}
                             className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
                         >
                             <span>매출통계 상세 보기</span>
@@ -412,7 +414,7 @@ export default function SellerDashboardClient({
                             return (
                                 <Link
                                     key={item.key}
-                                    href={cardHref(tenant, item.key)}
+                                    href={cardHref(tenant, item.key, basePrefix)}
                                     className="rounded-[20px] border border-slate-200 bg-white p-4 transition hover:-translate-y-[1px] hover:shadow-md sm:rounded-[22px]"
                                 >
                                     <div className="mb-3 flex items-start justify-between gap-3">
@@ -509,7 +511,7 @@ export default function SellerDashboardClient({
 
                         <div className="mt-4 flex justify-end">
                             <Link
-                                href={getSellerHref(tenant, "/sales")}
+                                href={getSellerHref(tenant, "/sales", basePrefix)}
                                 className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
                             >
                                 매출통계로 이동
