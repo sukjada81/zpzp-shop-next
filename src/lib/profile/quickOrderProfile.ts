@@ -118,7 +118,7 @@ export async function persistQuickOrderProfile(
     tenant: string,
     profile: QuickOrderProfile,
     options?: { overwriteEmptyAddress?: boolean }
-) {
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
     const existing = readQuickOrderProfile(tenant);
     const merged = options?.overwriteEmptyAddress
         ? {
@@ -148,9 +148,11 @@ export async function persistQuickOrderProfile(
         if (merged.address2) body.address2 = merged.address2;
     }
 
-    if (Object.keys(body).length === 0) return;
+    if (Object.keys(body).length === 0) {
+        return { ok: false, status: 400, message: "저장할 정보가 없습니다." };
+    }
 
-    await fetch("/api/proxy/v1/public/member/reference", {
+    const res = await fetch("/api/proxy/v1/public/member/reference", {
         method: "PATCH",
         credentials: "include",
         headers: {
@@ -158,7 +160,18 @@ export async function persistQuickOrderProfile(
             ...tenantHeader(tenant),
         },
         body: JSON.stringify(body),
-    }).catch(() => null);
+    });
+
+    if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        return {
+            ok: false,
+            status: res.status,
+            message: String(data?.message ?? `HTTP ${res.status}`),
+        };
+    }
+
+    return { ok: true };
 }
 
 export function dismissProfilePrompt(tenant: string) {

@@ -221,18 +221,44 @@ export default function SettingsPage() {
         }
 
         try {
-            await persistQuickOrderProfile(
+            const normalizedAddress1 = address1.trim();
+            const normalizedPostcode = postcode.trim();
+            const normalizedAddress2 = address2.trim();
+
+            if ((normalizedPostcode || normalizedAddress2) && !normalizedAddress1) {
+                showToast("기본 주소를 입력해 주세요. '주소 검색' 버튼을 이용해 주세요.", "error");
+                return;
+            }
+
+            const payload = {
+                nickname: normalizedNickname,
+                phone: normalizedPhone,
+                recommenderNickname: recommenderNickname.trim(),
+                ...(normalizedAddress1
+                    ? {
+                          postcode: normalizedPostcode,
+                          address1: normalizedAddress1,
+                          address2: normalizedAddress2,
+                      }
+                    : {}),
+            };
+
+            const result = await persistQuickOrderProfile(
                 tenant,
-                {
-                    nickname: normalizedNickname,
-                    phone: normalizedPhone,
-                    recommenderNickname: recommenderNickname.trim(),
-                    postcode: postcode.trim(),
-                    address1: address1.trim(),
-                    address2: address2.trim(),
-                },
-                { overwriteEmptyAddress: true }
+                payload,
+                normalizedAddress1 ? { overwriteEmptyAddress: true } : undefined
             );
+
+            if (!result.ok) {
+                const msg =
+                    result.status === 401
+                        ? "로그인이 필요합니다. 다시 로그인해 주세요."
+                        : result.status === 400
+                          ? "저장 요청이 올바르지 않습니다. 주소를 다시 확인해 주세요."
+                          : `저장에 실패했습니다. (${result.message})`;
+                showToast(msg, "error");
+                return;
+            }
 
             setSavedAt(Date.now());
             showToast("저장 되었습니다.");
@@ -240,7 +266,7 @@ export default function SettingsPage() {
                 router.replace(`/${tenant}/home`);
             }, 900);
         } catch {
-            showToast("저장에 실패했습니다. 브라우저 저장공간을 확인해주세요.", "error");
+            showToast("저장에 실패했습니다. 네트워크 연결을 확인해 주세요.", "error");
         }
     }
 
