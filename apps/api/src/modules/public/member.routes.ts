@@ -93,6 +93,18 @@ export async function publicMemberRoutes(app: FastifyInstance) {
                 data,
             });
 
+            // 세션 스냅샷도 같이 갱신한다.
+            // 프로필 설정 모달 게이트(HomeProfileGate)가 /auth/session 의 member.name/phone 으로
+            // 노출 여부를 판정하는데, 세션은 로그인 시점 스냅샷이라 여기서 갱신하지 않으면
+            // 방금 저장하고도 같은 세션에서 모달이 다시 뜬다.
+            const sessionMember = (req.session as any)?.member;
+            if (sessionMember) {
+                if (data.name !== undefined) sessionMember.name = data.name;
+                if (data.cell !== undefined) sessionMember.phone = data.cell;
+                req.session.member = sessionMember;
+                await req.session.save();
+            }
+
             return reply.send({ ok: true });
         }
     );
