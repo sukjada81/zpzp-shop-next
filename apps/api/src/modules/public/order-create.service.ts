@@ -18,6 +18,8 @@ import {
 /** shop-next 공개 주문은 DAD 플랫폼 타입 (레거시 mallRN_order_info.platform_type) */
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
+/** shop-php order_post.php: 토스 결제 성공 시 goods.status=1 (입금대기 노출 방지) */
+const STATUS_PAID = 1;
 
 export type OrderItemInput = {
     productId: number;
@@ -193,6 +195,7 @@ export async function createStoreOrder(
     const paymentMethod = input.payment?.method ?? "";
     const paymentProvider = input.payment?.provider ?? "";
     const paymentKey = input.payment?.paymentKey ?? "";
+    const goodsStatus = isPaid ? STATUS_PAID : STATUS_ORDERED;
 
     let orderNum = "";
     let created = false;
@@ -285,8 +288,8 @@ export async function createStoreOrder(
                             coupon_uid: 0,
                             discount: 0,
                             discount_info: "",
-                            status: STATUS_ORDERED,
-                            status2: STATUS_ORDERED,
+                            status: goodsStatus,
+                            status2: goodsStatus,
                             status_date: now,
                             reals: isPaid ? 1 : 0,
                             signdate: now,

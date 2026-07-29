@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CalendarDays, X, Zap } from "lucide-react";
-import { endpoints } from "@/lib/api/endpoints";
+import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 import { loadGuestOrderRefs } from "@/lib/orders/guestOrderRefs";
 
 type ApiOrderItem = {
@@ -252,6 +252,7 @@ export default function OrdersClient(props: {
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
+                        ...tenantHeader(tenant),
                     },
                     body: JSON.stringify({
                         phone,
@@ -282,6 +283,7 @@ export default function OrdersClient(props: {
                 headers: {
                     "Content-Type": "application/json",
                     Accept: "application/json",
+                    ...tenantHeader(tenant),
                 },
                 body: JSON.stringify({
                     phone,
@@ -318,6 +320,7 @@ export default function OrdersClient(props: {
                 cache: "no-store",
                 headers: {
                     Accept: "application/json",
+                    ...tenantHeader(tenant),
                 },
             });
 
@@ -374,6 +377,7 @@ export default function OrdersClient(props: {
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
+                        ...tenantHeader(tenant),
                     },
                     body: JSON.stringify({ phone: guestPhone }),
                 });
@@ -384,6 +388,7 @@ export default function OrdersClient(props: {
                     cache: "no-store",
                     headers: {
                         Accept: "application/json",
+                        ...tenantHeader(tenant),
                     },
                 });
             }
@@ -404,6 +409,14 @@ export default function OrdersClient(props: {
 
     return (
         <section className="space-y-4">
+            {highlightOrderNo && !loading && !error ? (
+                <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 text-center shadow-sm">
+                    <div className="text-[16px] font-extrabold text-emerald-900">결제가 완료되었습니다</div>
+                    <div className="mt-2 text-[13px] font-semibold text-emerald-800">
+                        주문번호 {highlightOrderNo}
+                    </div>
+                </div>
+            ) : null}
             {loading ? (
                 <div className="rounded-[24px] border border-[#e5e5e5] bg-white p-6 text-center shadow-sm">
                     <div className="text-[14px] font-semibold text-[#7a7a7a]">

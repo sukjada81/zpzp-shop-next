@@ -1,5 +1,6 @@
 // apps/api/src/plugins/tenant.ts
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { resolveStoreSlug } from "../lib/tenant/resolveStoreSlug.js";
 
 declare module "fastify" {
     interface FastifyRequest {
@@ -174,12 +175,9 @@ export async function tenantPlugin(app: FastifyInstance) {
         }
 
         try {
-            const t = await app.prisma.tenant.findUnique({
-                where: { slug },
-                select: { id: true, slug: true },
-            });
+            const resolved = await resolveStoreSlug(app.prisma, slug);
 
-            if (!t) {
+            if (!resolved.ok) {
                 request.tenantSlug = null;
                 request.tenantId = null;
 
@@ -187,19 +185,24 @@ export async function tenantPlugin(app: FastifyInstance) {
                     url,
                     hostOnly,
                     slug,
+                    reason: resolved.reason,
                 });
 
                 return;
             }
 
-            request.tenantSlug = t.slug;
-            request.tenantId = t.id;
+            // 링커 slug(sue-linker) → tenantId=hq catalog, tenantSlug=원본 shop_slug
+            request.tenantSlug =
+                resolved.kind === "linker" ? (resolved.linkerSlug ?? slug) : resolved.tenantSlug;
+            request.tenantId = resolved.tenantId;
 
             console.log("TENANT_RESOLVED", {
                 url,
                 hostOnly,
-                slug: t.slug,
-                tenantId: String(t.id),
+                slug: request.tenantSlug,
+                kind: resolved.kind,
+                catalogSlug: resolved.tenantSlug,
+                tenantId: String(resolved.tenantId),
             });
         } catch (err) {
             request.tenantSlug = null;

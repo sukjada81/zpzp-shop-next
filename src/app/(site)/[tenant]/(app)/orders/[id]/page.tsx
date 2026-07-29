@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { endpoints } from "@/lib/api/endpoints";
+import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 import { loadGuestOrderRefs } from "@/lib/orders/guestOrderRefs";
 
 type OrderDetailItem = {
@@ -138,6 +138,7 @@ export default function OrderDetailPage() {
                     cache: "no-store",
                     headers: {
                         Accept: "application/json",
+                        ...tenantHeader(tenant),
                     },
                 });
 
@@ -149,6 +150,7 @@ export default function OrderDetailPage() {
                         cache: "no-store",
                         headers: {
                             Accept: "application/json",
+                            ...tenantHeader(tenant),
                         },
                     });
                 } else {
@@ -203,6 +205,7 @@ export default function OrderDetailPage() {
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
+                        ...tenantHeader(tenant),
                     },
                     body: JSON.stringify({ phone: guestPhone }),
                 });
@@ -213,6 +216,7 @@ export default function OrderDetailPage() {
                     cache: "no-store",
                     headers: {
                         Accept: "application/json",
+                        ...tenantHeader(tenant),
                     },
                 });
             }
