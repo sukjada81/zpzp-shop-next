@@ -8,10 +8,44 @@ import {
     resolveCouponSelection,
     resolveMemberLoginId,
 } from "./coupon.service.js";
+import {
+    buildGoodsStatusLabel,
+    resolveCustomerOrderDisplay,
+} from "../../lib/order/customer-order-display.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
 const STATUS_CANCELED = 9;
+const STATUS_EXCHANGE = 7;
+const STATUS_RETURN = 8;
+const STATUS2_REQUEST = 1;
+
+const ORDER_INFO_PUBLIC_SELECT = {
+    uid: true,
+    id: true,
+    order_num: true,
+    name: true,
+    cell: true,
+    name2: true,
+    cell2: true,
+    postcode: true,
+    address1: true,
+    address2: true,
+    message: true,
+    memo: true,
+    pay_total: true,
+    cancel_total: true,
+    refund_total: true,
+    delivery_total: true,
+    pay_type: true,
+    pay_status: true,
+    pay_info: true,
+    pay_method: true,
+    pickup_at: true,
+    status_date: true,
+    signdate: true,
+    member_uid: true,
+} as const;
 
 type PublicCreateOrderBody = {
     buyerName?: string;
@@ -78,7 +112,13 @@ type OrderInfoRow = {
     cancel_total: number;
     refund_total: number;
     delivery_total: number;
+    pay_type: string;
+    pay_status: string;
+    pay_info: string;
     pay_method: string;
+    postcode: string;
+    address1: string;
+    address2: string;
     pickup_at: Date | null;
     status_date: number;
     signdate: number;
@@ -220,39 +260,30 @@ function minutesAgoFromUnix(signdate: unknown): number {
     return Math.floor(diff / 60);
 }
 
-function formatPickupBadge(pickupAt: Date | null): string | null {
-    if (!pickupAt) return null;
-
-    const d = pickupAt instanceof Date ? pickupAt : new Date(pickupAt);
-    if (Number.isNaN(d.getTime())) return null;
-
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `픽업 예정 ${mm}/${dd}`;
+function resolveOrderGoodsStatus(items: Array<{ status: number; status2: number }>) {
+    const first = items[0];
+    return {
+        goodsStatus: toInt(first?.status, STATUS_ORDERED),
+        goodsStatus2: toInt(first?.status2, 0),
+    };
 }
 
-function getStatusLabel(status: number): string {
-    if (status === STATUS_CANCELED) return "주문취소";
-    return "주문접수";
-}
+async function readOrderGoodsStatus(
+    prisma: FastifyInstance["prisma"],
+    tenantId: bigint,
+    orderNum: string
+) {
+    const goodsRows = await prisma.mallRN_order_goods.findMany({
+        where: {
+            tenant_id: tenantId,
+            platform_type: PLATFORM_TYPE,
+            order_num: orderNum,
+        },
+        select: { status: true, status2: true },
+        take: 1,
+    });
 
-function getFooterText(status: number, pickupAt: Date | null): string {
-    if (status === STATUS_CANCELED) return "주문이 취소되었습니다.";
-    if (pickupAt) return "매장 방문 시 수령 가능";
-    return "주문이 접수되었습니다.";
-}
-
-const STATUS_PICKUP_READY = 2;
-const STATUS_PICKUP_DONE = 4;
-
-// 고객 취소 가능 조건:
-//   - 픽업완료(4) 이전 상태 (status < 4)
-//   - 공구 마감(sale_end_at) 이전. saleEndAt이 null이면 마감 없음으로 간주
-function canCustomerCancel(status: number, saleEndAt: Date | null): boolean {
-    if (status >= STATUS_PICKUP_DONE) return false;
-    if (status === STATUS_CANCELED) return false;
-    if (saleEndAt && saleEndAt.getTime() <= Date.now()) return false;
-    return true;
+    return resolveOrderGoodsStatus(goodsRows);
 }
 
 // 셀러 취소 가능 조건: 이미 취소된 게 아니면 항상 허용
@@ -500,16 +531,31 @@ async function serializeOrder(
 ) {
     const orderNum = toSafeString(info.order_num || info.id, "");
     const items = await loadOrderGoods(prisma, tenantId, orderNum);
-    const firstItemStatus = items[0]?.status2 ?? items[0]?.status ?? STATUS_ORDERED;
-    const status = toInt(firstItemStatus, 0);
+    const { goodsStatus, goodsStatus2 } = resolveOrderGoodsStatus(items);
     const goodsTotal = items.reduce(
         (sum, item) => sum + toInt(item.price, 0) * toInt(item.qty, 0),
         0
     );
     const totalAmount = toInt(info.pay_total, goodsTotal);
 
-    const saleEndAt = await getStrictestSaleEndAt(prisma, tenantId, orderNum);
-    const pickupDateText = await getOrderPickupText(prisma, tenantId, orderNum);
+    const display = resolveCustomerOrderDisplay({
+        goodsStatus,
+        goodsStatus2,
+        payType: toSafeString(info.pay_type, "B"),
+        payStatus: toSafeString(info.pay_status, "A"),
+        payInfo: toSafeString(info.pay_info, ""),
+        payMethod: toSafeString(info.pay_method, ""),
+        pickupAt: info.pickup_at,
+    });
+
+    const addressLine = [
+        toSafeString(info.postcode, ""),
+        toSafeString(info.address1, ""),
+        toSafeString(info.address2, ""),
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
 
     return {
         id: orderNum,
@@ -518,23 +564,32 @@ async function serializeOrder(
         buyerPhone: normalizePhone(info.cell),
         receiverName: toSafeString(info.name2, ""),
         receiverPhone: normalizePhone(info.cell2),
+        postcode: toSafeString(info.postcode, ""),
+        address1: toSafeString(info.address1, ""),
+        address2: toSafeString(info.address2, ""),
+        addressLine,
         message: toSafeString(info.message, ""),
         memo: toSafeString(info.memo, ""),
         totalAmount,
         cancelTotal: toInt(info.cancel_total, 0),
         refundTotal: toInt(info.refund_total, 0),
         deliveryTotal: toInt(info.delivery_total, 0),
-        payType: "offline",
-        payStatus: "pending",
+        payType: display.payType,
+        payStatus: display.payStatus,
+        payTypeLabel: display.payTypeLabel,
+        payStatusLabel: display.payStatusLabel,
+        isOnlinePrepaid: display.isOnlinePrepaid,
         pickupAt: info.pickup_at ? toIsoDate(info.pickup_at) : null,
-        pickupDateText,
-        status,
-        statusLabel: getStatusLabel(status),
-        displayStatus: getStatusLabel(status),
-        badgeText: formatPickupBadge(info.pickup_at),
-        footerText: getFooterText(status, info.pickup_at),
-        canCancel: canCustomerCancel(status, saleEndAt),
-        saleEndAt: saleEndAt ? saleEndAt.toISOString() : null,
+        status: display.effectiveGoodsStatus,
+        status2: display.goodsStatus2,
+        statusLabel: display.statusLabel,
+        displayStatus: display.displayStatus,
+        badgeText: display.badgeText,
+        footerText: display.footerText,
+        canCancel: display.canCancel,
+        cancelMode: display.cancelMode,
+        canReturn: display.canReturn,
+        canExchange: display.canExchange,
         createdAt: toIsoDate(info.signdate),
         statusDate: toIsoDate(info.status_date),
         items,
@@ -555,26 +610,7 @@ async function listOrdersByMember(
         },
         orderBy: [{ signdate: "desc" }, { uid: "desc" }],
         take,
-        select: {
-            uid: true,
-            id: true,
-            order_num: true,
-            name: true,
-            cell: true,
-            name2: true,
-            cell2: true,
-            message: true,
-            memo: true,
-            pay_total: true,
-            cancel_total: true,
-            refund_total: true,
-            delivery_total: true,
-            pay_method: true,
-            pickup_at: true,
-            status_date: true,
-            signdate: true,
-            member_uid: true,
-        },
+        select: ORDER_INFO_PUBLIC_SELECT,
     });
 
     return Promise.all(list.map((row: OrderInfoRow) => serializeOrder(prisma, tenantId, row)));
@@ -593,26 +629,7 @@ async function findRawOrderByMember(
             member_uid: memberUid,
             order_num: orderNum,
         },
-        select: {
-            uid: true,
-            id: true,
-            order_num: true,
-            name: true,
-            cell: true,
-            name2: true,
-            cell2: true,
-            message: true,
-            memo: true,
-            pay_total: true,
-            cancel_total: true,
-            refund_total: true,
-            delivery_total: true,
-            pay_method: true,
-            pickup_at: true,
-            status_date: true,
-            signdate: true,
-            member_uid: true,
-        },
+        select: ORDER_INFO_PUBLIC_SELECT,
     });
 }
 
@@ -1025,26 +1042,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 },
                 orderBy: [{ signdate: "desc" }, { uid: "desc" }],
                 take: 50,
-                select: {
-                    uid: true,
-                    id: true,
-                    order_num: true,
-                    name: true,
-                    cell: true,
-                    name2: true,
-                    cell2: true,
-                    message: true,
-                    memo: true,
-                    pay_total: true,
-                    cancel_total: true,
-                    refund_total: true,
-                    delivery_total: true,
-                    pay_method: true,
-                    pickup_at: true,
-                    status_date: true,
-                    signdate: true,
-                    member_uid: true,
-                },
+                select: ORDER_INFO_PUBLIC_SELECT,
             });
 
             const items = await Promise.all(
@@ -1149,26 +1147,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     },
                     orderBy: [{ signdate: "desc" }, { uid: "desc" }],
                     take: orderNums.length > 0 ? Math.max(orderNums.length, 50) : 50,
-                    select: {
-                        uid: true,
-                        id: true,
-                        order_num: true,
-                        name: true,
-                        cell: true,
-                        name2: true,
-                        cell2: true,
-                        message: true,
-                        memo: true,
-                        pay_total: true,
-                        cancel_total: true,
-                        refund_total: true,
-                        delivery_total: true,
-                        pay_method: true,
-                        pickup_at: true,
-                        status_date: true,
-                        signdate: true,
-                        member_uid: true,
-                    },
+                    select: ORDER_INFO_PUBLIC_SELECT,
                 });
 
                 const filtered = candidates.filter((row: OrderInfoRow) => {
@@ -1230,26 +1209,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         platform_type: PLATFORM_TYPE,
                         order_num: orderNum,
                     },
-                    select: {
-                        uid: true,
-                        id: true,
-                        order_num: true,
-                        name: true,
-                        cell: true,
-                        name2: true,
-                        cell2: true,
-                        message: true,
-                        memo: true,
-                        pay_total: true,
-                        cancel_total: true,
-                        refund_total: true,
-                        delivery_total: true,
-                        pay_method: true,
-                        pickup_at: true,
-                        status_date: true,
-                        signdate: true,
-                        member_uid: true,
-                    },
+                    select: ORDER_INFO_PUBLIC_SELECT,
                 });
 
                 if (!row) {
@@ -1320,26 +1280,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         platform_type: PLATFORM_TYPE,
                         order_num: orderNum,
                     },
-                    select: {
-                        uid: true,
-                        id: true,
-                        order_num: true,
-                        name: true,
-                        cell: true,
-                        name2: true,
-                        cell2: true,
-                        message: true,
-                        memo: true,
-                        pay_total: true,
-                        cancel_total: true,
-                        refund_total: true,
-                        delivery_total: true,
-                        pay_method: true,
-                        pickup_at: true,
-                        status_date: true,
-                        signdate: true,
-                        member_uid: true,
-                    },
+                    select: ORDER_INFO_PUBLIC_SELECT,
                 });
 
                 if (!row) {
@@ -1358,30 +1299,26 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
-                const goodsRows = await prisma.mallRN_order_goods.findMany({
-                    where: {
-                        tenant_id: tenantId,
-                        platform_type: PLATFORM_TYPE,
-                        order_num: orderNum,
-                    },
-                    select: {
-                        status: true,
-                        status2: true,
-                    },
-                    take: 1,
+                const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
+                    prisma,
+                    tenantId,
+                    orderNum
+                );
+                const cancelDisplay = resolveCustomerOrderDisplay({
+                    goodsStatus,
+                    goodsStatus2,
+                    payType: toSafeString(row.pay_type, "B"),
+                    payStatus: toSafeString(row.pay_status, "A"),
+                    payInfo: toSafeString(row.pay_info, ""),
+                    payMethod: toSafeString(row.pay_method, ""),
+                    pickupAt: row.pickup_at,
                 });
 
-                const currentStatus = toInt(goodsRows[0]?.status2 ?? goodsRows[0]?.status, 0);
-                const saleEndAt = await getStrictestSaleEndAt(prisma, tenantId, orderNum);
-
-                if (!canCustomerCancel(currentStatus, saleEndAt)) {
-                    const expired = !!(saleEndAt && saleEndAt.getTime() <= Date.now());
+                if (!cancelDisplay.canCancel) {
                     return reply.code(400).send({
                         ok: false,
-                        error: expired ? "groupbuy_closed" : "cannot_cancel",
-                        message: expired
-                            ? "공구가 마감되어 주문취소가 불가능합니다."
-                            : "현재 상태에서는 주문취소가 불가능합니다.",
+                        error: "cannot_cancel",
+                        message: "현재 상태에서는 주문취소가 불가능합니다.",
                     });
                 }
 
@@ -1417,7 +1354,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         actorRole: "guest",
                         actorMemberUid: null,
                         actorNickname: toSafeString(row.name, "비회원"),
-                        beforeStatus: currentStatus,
+                        beforeStatus: cancelDisplay.effectiveGoodsStatus,
                         afterStatus: STATUS_CANCELED,
                     });
                 });
@@ -1426,7 +1363,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     ok: true,
                     orderNum,
                     status: STATUS_CANCELED,
-                    statusLabel: getStatusLabel(STATUS_CANCELED),
+                    statusLabel: buildGoodsStatusLabel(STATUS_CANCELED, 0),
                     message: "주문이 취소되었습니다.",
                 });
             } catch (error: unknown) {
@@ -1496,30 +1433,26 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
-                const goodsRows = await prisma.mallRN_order_goods.findMany({
-                    where: {
-                        tenant_id: tenantId,
-                        platform_type: PLATFORM_TYPE,
-                        order_num: orderNum,
-                    },
-                    select: {
-                        status: true,
-                        status2: true,
-                    },
-                    take: 1,
+                const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
+                    prisma,
+                    tenantId,
+                    orderNum
+                );
+                const cancelDisplay = resolveCustomerOrderDisplay({
+                    goodsStatus,
+                    goodsStatus2,
+                    payType: toSafeString(rawOrder.pay_type, "B"),
+                    payStatus: toSafeString(rawOrder.pay_status, "A"),
+                    payInfo: toSafeString(rawOrder.pay_info, ""),
+                    payMethod: toSafeString(rawOrder.pay_method, ""),
+                    pickupAt: rawOrder.pickup_at,
                 });
 
-                const currentStatus = toInt(goodsRows[0]?.status2 ?? goodsRows[0]?.status, 0);
-                const saleEndAt = await getStrictestSaleEndAt(prisma, tenantId, orderNum);
-
-                if (!canCustomerCancel(currentStatus, saleEndAt)) {
-                    const expired = !!(saleEndAt && saleEndAt.getTime() <= Date.now());
+                if (!cancelDisplay.canCancel) {
                     return reply.code(400).send({
                         ok: false,
-                        error: expired ? "groupbuy_closed" : "cannot_cancel",
-                        message: expired
-                            ? "공구가 마감되어 주문취소가 불가능합니다."
-                            : "현재 상태에서는 주문취소가 불가능합니다.",
+                        error: "cannot_cancel",
+                        message: "현재 상태에서는 주문취소가 불가능합니다.",
                     });
                 }
 
@@ -1565,7 +1498,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         actorRole: "member",
                         actorMemberUid: memberUid,
                         actorNickname,
-                        beforeStatus: currentStatus,
+                        beforeStatus: cancelDisplay.effectiveGoodsStatus,
                         afterStatus: STATUS_CANCELED,
                     });
                 });
@@ -1574,7 +1507,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     ok: true,
                     orderNum,
                     status: STATUS_CANCELED,
-                    statusLabel: getStatusLabel(STATUS_CANCELED),
+                    statusLabel: buildGoodsStatusLabel(STATUS_CANCELED, 0),
                     message: "주문이 취소되었습니다.",
                 });
             } catch (error: unknown) {
@@ -1660,4 +1593,138 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             }
         }
     );
+
+    fastify.post<{
+        Body: { type?: "return" | "exchange"; reason?: string };
+        Params: { tenant?: string; orderNum: string };
+    }>("/v1/orders/:orderNum/claim", async (request, reply: FastifyReply) => {
+        try {
+            const { tenantId } = getTenantContext(
+                request as unknown as FastifyRequest<PublicOrderRoute>
+            );
+            const memberUid = extractAuthenticatedMemberUid(request);
+            const orderNum = toSafeString(request.params?.orderNum, "");
+            const claimType = toSafeString(request.body?.type, "");
+            const reason = toSafeString(request.body?.reason, "");
+            const now = toUnixNow();
+
+            if (!tenantId || !orderNum) {
+                return reply.code(400).send({
+                    ok: false,
+                    message: "요청 정보가 올바르지 않습니다.",
+                });
+            }
+
+            if (!memberUid) {
+                return reply.code(401).send({
+                    ok: false,
+                    message: "로그인이 필요합니다.",
+                });
+            }
+
+            if (claimType !== "return" && claimType !== "exchange") {
+                return reply.code(400).send({
+                    ok: false,
+                    message: "요청 유형이 올바르지 않습니다.",
+                });
+            }
+
+            const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+            if (!rawOrder) {
+                return reply.code(404).send({
+                    ok: false,
+                    message: "주문을 찾을 수 없습니다.",
+                });
+            }
+
+            const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
+                prisma,
+                tenantId,
+                orderNum
+            );
+            const display = resolveCustomerOrderDisplay({
+                goodsStatus,
+                goodsStatus2,
+                payType: toSafeString(rawOrder.pay_type, "B"),
+                payStatus: toSafeString(rawOrder.pay_status, "A"),
+                payInfo: toSafeString(rawOrder.pay_info, ""),
+                payMethod: toSafeString(rawOrder.pay_method, ""),
+                pickupAt: rawOrder.pickup_at,
+            });
+
+            const allowed =
+                claimType === "return" ? display.canReturn : display.canExchange;
+            if (!allowed) {
+                return reply.code(400).send({
+                    ok: false,
+                    message: "현재 상태에서는 요청할 수 없습니다.",
+                });
+            }
+
+            const nextStatus = claimType === "return" ? STATUS_RETURN : STATUS_EXCHANGE;
+            const memberRow = await prisma.mallRN_member.findFirst({
+                where: { uid: Number(memberUid) },
+                select: { name: true },
+            });
+            const actorNickname = toSafeString(memberRow?.name || rawOrder.name, "회원");
+
+            await prisma.$transaction(async (tx: any) => {
+                await tx.mallRN_order_info.updateMany({
+                    where: {
+                        tenant_id: tenantId,
+                        platform_type: PLATFORM_TYPE,
+                        order_num: orderNum,
+                    },
+                    data: { status_date: now },
+                });
+
+                await tx.mallRN_order_goods.updateMany({
+                    where: {
+                        tenant_id: tenantId,
+                        platform_type: PLATFORM_TYPE,
+                        order_num: orderNum,
+                    },
+                    data: {
+                        status: nextStatus,
+                        status2: STATUS2_REQUEST,
+                        status_date: now,
+                    },
+                });
+
+                await writeOrderActionLog(tx, {
+                    tenantId,
+                    eventType: "cancel",
+                    orderNum,
+                    actorRole: "member",
+                    actorMemberUid: memberUid,
+                    actorNickname,
+                    beforeStatus: display.effectiveGoodsStatus,
+                    afterStatus: nextStatus,
+                    reason: reason || `${claimType}_request`,
+                    metaJson: JSON.stringify({ claimType }),
+                });
+            });
+
+            const statusLabel = buildGoodsStatusLabel(nextStatus, STATUS2_REQUEST);
+
+            return reply.send({
+                ok: true,
+                orderNum,
+                status: nextStatus,
+                status2: STATUS2_REQUEST,
+                statusLabel,
+                message:
+                    claimType === "return"
+                        ? "반품 요청이 접수되었습니다."
+                        : "교환 요청이 접수되었습니다.",
+            });
+        } catch (error: unknown) {
+            const detail = getErrorMessage(error, "교환·반품 요청 중 오류가 발생했습니다.");
+            fastify.log.error(error, "ORDER_CLAIM_ERROR");
+            return reply.code(500).send({
+                ok: false,
+                message: detail,
+            });
+        }
+    });
 };

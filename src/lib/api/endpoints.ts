@@ -86,6 +86,9 @@ export const endpoints = {
     cancelOrder: (tenant: string, orderNum: string) =>
         apiProxy(`${tenant}/v1/orders/${encodeURIComponent(orderNum)}/cancel`),
 
+    claimOrder: (tenant: string, orderNum: string) =>
+        apiProxy(`${tenant}/v1/orders/${encodeURIComponent(orderNum)}/claim`),
+
     guestOrders: (tenant: string) => apiProxy(`${tenant}/v1/orders/guest/list`),
 
     guestOrderDetail: (tenant: string, orderNum: string, phone: string) => {

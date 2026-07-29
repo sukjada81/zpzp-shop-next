@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 import { loadGuestOrderRefs } from "@/lib/orders/guestOrderRefs";
+import { toneByOrderStatus } from "@/lib/orders/customerOrderDisplay";
 
 type OrderDetailItem = {
     id: string;
@@ -32,6 +33,10 @@ type OrderDetailResponse = {
         buyerPhone: string;
         receiverName: string;
         receiverPhone: string;
+        postcode?: string;
+        address1?: string;
+        address2?: string;
+        addressLine?: string;
         message?: string;
         memo?: string;
         totalAmount: number;
@@ -40,14 +45,20 @@ type OrderDetailResponse = {
         deliveryTotal: number;
         payType: string;
         payStatus: string;
+        payTypeLabel?: string;
+        payStatusLabel?: string;
+        isOnlinePrepaid?: boolean;
         pickupAt?: string | null;
-        pickupDateText?: string | null;
         status: number;
+        status2?: number;
         statusLabel: string;
         displayStatus?: string;
         badgeText?: string | null;
         footerText?: string | null;
         canCancel?: boolean;
+        cancelMode?: "immediate" | "request" | "none";
+        canReturn?: boolean;
+        canExchange?: boolean;
         createdAt?: string | null;
         statusDate?: string | null;
         items: OrderDetailItem[];
@@ -74,20 +85,21 @@ function formatMoney(value: number) {
     return `${Number(value ?? 0).toLocaleString()}원`;
 }
 
+type ClaimOrderResponse = {
+    ok: boolean;
+    statusLabel?: string;
+    message?: string;
+};
+
+function formatAddress(order: NonNullable<OrderDetailResponse["order"]>) {
+    const line = String(order.addressLine ?? "").trim();
+    if (line) return line;
+
+    return [order.postcode, order.address1, order.address2].filter(Boolean).join(" ").trim();
+}
+
 function toneByStatus(statusLabel: string) {
-    if (statusLabel.includes("취소") || statusLabel.includes("미수령")) {
-        return "bg-rose-50 border-rose-200 text-rose-700";
-    }
-    if (statusLabel.includes("배송완료")) {
-        return "bg-emerald-50 border-emerald-200 text-emerald-700";
-    }
-    if (statusLabel.includes("발송준비") || statusLabel.includes("픽업기간")) {
-        return "bg-amber-50 border-amber-200 text-amber-700";
-    }
-    if (statusLabel.includes("공구") || statusLabel.includes("예정")) {
-        return "bg-violet-50 border-violet-200 text-violet-700";
-    }
-    return "bg-slate-50 border-slate-200 text-slate-700";
+    return toneByOrderStatus(statusLabel);
 }
 
 function findGuestPhone(orderNum: string, tenant: string) {
@@ -110,6 +122,7 @@ export default function OrderDetailPage() {
     const [error, setError] = useState("");
     const [order, setOrder] = useState<OrderDetailResponse["order"] | null>(null);
     const [canceling, setCanceling] = useState(false);
+    const [claiming, setClaiming] = useState<"return" | "exchange" | "">("");
     const [isGuestMode, setIsGuestMode] = useState(false);
     const [guestPhone, setGuestPhone] = useState("");
 
@@ -236,6 +249,44 @@ export default function OrderDetailPage() {
         }
     }
 
+    async function handleClaim(type: "return" | "exchange") {
+        if (!order?.orderNum || claiming) return;
+
+        const label = type === "return" ? "반품" : "교환";
+        const ok = window.confirm(`${label} 요청을 접수할까요?`);
+        if (!ok) return;
+
+        try {
+            setClaiming(type);
+
+            const res = await fetch(endpoints.claimOrder(tenant, order.orderNum), {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    ...tenantHeader(tenant),
+                },
+                body: JSON.stringify({ type }),
+            });
+
+            const json = (await res.json().catch(() => null)) as ClaimOrderResponse | null;
+
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || `${label} 요청에 실패했습니다.`);
+            }
+
+            alert(json.message || `${label} 요청이 접수되었습니다.`);
+            router.refresh();
+            window.location.reload();
+        } catch (e: any) {
+            alert(e?.message || `${label} 요청 중 오류가 발생했습니다.`);
+        } finally {
+            setClaiming("");
+        }
+    }
+
     const tone = useMemo(
         () => toneByStatus(order?.displayStatus || order?.statusLabel || ""),
         [order?.displayStatus, order?.statusLabel]
@@ -349,7 +400,16 @@ export default function OrderDetailPage() {
 
                     <div className="flex justify-between gap-4">
                         <span className="font-semibold text-slate-500">결제 방식</span>
-                        <span className="text-right font-bold text-slate-900">오프라인 결제</span>
+                        <span className="text-right font-bold text-slate-900">
+                            {order.payTypeLabel || (order.isOnlinePrepaid ? "온라인 결제" : "-")}
+                        </span>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                        <span className="font-semibold text-slate-500">결제 상태</span>
+                        <span className="text-right font-bold text-slate-900">
+                            {order.payStatusLabel || "-"}
+                        </span>
                     </div>
                 </div>
 
@@ -366,8 +426,37 @@ export default function OrderDetailPage() {
                         disabled={canceling}
                         className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-[14px] font-extrabold text-rose-600 disabled:opacity-50"
                     >
-                        {canceling ? "주문취소 처리 중..." : "주문 취소"}
+                        {canceling
+                            ? "처리 중..."
+                            : order.cancelMode === "request"
+                              ? "취소 요청"
+                              : "주문 취소"}
                     </button>
+                ) : null}
+
+                {order.canReturn || order.canExchange ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                        {order.canExchange ? (
+                            <button
+                                type="button"
+                                onClick={() => handleClaim("exchange")}
+                                disabled={!!claiming}
+                                className="flex h-12 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 text-[14px] font-extrabold text-violet-700 disabled:opacity-50"
+                            >
+                                {claiming === "exchange" ? "처리 중..." : "교환 요청"}
+                            </button>
+                        ) : null}
+                        {order.canReturn ? (
+                            <button
+                                type="button"
+                                onClick={() => handleClaim("return")}
+                                disabled={!!claiming}
+                                className="flex h-12 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 text-[14px] font-extrabold text-violet-700 disabled:opacity-50"
+                            >
+                                {claiming === "return" ? "처리 중..." : "반품 요청"}
+                            </button>
+                        ) : null}
+                    </div>
                 ) : null}
             </div>
 
@@ -391,7 +480,7 @@ export default function OrderDetailPage() {
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[15px] font-extrabold text-slate-900">수령 정보</div>
+                <div className="text-[15px] font-extrabold text-slate-900">배송지</div>
 
                 <div className="mt-3 space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
@@ -405,6 +494,12 @@ export default function OrderDetailPage() {
                         <span className="text-right font-bold text-slate-900">
                             {order.receiverPhone || "-"}
                         </span>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-3">
+                        <div className="text-[12px] font-semibold text-slate-500">주소</div>
+                        <div className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-900">
+                            {formatAddress(order) || "-"}
+                        </div>
                     </div>
                 </div>
 
@@ -490,15 +585,20 @@ export default function OrderDetailPage() {
                 ) : null}
 
                 <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-base font-extrabold">
-                    <span className="text-slate-900">총 결제 예정 금액</span>
+                    <span className="text-slate-900">
+                        {order.isOnlinePrepaid ? "총 결제 금액" : "총 결제 예정 금액"}
+                    </span>
                     <span className="text-slate-900">{formatMoney(order.totalAmount)}</span>
                 </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-700 shadow-sm">
-                이 주문은 온라인 선결제가 아닌 <span className="font-extrabold">매장 오프라인 결제</span> 방식입니다.
-                방문 후 현장에서 결제해 주세요.
-            </div>
+            {!order.isOnlinePrepaid ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-700 shadow-sm">
+                    이 주문은 온라인 선결제가 아닌{" "}
+                    <span className="font-extrabold">매장 오프라인 결제</span> 방식입니다. 방문 후
+                    현장에서 결제해 주세요.
+                </div>
+            ) : null}
         </main>
     );
 }
