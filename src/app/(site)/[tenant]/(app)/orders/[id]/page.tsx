@@ -59,6 +59,7 @@ type OrderDetailResponse = {
         cancelMode?: "immediate" | "request" | "none";
         canReturn?: boolean;
         canExchange?: boolean;
+        canConfirm?: boolean;
         createdAt?: string | null;
         statusDate?: string | null;
         items: OrderDetailItem[];
@@ -87,6 +88,13 @@ function formatMoney(value: number) {
 
 type ClaimOrderResponse = {
     ok: boolean;
+    statusLabel?: string;
+    message?: string;
+};
+
+type ConfirmOrderResponse = {
+    ok: boolean;
+    status?: number;
     statusLabel?: string;
     message?: string;
 };
@@ -123,6 +131,7 @@ export default function OrderDetailPage() {
     const [order, setOrder] = useState<OrderDetailResponse["order"] | null>(null);
     const [canceling, setCanceling] = useState(false);
     const [claiming, setClaiming] = useState<"return" | "exchange" | "">("");
+    const [confirming, setConfirming] = useState(false);
     const [isGuestMode, setIsGuestMode] = useState(false);
     const [guestPhone, setGuestPhone] = useState("");
 
@@ -246,6 +255,41 @@ export default function OrderDetailPage() {
             alert(e?.message || "주문취소 처리 중 오류가 발생했습니다.");
         } finally {
             setCanceling(false);
+        }
+    }
+
+    async function handleConfirm() {
+        if (!order?.orderNum || confirming || isGuestMode) return;
+
+        const ok = window.confirm("구매를 확정할까요?\n확정 후에는 반품·교환이 제한될 수 있습니다.");
+        if (!ok) return;
+
+        try {
+            setConfirming(true);
+
+            const res = await fetch(endpoints.confirmOrder(tenant, order.orderNum), {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers: {
+                    Accept: "application/json",
+                    ...tenantHeader(tenant),
+                },
+            });
+
+            const json = (await res.json().catch(() => null)) as ConfirmOrderResponse | null;
+
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "구매확정에 실패했습니다.");
+            }
+
+            alert(json.message || "구매확정이 완료되었습니다.");
+            router.refresh();
+            window.location.reload();
+        } catch (e: any) {
+            alert(e?.message || "구매확정 처리 중 오류가 발생했습니다.");
+        } finally {
+            setConfirming(false);
         }
     }
 
@@ -427,6 +471,17 @@ export default function OrderDetailPage() {
                         className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-[14px] font-extrabold text-rose-600 disabled:opacity-50"
                     >
                         {canceling ? "처리 중..." : "주문 취소"}
+                    </button>
+                ) : null}
+
+                {order.canConfirm ? (
+                    <button
+                        type="button"
+                        onClick={handleConfirm}
+                        disabled={confirming}
+                        className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-600 text-[14px] font-extrabold text-white disabled:opacity-50"
+                    >
+                        {confirming ? "처리 중..." : "구매확정"}
                     </button>
                 ) : null}
 

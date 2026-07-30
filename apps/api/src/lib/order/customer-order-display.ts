@@ -36,6 +36,7 @@ export type CustomerOrderActions = {
     canCancel: boolean;
     canReturn: boolean;
     canExchange: boolean;
+    canConfirm: boolean;
     cancelMode: "immediate" | "request" | "none";
     isOnlinePrepaid: boolean;
 };
@@ -177,6 +178,11 @@ export function canCustomerReturnOrExchange(goodsStatus: number, goodsStatus2: n
     return goodsStatus === 4 && goodsStatus2 === 0;
 }
 
+/** 배송완료(4) + status2 없을 때 구매확정 — shop-php order_list.php is_btn_confirmation */
+export function canCustomerConfirmPurchase(goodsStatus: number, goodsStatus2: number): boolean {
+    return goodsStatus === 4 && goodsStatus2 === 0;
+}
+
 export function resolveCustomerOrderActions(input: {
     goodsStatus: number;
     goodsStatus2: number;
@@ -191,11 +197,13 @@ export function resolveCustomerOrderActions(input: {
     const cancelMode: CustomerOrderActions["cancelMode"] = canCancel ? "immediate" : "none";
 
     const canClaim = canCustomerReturnOrExchange(input.goodsStatus, input.goodsStatus2);
+    const canConfirm = canCustomerConfirmPurchase(input.goodsStatus, input.goodsStatus2);
 
     return {
         canCancel,
         canReturn: canClaim,
         canExchange: canClaim,
+        canConfirm,
         cancelMode,
         isOnlinePrepaid: online,
     };

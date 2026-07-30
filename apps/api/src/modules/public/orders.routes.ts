@@ -787,6 +787,7 @@ async function serializeOrder(
         cancelMode: display.cancelMode,
         canReturn: display.canReturn,
         canExchange: display.canExchange,
+        canConfirm: display.canConfirm,
         createdAt: toIsoDate(info.signdate),
         statusDate: toIsoDate(info.status_date),
         items,
@@ -1929,4 +1930,98 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             });
         }
     });
+
+    fastify.post<{ Params: { tenant?: string; orderNum: string } }>(
+        "/v1/orders/:orderNum/confirm",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+
+                if (!tenantId || !orderNum) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "요청 정보가 올바르지 않습니다.",
+                    });
+                }
+
+                if (!memberUid) {
+                    return reply.code(401).send({
+                        ok: false,
+                        message: "로그인이 필요합니다.",
+                    });
+                }
+
+                const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+                if (!rawOrder) {
+                    return reply.code(404).send({
+                        ok: false,
+                        message: "주문을 찾을 수 없습니다.",
+                    });
+                }
+
+                const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
+                    prisma,
+                    tenantId,
+                    orderNum
+                );
+                const display = resolveCustomerOrderDisplay({
+                    goodsStatus,
+                    goodsStatus2,
+                    payType: toSafeString(rawOrder.pay_type, "B"),
+                    payStatus: toSafeString(rawOrder.pay_status, "A"),
+                    payInfo: toSafeString(rawOrder.pay_info, ""),
+                    payMethod: toSafeString(rawOrder.pay_method, ""),
+                    pickupAt: rawOrder.pickup_at,
+                });
+
+                if (!display.canConfirm) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "배송완료 상태에서만 구매확정할 수 있습니다.",
+                    });
+                }
+
+                const bridge = await callPhpBridge<{
+                    confirmed?: number;
+                    status?: number;
+                    status2?: number;
+                    statusLabel?: string;
+                    orderNum?: string;
+                }>("/php/order_confirm_api.php", {
+                    action: "confirm_order",
+                    member_uid: Number(memberUid),
+                    order_num: orderNum,
+                });
+
+                if (!bridge.ok || !bridge.data?.confirmed) {
+                    return reply.code(bridge.transportFailed ? 502 : 400).send({
+                        ok: false,
+                        message:
+                            bridge.message ||
+                            "구매확정 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+                    });
+                }
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    status: toInt(bridge.data.status, 5),
+                    status2: toInt(bridge.data.status2, 0),
+                    statusLabel: toSafeString(bridge.data.statusLabel, "구매확정"),
+                    message: bridge.message || "구매확정이 완료되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "구매확정 처리 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_CONFIRM_ERROR");
+                return reply.code(500).send({
+                    ok: false,
+                    message: detail,
+                });
+            }
+        }
+    );
 };
