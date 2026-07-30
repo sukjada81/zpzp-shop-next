@@ -14,6 +14,7 @@ import {
 } from "@/lib/profile/quickOrderProfile";
 import { initTossPayment } from "@/lib/toss/client";
 import DaumPostcodeSearch from "@/components/order/DaumPostcodeSearch";
+import CouponSection from "@/components/order/CouponSection";
 
 export type OrderItem = {
     id: string;
@@ -407,6 +408,15 @@ export default function OrderClient(props: {
         [items]
     );
 
+    // 쿠폰(W-1). 표시용 계산이며 최종 승인액은 prepare 응답의 amount 가 진실원이다.
+    const [couponUids, setCouponUids] = useState<number[]>([]);
+    const [couponDiscount, setCouponDiscount] = useState(0);
+    const handleCouponChange = useCallback((uids: number[], discountTotal: number) => {
+        setCouponUids(uids);
+        setCouponDiscount(discountTotal);
+    }, []);
+    const payTotal = Math.max(0, subtotal - couponDiscount);
+
     const canSubmit = items.length > 0 && !submitting;
     const isDirectOrder = draftItems.length > 0 || initialItems.length > 0;
 
@@ -489,6 +499,12 @@ export default function OrderClient(props: {
             return;
         }
 
+        // 할인이 상품금액 이상이면 PG 승인 자체가 불가하다(서버도 400으로 막는다).
+        if (payTotal <= 0) {
+            alert("할인 금액이 결제금액과 같거나 커서 결제할 수 없습니다. 쿠폰 선택을 조정해 주세요.");
+            return;
+        }
+
         setSubmitting(true);
         setPayError("");
 
@@ -514,7 +530,10 @@ export default function OrderClient(props: {
                 message: message.trim(),
                 memo: memo.trim(),
                 direct: isDirectOrder ? 1 : 0,
+                // ★계약: amount 는 '할인 전 상품합계'다. 쿠폰 할인은 서버가 couponUids 로 다시 계산해
+                // 응답 amount(=실제 승인액)에 반영한다. 여기에 할인 후 금액을 넣으면 서버 검증이 깨진다.
                 amount: subtotal,
+                couponUids,
                 items: items.map((it) => ({
                     productId: Number(it.id),
                     optionId:
@@ -546,6 +565,8 @@ export default function OrderClient(props: {
                 message?: string;
                 orderId?: string;
                 amount?: number;
+                subtotal?: number;
+                discountTotal?: number;
             };
 
             if (prepareRes.status === 401) {
@@ -554,13 +575,22 @@ export default function OrderClient(props: {
             }
 
             const orderId = prepareJson?.orderId || "";
-            const payAmount = Number(prepareJson?.amount ?? subtotal) || subtotal;
+            // 서버가 내려준 금액이 실제 승인액이다(할인 후). 로컬 계산은 폴백일 뿐.
+            const payAmount = Number(prepareJson?.amount ?? payTotal) || payTotal;
 
             if (!prepareRes.ok || prepareJson?.ok !== true || !orderId) {
                 throw new Error(
                     prepareJson?.msg ||
                         prepareJson?.message ||
                         `결제 준비 실패 (HTTP ${prepareRes.status})`
+                );
+            }
+
+            // 화면에 보여준 금액보다 더 청구되는 일은 없어야 한다. 어긋나면 결제를 진행하지 않는다.
+            if (payAmount !== payTotal) {
+                setCouponDiscount(Math.max(0, subtotal - payAmount));
+                throw new Error(
+                    `쿠폰 적용 금액이 변경되었습니다. 결제금액 ${payAmount.toLocaleString()}원을 확인 후 다시 시도해 주세요.`
                 );
             }
 
@@ -670,14 +700,29 @@ export default function OrderClient(props: {
                 )}
 
                 <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                    {couponDiscount > 0 && (
+                        <>
+                            <div className="flex items-center justify-between text-[13px] text-slate-500">
+                                <span>상품 금액</span>
+                                <span>{subtotal.toLocaleString()}원</span>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[13px] text-rose-500">
+                                <span>쿠폰 할인</span>
+                                <span>-{couponDiscount.toLocaleString()}원</span>
+                            </div>
+                            <div className="my-2 border-t border-slate-200" />
+                        </>
+                    )}
                     <div className="flex items-center justify-between text-[14px] font-bold text-slate-700">
                         <span>총 결제 금액</span>
                         <span className="text-[18px] font-extrabold text-slate-900">
-                            {subtotal.toLocaleString()}원
+                            {payTotal.toLocaleString()}원
                         </span>
                     </div>
                 </div>
             </section>
+
+            <CouponSection tenant={tenant} subtotal={subtotal} onChange={handleCouponChange} />
 
             <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-[16px] font-extrabold text-slate-900">주문자 정보</div>
@@ -936,7 +981,7 @@ export default function OrderClient(props: {
                 disabled={!canSubmit}
                 className="mt-5 w-full rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-extrabold text-white disabled:opacity-50"
             >
-                {submitting ? "결제 준비 중..." : `${subtotal.toLocaleString()}원 결제하기`}
+                {submitting ? "결제 준비 중..." : `${payTotal.toLocaleString()}원 결제하기`}
             </button>
 
             {payError ? (

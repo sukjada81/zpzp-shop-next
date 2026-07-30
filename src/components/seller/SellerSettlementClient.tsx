@@ -627,8 +627,9 @@ export default function SellerSettlementClient({ tenant }: { tenant: string }) {
                                 </div>
                                 <div className="shrink-0 text-right">
                                     <div
+                                        // 색도 부호 기준(F-12). type 기준이면 양수 adjustment 가 빨강으로 뒤집힌다.
                                         className={`text-sm font-bold ${
-                                            row.type === "accrual" ? "text-blue-600" : "text-rose-600"
+                                            row.amount < 0 ? "text-rose-600" : "text-blue-600"
                                         }`}
                                     >
                                         {row.amountLabel}

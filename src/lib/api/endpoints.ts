@@ -55,6 +55,13 @@ export const endpoints = {
 
     createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
 
+    /** 주문서 쿠폰 섹션 — 보유 쿠폰 + 각 쿠폰 할인액(할인 전 상품합계 기준) + 스택 허용 여부 */
+    couponsAvailable: (tenant: string, subtotal: number) => {
+        const url = new URL(apiProxy(`${tenant}/v1/coupons/available`), "http://local");
+        url.searchParams.set("subtotal", String(Math.max(0, Math.trunc(subtotal))));
+        return url.pathname + url.search;
+    },
+
     /** Toss PG — shop-php toss_* .php 대응 (셀러 스토어프론트) */
     tossClientKey: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/client-key`),
     tossPrepare: (tenant: string) => apiProxy(`${tenant}/v1/payments/toss/prepare`),
