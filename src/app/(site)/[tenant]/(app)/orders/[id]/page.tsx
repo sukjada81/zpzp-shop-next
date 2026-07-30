@@ -744,7 +744,7 @@ export default function OrderDetailPage() {
                                 ) : null}
                             </div>
 
-                            {item.canCancelImmediate && item.effectiveStatus === 0 ? (
+                            {item.canCancelImmediate ? (
                                 <button
                                     type="button"
                                     onClick={() => handleItemCancel(item)}
