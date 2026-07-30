@@ -485,8 +485,21 @@ export default function OrderDetailPage() {
                     </button>
                 ) : null}
 
+                {order.canExchange ? (
+                    <div className={order.canConfirm ? "mt-3" : "mt-4"}>
+                        <button
+                            type="button"
+                            onClick={() => handleClaim("exchange")}
+                            disabled={!!claiming}
+                            className="flex h-12 w-full items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 text-[14px] font-extrabold text-sky-700 disabled:opacity-50"
+                        >
+                            {claiming === "exchange" ? "처리 중..." : "교환 요청"}
+                        </button>
+                    </div>
+                ) : null}
+
                 {order.canReturn ? (
-                    <div className="mt-3">
+                    <div className={order.canConfirm || order.canExchange ? "mt-3" : "mt-4"}>
                         <button
                             type="button"
                             onClick={() => handleClaim("return")}
