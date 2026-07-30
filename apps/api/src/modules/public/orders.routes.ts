@@ -14,6 +14,7 @@ import {
     resolveCustomerOrderDisplay,
 } from "../../lib/order/customer-order-display.js";
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
+import { callPhpBridge } from "../../lib/php-bridge.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -515,6 +516,45 @@ type ClaimGoodsRow = {
     status: number;
     status2: number;
 };
+
+/**
+ * 반품·교환 접수 시 구매확정 D+7 타이머를 정지시킨다.
+ *
+ * shop-next 는 mallRN_order_goods 를 Prisma 로 직접 갱신해 PHP 훅을 우회하므로,
+ * PHP 경로(php/order_status_post.php)가 하던 zpzpTimerReconcile('pause') 이 빠진다.
+ * 빠지면 반품 심사 중에도 D+7 시계가 계속 흘러, 반려·철회로 배송완료 상태가 돌아온
+ * 직후 confirm_sweep 이 즉시 자동확정해 버린다. 그래서 내부 브리지로 같은 일을 시킨다.
+ *
+ * 재개(resume)는 철회·반려 경로가 PHP 에만 있어 그쪽에서 이미 처리한다
+ * (order_status_post.php withdraw / managers/order/order_post.php reject).
+ * shop-next 에 복귀 경로가 생기면 여기 대칭으로 resume 호출을 추가해야 한다.
+ *
+ * 실패는 비치명 — 브리지가 죽어도 클레임 접수 자체는 성립해야 하므로 로그만 남긴다.
+ */
+async function pauseConfirmTimersForClaim(
+    fastify: FastifyInstance,
+    input: { orderNum: string; goodsUids: number[]; reason: "return" | "exchange" }
+) {
+    for (const orderGoodsUid of input.goodsUids) {
+        try {
+            const result = await callPhpBridge("/php/settlement_api.php", {
+                action: "timer_reconcile",
+                timer_action: "pause",
+                order_goods_uid: orderGoodsUid,
+                order_num: input.orderNum,
+                reason: input.reason,
+            });
+            if (!result.ok) {
+                fastify.log.warn(
+                    { orderNum: input.orderNum, orderGoodsUid, status: result.status },
+                    "CLAIM_TIMER_PAUSE_FAILED"
+                );
+            }
+        } catch (error) {
+            fastify.log.warn({ error, orderNum: input.orderNum, orderGoodsUid }, "CLAIM_TIMER_PAUSE_ERROR");
+        }
+    }
+}
 
 /** shop-php statusX1 — 본사 교환/반품/취소접수(order_change_list) 연동 */
 async function writeClaimStatusChangeRecords(
@@ -1858,6 +1898,13 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     reason: claimReason,
                     metaJson: JSON.stringify({ claimType }),
                 });
+            });
+
+            // 트랜잭션 성공 직후 타이머 정지. 비치명이라 await 하되 실패해도 응답은 성공.
+            await pauseConfirmTimersForClaim(fastify, {
+                orderNum,
+                goodsUids: claimGoodsRows.map((row: ClaimGoodsRow) => Number(row.uid)),
+                reason: claimType === "return" ? "return" : "exchange",
             });
 
             const statusLabel = buildGoodsStatusLabel(nextStatus, STATUS2_REQUEST);
