@@ -309,7 +309,10 @@ export default async function HomePage({
                 initialItems={allItems}
                 initialHasMore={allFirstPage.hasMore}
                 pageSize={ALL_PAGE_SIZE}
-                emptyText="등록된 상품이 없습니다."
+                /* 링커 스토어는 진열 전까지 상품이 0건이다(2026-07-30 확정 정책, products.routes.ts
+                   LINKER_EMPTY_SELECTION_POLICY 참고). "등록된 상품이 없습니다"만 두면 고장으로
+                   보이므로 준비 중이라는 안내로 바꾼다. */
+                emptyText="아직 준비 중인 스토어입니다. 판매자가 상품을 준비하고 있어요."
             />
 
             {/* DAD 잔재 정리 — 추천서비스/클로버 모집 블록 노출 중단(대체 콘텐츠 확정 전까지).

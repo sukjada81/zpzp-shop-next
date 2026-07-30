@@ -466,6 +466,24 @@ function isPickupReadyCate(cate?: bigint | null) {
 export async function publicProductRoutes(app: FastifyInstance) {
     app.addHook("preHandler", requireTenant());
 
+    /**
+     * 링커 스토어 노출 정책 — **2026-07-30 팀장·파트너사 확정: "진열 전에는 빈 스토어"**.
+     *
+     * 링커가 아직 아무 상품도 진열하지 않았으면(또는 진열분이 전부 판매종료·미노출이면)
+     * 본사 카탈로그를 대신 보여주지 않고 빈 목록을 돌려준다. 링커가 고르지 않은 상품이
+     * 자기 스토어에 떠 있는 상태를 만들지 않는 것이 확정된 기준이다.
+     *
+     * 이력: 하루 전(2026-07-29)에는 반대 정책이었다. 24a75f8
+     * "fix(store,seller): 진열 0건 링커 = 본사 전체 노출 폴백"이 getLinkerSelection 을
+     * null 반환으로 바꿔 링커 필터 자체를 걸지 않게 했었고, 이 커밋은 그 폴백의 철회다.
+     * 되돌릴 일이 생기면 손댈 곳은 getLinkerSelection 의 빈 선택 반환 두 지점뿐이다
+     * (`ids: []` → `null` 로 바꾸면 폴백 동작으로 복귀).
+     *
+     * 주의: 빈 선택은 상세 라우트에서도 같은 값을 쓰므로 목록/상세가 함께 막힌다.
+     * 사용자에게 흰 화면으로 보이지 않도록 프런트 빈 상태 안내 문구와 세트로 동작한다.
+     */
+    const LINKER_EMPTY_SELECTION_POLICY: "empty-store" | "hq-catalog" = "empty-store";
+
     async function getLinkerSelection(req: any) {
         const slug = String(req.cookies?.zpzp_ref ?? "").trim().toLowerCase();
         if (!slug) return null;
@@ -483,13 +501,13 @@ export async function publicProductRoutes(app: FastifyInstance) {
             orderBy: [{ display_order: "asc" }, { selected_at: "desc" }],
             select: { product_uid: true, display_order: true },
         });
-        // 정책: "링커가 진열하지 않으면 본사 전체 상품을 노출한다"(링커에게 안내해온 동작).
-        // null 을 돌려주면 호출부가 링커 필터 자체를 걸지 않아 본사 카탈로그가 그대로 보인다.
-        // 예전엔 여기서 ids:[] 를 돌려줬는데, 그러면 호출부가 `uid IN ()` 으로 본사 상품을
-        // 전부 걸러 스토어가 빈 목록이 됐다(링커 slug 는 카탈로그 tenant=hq 로 해석되고
-        // hq tenant 소유 상품은 0건이라 구조적으로 0건). 상세 라우트도 같은 반환값을 쓰므로
-        // 상세 진입 차단까지 함께 풀려 목록/상세 정합이 맞는다.
-        if (rows.length === 0) return null;
+        // 진열 0건. 정책이 "empty-store"면 빈 선택(ids: [])을 돌려 호출부가 `uid IN ()` 으로
+        // 걸러내게 하고, "hq-catalog"면 null 로 링커 필터 자체를 걷어 본사 카탈로그를 노출한다.
+        if (rows.length === 0) {
+            return LINKER_EMPTY_SELECTION_POLICY === "hq-catalog"
+                ? null
+                : { linkerUid: linker.uid, rows, ids: [] as number[] };
+        }
 
         const sellingProducts = await app.prisma.mallRN_goods.findMany({
             where: {
@@ -506,9 +524,8 @@ export async function publicProductRoutes(app: FastifyInstance) {
         });
         const sellingIds = new Set(sellingProducts.map((product) => product.uid));
         const visibleSelling = rows.filter((row) => sellingIds.has(row.product_uid));
-        // 진열은 했지만 전부 판매종료·미노출이 된 경우도 사용자 눈에는 "빈 스토어"로 같다.
-        // 위와 같은 이유로 전체 노출로 폴백한다.
-        if (visibleSelling.length === 0) return null;
+        // 진열은 했지만 전부 판매종료·미노출이 된 경우도 같은 정책을 따른다.
+        if (visibleSelling.length === 0 && LINKER_EMPTY_SELECTION_POLICY === "hq-catalog") return null;
         return {
             linkerUid: linker.uid,
             rows: visibleSelling,

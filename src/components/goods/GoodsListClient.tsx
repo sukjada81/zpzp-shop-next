@@ -216,11 +216,25 @@ export default function GoodsListClient(props: {
 
             <section className="mt-5 md:mt-7">
                 {filtered.length === 0 ? (
+                    /* 검색어·탭이 걸려 있으면 "조건에 안 맞음", 아무 조건도 없는데 0건이면
+                       스토어 자체가 아직 비어 있는 것(링커 진열 전)이라 안내를 구분한다.
+                       구분 없이 "상품이 없습니다"만 두면 진열 전 스토어가 고장처럼 보인다. */
                     <div className="rounded-2xl border border-[color:var(--border)] bg-white p-6 text-center shadow-sm">
-                        <div className="text-[15px] font-extrabold text-[color:var(--fg)]">상품이 없습니다</div>
-                        <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">
-                            조건에 맞는 상품이 없어요.
-                        </div>
+                        {q.trim() === "" && tab === "all" ? (
+                            <>
+                                <div className="text-[15px] font-extrabold text-[color:var(--fg)]">아직 준비 중인 스토어입니다</div>
+                                <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">
+                                    판매자가 상품을 준비하고 있어요. 조금만 기다려 주세요.
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="text-[15px] font-extrabold text-[color:var(--fg)]">상품이 없습니다</div>
+                                <div className="mt-2 text-xs font-semibold text-[color:var(--muted)]">
+                                    조건에 맞는 상품이 없어요.
+                                </div>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-5">
