@@ -26,6 +26,10 @@ type OrderDetailItem = {
     canCancelImmediate?: boolean;
     canCancelRequest?: boolean;
     canWithdrawCancelRequest?: boolean;
+    canConfirm?: boolean;
+    canReturn?: boolean;
+    canExchange?: boolean;
+    canWithdrawClaimRequest?: boolean;
     cancelMode?: "immediate" | "request" | "none";
     createdAt?: string | null;
 };
@@ -142,8 +146,6 @@ export default function OrderDetailPage() {
     const [order, setOrder] = useState<OrderDetailResponse["order"] | null>(null);
     const [canceling, setCanceling] = useState(false);
     const [itemActionId, setItemActionId] = useState("");
-    const [claiming, setClaiming] = useState<"return" | "exchange" | "">("");
-    const [confirming, setConfirming] = useState(false);
     const [isGuestMode, setIsGuestMode] = useState(false);
     const [guestPhone, setGuestPhone] = useState("");
 
@@ -394,16 +396,48 @@ export default function OrderDetailPage() {
         }
     }
 
-    async function handleConfirm() {
-        if (!order?.orderNum || confirming || isGuestMode) return;
+    async function handleItemClaimWithdraw(item: OrderDetailItem) {
+        if (!order?.orderNum || itemActionId) return;
 
-        const ok = window.confirm("구매를 확정할까요?\n확정 후에는 반품·교환이 제한될 수 있습니다.");
+        const ok = window.confirm("교환·반품 요청을 철회할까요?");
         if (!ok) return;
 
         try {
-            setConfirming(true);
+            setItemActionId(item.id);
+            const res = await fetch(
+                endpoints.withdrawClaimOrderItem(tenant, order.orderNum, item.id),
+                {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        Accept: "application/json",
+                        ...tenantHeader(tenant),
+                    },
+                }
+            );
+            const json = (await res.json().catch(() => null)) as ClaimOrderResponse | null;
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "요청 철회에 실패했습니다.");
+            }
+            alert(json.message || "철회 처리가 되었습니다.");
+            await reloadOrder();
+        } catch (e: any) {
+            alert(e?.message || "요청 철회 중 오류가 발생했습니다.");
+        } finally {
+            setItemActionId("");
+        }
+    }
 
-            const res = await fetch(endpoints.confirmOrder(tenant, order.orderNum), {
+    async function handleItemConfirm(item: OrderDetailItem) {
+        if (!order?.orderNum || itemActionId || isGuestMode) return;
+
+        const ok = window.confirm("이 상품을 구매 확정할까요?");
+        if (!ok) return;
+
+        try {
+            setItemActionId(item.id);
+            const res = await fetch(endpoints.confirmOrderItem(tenant, order.orderNum, item.id), {
                 method: "POST",
                 credentials: "include",
                 cache: "no-store",
@@ -412,34 +446,29 @@ export default function OrderDetailPage() {
                     ...tenantHeader(tenant),
                 },
             });
-
             const json = (await res.json().catch(() => null)) as ConfirmOrderResponse | null;
-
             if (!res.ok || !json?.ok) {
                 throw new Error(json?.message || "구매확정에 실패했습니다.");
             }
-
             alert(json.message || "구매확정이 완료되었습니다.");
-            router.refresh();
-            window.location.reload();
+            await reloadOrder();
         } catch (e: any) {
             alert(e?.message || "구매확정 처리 중 오류가 발생했습니다.");
         } finally {
-            setConfirming(false);
+            setItemActionId("");
         }
     }
 
-    async function handleClaim(type: "return" | "exchange") {
-        if (!order?.orderNum || claiming) return;
+    async function handleItemClaim(item: OrderDetailItem, type: "return" | "exchange") {
+        if (!order?.orderNum || itemActionId) return;
 
         const label = type === "return" ? "반품" : "교환";
-        const ok = window.confirm(`${label} 요청을 접수할까요?`);
+        const ok = window.confirm(`이 상품 ${label} 요청을 접수할까요?`);
         if (!ok) return;
 
         try {
-            setClaiming(type);
-
-            const res = await fetch(endpoints.claimOrder(tenant, order.orderNum), {
+            setItemActionId(item.id);
+            const res = await fetch(endpoints.claimOrderItem(tenant, order.orderNum, item.id), {
                 method: "POST",
                 credentials: "include",
                 cache: "no-store",
@@ -450,20 +479,16 @@ export default function OrderDetailPage() {
                 },
                 body: JSON.stringify({ type }),
             });
-
             const json = (await res.json().catch(() => null)) as ClaimOrderResponse | null;
-
             if (!res.ok || !json?.ok) {
                 throw new Error(json?.message || `${label} 요청에 실패했습니다.`);
             }
-
             alert(json.message || `${label} 요청이 접수되었습니다.`);
-            router.refresh();
-            window.location.reload();
+            await reloadOrder();
         } catch (e: any) {
             alert(e?.message || `${label} 요청 중 오류가 발생했습니다.`);
         } finally {
-            setClaiming("");
+            setItemActionId("");
         }
     }
 
@@ -613,43 +638,6 @@ export default function OrderDetailPage() {
                               : "주문 취소"}
                     </button>
                 ) : null}
-
-                {order.canConfirm ? (
-                    <button
-                        type="button"
-                        onClick={handleConfirm}
-                        disabled={confirming}
-                        className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-600 text-[14px] font-extrabold text-white disabled:opacity-50"
-                    >
-                        {confirming ? "처리 중..." : "구매확정"}
-                    </button>
-                ) : null}
-
-                {order.canExchange ? (
-                    <div className={order.canConfirm ? "mt-3" : "mt-4"}>
-                        <button
-                            type="button"
-                            onClick={() => handleClaim("exchange")}
-                            disabled={!!claiming}
-                            className="flex h-12 w-full items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 text-[14px] font-extrabold text-sky-700 disabled:opacity-50"
-                        >
-                            {claiming === "exchange" ? "처리 중..." : "교환 요청"}
-                        </button>
-                    </div>
-                ) : null}
-
-                {order.canReturn ? (
-                    <div className={order.canConfirm || order.canExchange ? "mt-3" : "mt-4"}>
-                        <button
-                            type="button"
-                            onClick={() => handleClaim("return")}
-                            disabled={!!claiming}
-                            className="flex h-12 w-full items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 text-[14px] font-extrabold text-violet-700 disabled:opacity-50"
-                        >
-                            {claiming === "return" ? "처리 중..." : "반품 요청"}
-                        </button>
-                    </div>
-                ) : null}
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -796,6 +784,50 @@ export default function OrderDetailPage() {
                                     className="mt-3 flex h-10 w-full items-center justify-center rounded-xl border border-slate-300 bg-slate-50 text-[13px] font-extrabold text-slate-700 disabled:opacity-50"
                                 >
                                     {itemBusy ? "처리 중..." : "취소요청 철회"}
+                                </button>
+                            ) : null}
+
+                            {item.canConfirm ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleItemConfirm(item)}
+                                    disabled={itemBusy}
+                                    className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-emerald-600 text-[13px] font-extrabold text-white disabled:opacity-50"
+                                >
+                                    {itemBusy ? "처리 중..." : "구매확정"}
+                                </button>
+                            ) : null}
+
+                            {item.canExchange ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleItemClaim(item, "exchange")}
+                                    disabled={itemBusy}
+                                    className="mt-2 flex h-10 w-full items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-[13px] font-extrabold text-sky-700 disabled:opacity-50"
+                                >
+                                    {itemBusy ? "처리 중..." : "교환 요청"}
+                                </button>
+                            ) : null}
+
+                            {item.canReturn ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleItemClaim(item, "return")}
+                                    disabled={itemBusy}
+                                    className="mt-2 flex h-10 w-full items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-[13px] font-extrabold text-violet-700 disabled:opacity-50"
+                                >
+                                    {itemBusy ? "처리 중..." : "반품 요청"}
+                                </button>
+                            ) : null}
+
+                            {item.canWithdrawClaimRequest ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleItemClaimWithdraw(item)}
+                                    disabled={itemBusy}
+                                    className="mt-2 flex h-10 w-full items-center justify-center rounded-xl border border-slate-300 bg-slate-50 text-[13px] font-extrabold text-slate-700 disabled:opacity-50"
+                                >
+                                    {itemBusy ? "처리 중..." : "교환·반품 요청 철회"}
                                 </button>
                             ) : null}
                         </div>

@@ -105,6 +105,21 @@ export const endpoints = {
             `${tenant}/v1/orders/${encodeURIComponent(orderNum)}/items/${encodeURIComponent(String(orderGoodsUid))}/cancel-request/withdraw`
         ),
 
+    confirmOrderItem: (tenant: string, orderNum: string, orderGoodsUid: string | number) =>
+        apiProxy(
+            `${tenant}/v1/orders/${encodeURIComponent(orderNum)}/items/${encodeURIComponent(String(orderGoodsUid))}/confirm`
+        ),
+
+    claimOrderItem: (tenant: string, orderNum: string, orderGoodsUid: string | number) =>
+        apiProxy(
+            `${tenant}/v1/orders/${encodeURIComponent(orderNum)}/items/${encodeURIComponent(String(orderGoodsUid))}/claim`
+        ),
+
+    withdrawClaimOrderItem: (tenant: string, orderNum: string, orderGoodsUid: string | number) =>
+        apiProxy(
+            `${tenant}/v1/orders/${encodeURIComponent(orderNum)}/items/${encodeURIComponent(String(orderGoodsUid))}/claim/withdraw`
+        ),
+
     claimOrder: (tenant: string, orderNum: string) =>
         apiProxy(`${tenant}/v1/orders/${encodeURIComponent(orderNum)}/claim`),
 

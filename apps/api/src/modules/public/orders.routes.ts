@@ -753,6 +753,10 @@ async function loadOrderGoods(
             canCancelImmediate: itemActions?.canCancelImmediate ?? false,
             canCancelRequest: itemActions?.canCancelRequest ?? false,
             canWithdrawCancelRequest: itemActions?.canWithdrawCancelRequest ?? false,
+            canConfirm: itemActions?.canConfirm ?? false,
+            canReturn: itemActions?.canReturn ?? false,
+            canExchange: itemActions?.canExchange ?? false,
+            canWithdrawClaimRequest: itemActions?.canWithdrawClaimRequest ?? false,
             cancelMode: itemActions?.cancelMode ?? "none",
             createdAt: toIsoDate(row.signdate),
         };
@@ -2385,4 +2389,316 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             }
         }
     );
+
+    fastify.post<{
+        Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
+    }>(
+        "/v1/orders/:orderNum/items/:orderGoodsUid/confirm",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
+
+                if (!tenantId || !orderNum || orderGoodsUid <= 0) {
+                    return reply.code(400).send({ ok: false, message: "요청 정보가 올바르지 않습니다." });
+                }
+                if (!memberUid) {
+                    return reply.code(401).send({ ok: false, message: "로그인이 필요합니다." });
+                }
+
+                const ctx = await findOwnedOrderItemActions(
+                    prisma,
+                    tenantId,
+                    memberUid,
+                    orderNum,
+                    orderGoodsUid
+                );
+                if (!ctx) {
+                    return reply.code(404).send({ ok: false, message: "주문상품을 찾을 수 없습니다." });
+                }
+                if (!ctx.target.canConfirm) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "배송완료 상태에서만 구매확정할 수 있습니다.",
+                    });
+                }
+
+                const bridge = await callPhpBridge<{
+                    confirmed?: number;
+                    status?: number;
+                    status2?: number;
+                    statusLabel?: string;
+                }>("/php/order_confirm_api.php", {
+                    action: "confirm_order",
+                    member_uid: Number(memberUid),
+                    order_num: orderNum,
+                    order_goods_uid: orderGoodsUid,
+                });
+
+                if (!bridge.ok || !bridge.data?.confirmed) {
+                    return reply.code(bridge.transportFailed ? 502 : 400).send({
+                        ok: false,
+                        message:
+                            bridge.message ||
+                            "구매확정 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+                    });
+                }
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    orderGoodsUid,
+                    status: toInt(bridge.data.status, 5),
+                    status2: toInt(bridge.data.status2, 0),
+                    statusLabel: toSafeString(bridge.data.statusLabel, "구매확정"),
+                    message: bridge.message || "구매확정이 완료되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "구매확정 처리 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_ITEM_CONFIRM_ERROR");
+                return reply.code(500).send({ ok: false, message: detail });
+            }
+        }
+    );
+
+    fastify.post<{
+        Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
+        Body: { type?: "return" | "exchange"; reason?: string };
+    }>(
+        "/v1/orders/:orderNum/items/:orderGoodsUid/claim",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
+                const claimType = toSafeString(request.body?.type, "");
+                const reason = toSafeString(request.body?.reason, "");
+                const now = toUnixNow();
+
+                if (!tenantId || !orderNum || orderGoodsUid <= 0) {
+                    return reply.code(400).send({ ok: false, message: "요청 정보가 올바르지 않습니다." });
+                }
+                if (!memberUid) {
+                    return reply.code(401).send({ ok: false, message: "로그인이 필요합니다." });
+                }
+                if (claimType !== "return" && claimType !== "exchange") {
+                    return reply.code(400).send({ ok: false, message: "요청 유형이 올바르지 않습니다." });
+                }
+
+                const ctx = await findOwnedOrderItemActions(
+                    prisma,
+                    tenantId,
+                    memberUid,
+                    orderNum,
+                    orderGoodsUid
+                );
+                if (!ctx) {
+                    return reply.code(404).send({ ok: false, message: "주문상품을 찾을 수 없습니다." });
+                }
+
+                const allowed =
+                    claimType === "return" ? ctx.target.canReturn : ctx.target.canExchange;
+                if (!allowed) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "현재 상태에서는 요청할 수 없습니다.",
+                    });
+                }
+
+                const nextStatus = claimType === "return" ? STATUS_RETURN : STATUS_EXCHANGE;
+                const memberRow = await prisma.mallRN_member.findFirst({
+                    where: { uid: Number(memberUid) },
+                    select: { name: true, id: true },
+                });
+                const actorNickname = toSafeString(
+                    memberRow?.name || ctx.rawOrder.name,
+                    "회원"
+                );
+                const memberId = toSafeString(memberRow?.id, "member");
+                const claimReason = reason || (claimType === "return" ? "반품 요청" : "교환 요청");
+
+                const goodsRow = await prisma.mallRN_order_goods.findFirst({
+                    where: {
+                        tenant_id: tenantId,
+                        platform_type: PLATFORM_TYPE,
+                        order_num: orderNum,
+                        uid: orderGoodsUid,
+                        reals: 1,
+                    },
+                    select: { uid: true, vendor: true, status: true, status2: true },
+                });
+                if (!goodsRow) {
+                    return reply.code(404).send({ ok: false, message: "주문상품을 찾을 수 없습니다." });
+                }
+
+                await prisma.$transaction(async (tx: any) => {
+                    await tx.mallRN_order_info.updateMany({
+                        where: {
+                            tenant_id: tenantId,
+                            platform_type: PLATFORM_TYPE,
+                            order_num: orderNum,
+                        },
+                        data: { status_date: now },
+                    });
+
+                    await tx.mallRN_order_goods.updateMany({
+                        where: {
+                            tenant_id: tenantId,
+                            platform_type: PLATFORM_TYPE,
+                            order_num: orderNum,
+                            uid: orderGoodsUid,
+                        },
+                        data: {
+                            status: nextStatus,
+                            status2: STATUS2_REQUEST,
+                            status_date: now,
+                        },
+                    });
+
+                    await writeClaimStatusChangeRecords(
+                        tx,
+                        [
+                            {
+                                uid: Number(goodsRow.uid),
+                                vendor: toSafeString(goodsRow.vendor, ""),
+                                status: toInt(goodsRow.status, 0),
+                                status2: toInt(goodsRow.status2, 0),
+                            },
+                        ],
+                        {
+                            orderNum,
+                            memberId,
+                            memberName: actorNickname,
+                            claimStatus: nextStatus,
+                            reason: claimReason,
+                            now,
+                        }
+                    );
+                });
+
+                await pauseConfirmTimersForClaim(fastify, {
+                    orderNum,
+                    goodsUids: [orderGoodsUid],
+                    reason: claimType === "return" ? "return" : "exchange",
+                });
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    orderGoodsUid,
+                    status: nextStatus,
+                    status2: STATUS2_REQUEST,
+                    statusLabel: buildGoodsStatusLabel(nextStatus, STATUS2_REQUEST),
+                    message:
+                        claimType === "return"
+                            ? "반품 요청이 접수되었습니다."
+                            : "교환 요청이 접수되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "교환·반품 요청 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_ITEM_CLAIM_ERROR");
+                return reply.code(500).send({ ok: false, message: detail });
+            }
+        }
+    );
+
+    fastify.post<{
+        Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
+    }>(
+        "/v1/orders/:orderNum/items/:orderGoodsUid/claim/withdraw",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
+
+                if (!tenantId || !orderNum || orderGoodsUid <= 0) {
+                    return reply.code(400).send({ ok: false, message: "요청 정보가 올바르지 않습니다." });
+                }
+                if (!memberUid) {
+                    return reply.code(401).send({ ok: false, message: "로그인이 필요합니다." });
+                }
+
+                const ctx = await findOwnedOrderItemActions(
+                    prisma,
+                    tenantId,
+                    memberUid,
+                    orderNum,
+                    orderGoodsUid
+                );
+                if (!ctx?.target.canWithdrawClaimRequest) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "철회할 교환·반품 요청이 없습니다.",
+                    });
+                }
+
+                const bridge = await callPhpBridge<{
+                    status?: number;
+                    status2?: number;
+                    statusLabel?: string;
+                }>("/php/order_cancel_api.php", {
+                    action: "withdraw_claim_request",
+                    member_uid: Number(memberUid),
+                    order_num: orderNum,
+                    order_goods_uid: orderGoodsUid,
+                });
+
+                if (!bridge.ok) {
+                    return reply.code(bridge.transportFailed ? 502 : 400).send({
+                        ok: false,
+                        message:
+                            bridge.message ||
+                            "요청 철회에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+                    });
+                }
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    orderGoodsUid,
+                    status: toInt(bridge.data?.status, 4),
+                    status2: toInt(bridge.data?.status2, 0),
+                    statusLabel: toSafeString(bridge.data?.statusLabel, "철회"),
+                    message: bridge.message || "철회 처리가 되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "요청 철회 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_ITEM_CLAIM_WITHDRAW_ERROR");
+                return reply.code(500).send({ ok: false, message: detail });
+            }
+        }
+    );
 };
+
+async function findOwnedOrderItemActions(
+    prisma: FastifyInstance["prisma"],
+    tenantId: bigint,
+    memberUid: bigint,
+    orderNum: string,
+    orderGoodsUid: number
+) {
+    const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+    if (!rawOrder) return null;
+
+    const items = await loadOrderGoods(prisma, tenantId, orderNum, {
+        payType: toSafeString(rawOrder.pay_type, "B"),
+        payStatus: toSafeString(rawOrder.pay_status, "A"),
+        payInfo: toSafeString(rawOrder.pay_info, ""),
+        statusDate: toInt(rawOrder.status_date, 0),
+    });
+    const target = items.find((item) => toInt(item.id, 0) === orderGoodsUid);
+    if (!target) return null;
+
+    return { rawOrder, target, items };
+}

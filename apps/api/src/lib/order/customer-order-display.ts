@@ -225,11 +225,43 @@ export type CustomerOrderItemActions = {
     canCancelImmediate: boolean;
     canCancelRequest: boolean;
     canWithdrawCancelRequest: boolean;
+    canConfirm: boolean;
+    canReturn: boolean;
+    canExchange: boolean;
+    canWithdrawClaimRequest: boolean;
     cancelMode: "immediate" | "request" | "none";
     effectiveStatus: number;
     statusLabel: string;
     displayStatus: string;
 };
+
+function buildCustomerOrderItemActions(input: {
+    status: number;
+    status2: number;
+    statusLabel: string;
+    cancelImmediate?: boolean;
+    cancelRequest?: boolean;
+    withdrawCancel?: boolean;
+    confirm?: boolean;
+    returnClaim?: boolean;
+    exchangeClaim?: boolean;
+    withdrawClaim?: boolean;
+    cancelMode?: CustomerOrderItemActions["cancelMode"];
+}): CustomerOrderItemActions {
+    return {
+        canCancelImmediate: Boolean(input.cancelImmediate),
+        canCancelRequest: Boolean(input.cancelRequest),
+        canWithdrawCancelRequest: Boolean(input.withdrawCancel),
+        canConfirm: Boolean(input.confirm),
+        canReturn: Boolean(input.returnClaim),
+        canExchange: Boolean(input.exchangeClaim),
+        canWithdrawClaimRequest: Boolean(input.withdrawClaim),
+        cancelMode: input.cancelMode ?? "none",
+        effectiveStatus: input.status,
+        statusLabel: input.statusLabel,
+        displayStatus: input.statusLabel,
+    };
+}
 
 /** shop-php order_list.php status_function — 상품 1건 기준 */
 export function resolveCustomerOrderItemActions(
@@ -248,39 +280,31 @@ export function resolveCustomerOrderItemActions(
     const statusLabel = buildGoodsStatusLabel(status, status2);
 
     if (status === 9) {
-        return {
-            canCancelImmediate: false,
-            canCancelRequest: false,
-            canWithdrawCancelRequest: false,
-            cancelMode: "none",
-            effectiveStatus: status,
+        return buildCustomerOrderItemActions({
+            status,
+            status2,
             statusLabel,
-            displayStatus: statusLabel,
-        };
+            withdrawCancel: status2 === 1,
+        });
     }
 
-    if (status2 === 1 && (status === 7 || status === 8 || status === 9)) {
-        return {
-            canCancelImmediate: false,
-            canCancelRequest: false,
-            canWithdrawCancelRequest: true,
-            cancelMode: "none",
-            effectiveStatus: status,
+    if (status2 === 1 && (status === 7 || status === 8)) {
+        return buildCustomerOrderItemActions({
+            status,
+            status2,
             statusLabel,
-            displayStatus: statusLabel,
-        };
+            withdrawClaim: true,
+        });
     }
 
     if (status === 0) {
-        return {
-            canCancelImmediate: true,
-            canCancelRequest: false,
-            canWithdrawCancelRequest: false,
-            cancelMode: "immediate",
-            effectiveStatus: status,
+        return buildCustomerOrderItemActions({
+            status,
+            status2,
             statusLabel,
-            displayStatus: statusLabel,
-        };
+            cancelImmediate: true,
+            cancelMode: "immediate",
+        });
     }
 
     const isToss =
@@ -302,48 +326,46 @@ export function resolveCustomerOrderItemActions(
 
     if (status === 1) {
         if (prepaidImmediatePath && orderItemCount === 1) {
-            return {
-                canCancelImmediate: true,
-                canCancelRequest: false,
-                canWithdrawCancelRequest: false,
-                cancelMode: "immediate",
-                effectiveStatus: status,
+            return buildCustomerOrderItemActions({
+                status,
+                status2,
                 statusLabel,
-                displayStatus: statusLabel,
-            };
+                cancelImmediate: true,
+                cancelMode: "immediate",
+            });
         }
-        return {
-            canCancelImmediate: false,
-            canCancelRequest: true,
-            canWithdrawCancelRequest: false,
-            cancelMode: "request",
-            effectiveStatus: status,
+        return buildCustomerOrderItemActions({
+            status,
+            status2,
             statusLabel,
-            displayStatus: statusLabel,
-        };
+            cancelRequest: true,
+            cancelMode: "request",
+        });
     }
 
     if (status === 2) {
-        return {
-            canCancelImmediate: false,
-            canCancelRequest: true,
-            canWithdrawCancelRequest: false,
-            cancelMode: "request",
-            effectiveStatus: status,
+        return buildCustomerOrderItemActions({
+            status,
+            status2,
             statusLabel,
-            displayStatus: statusLabel,
-        };
+            cancelRequest: true,
+            cancelMode: "request",
+        });
     }
 
-    return {
-        canCancelImmediate: false,
-        canCancelRequest: false,
-        canWithdrawCancelRequest: false,
-        cancelMode: "none",
-        effectiveStatus: status,
-        statusLabel,
-        displayStatus: statusLabel,
-    };
+    if (status === 3 || status === 4) {
+        const canClaim = canCustomerReturnOrExchange(status, status2);
+        return buildCustomerOrderItemActions({
+            status,
+            status2,
+            statusLabel,
+            confirm: canCustomerConfirmPurchase(status, status2),
+            returnClaim: canClaim,
+            exchangeClaim: canClaim,
+        });
+    }
+
+    return buildCustomerOrderItemActions({ status, status2, statusLabel });
 }
 
 export type OrderGoodsAggregate = {
