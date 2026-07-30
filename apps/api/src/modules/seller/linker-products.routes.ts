@@ -8,7 +8,12 @@ import { getLinker, memberUidFromSession } from "./linker.js";
 const HQ_TENANT_ID = BigInt(0);
 const DEFAULT_SLOT_LIMIT = 20;
 const MAX_FILTERED_ALL_RESULTS = 10_000;
-const GOODS_STATUS_SELLING = "published"; // product active
+// 레거시 mallRN_goods 의 "판매중"은 표기가 둘이다 — PHP 관리자 등록 경로는 status='active',
+// 일부 데이터만 'published'. 라이브 본사 상품 5건은 전부 'active' 라서 'published' 단일 비교로는
+// 콘솔 "등록 가능한 상품"이 0건이 된다. 공개 목록(products.routes.ts)은 이미
+// status: { in: ["published","active"] } 로 정합을 맞춰 놓았으므로 콘솔도 같은 기준을 쓴다.
+const GOODS_SELLING_STATUSES = ["published", "active"] as const;
+const isSellingStatus = (status: string) => (GOODS_SELLING_STATUSES as readonly string[]).includes(status);
 
 // 링커 판별(getLinker)·세션 uid 추출은 ./linker.js 공용 — 정산 라우트와 규칙을 하나로 유지한다.
 const memberUid = memberUidFromSession;
@@ -20,7 +25,7 @@ function isSelling(row: {
     sale_end_at: Date | null;
 }) {
     return (
-        row.status === GOODS_STATUS_SELLING &&
+        isSellingStatus(row.status) &&
         row.sale_use === 1 &&
         row.deleted_at == null &&
         (!row.sale_end_at || row.sale_end_at.getTime() >= Date.now())
@@ -39,7 +44,7 @@ function availableGoodsWhere(selectedIds: number[], keywordRaw: string): Prisma.
         : [];
     return {
         tenant_id: HQ_TENANT_ID,
-        status: GOODS_STATUS_SELLING,
+        status: { in: [...GOODS_SELLING_STATUSES] },
         sale_use: 1,
         auth_ck: "Y",
         deleted_at: null,

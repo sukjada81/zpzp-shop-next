@@ -31,7 +31,8 @@ function isSelling(row: {
     sale_end_at: Date | null;
 }) {
     return (
-        row.status === "published"
+        // 셀러 콘솔(seller/linker-products.routes.ts)과 같은 기준 — 라이브 상품은 status='active'.
+        (row.status === "published" || row.status === "active")
         && row.sale_use === 1
         && row.deleted_at == null
         && (!row.sale_end_at || row.sale_end_at.getTime() >= Date.now())
