@@ -97,7 +97,12 @@ function goodsImageUrl(raw: string | null | undefined): string {
         return `${base}/${path}`;
     }
 
-    return `${base}/image/goods/img${path}`;
+    // PHP 관례상 image1/2/3 컬럼값은 "/1/0/5.jpg" 처럼 **선행 슬래시를 포함**한 채
+    // "image/goods/img" 뒤에 그대로 이어붙는다(lib/lib.Shop.php: "image/goods/img{$row['image1']}").
+    // 위에서 선행 슬래시를 벗겨냈으므로 여기서 되돌려야 image/goods/img/1/0/5.jpg 가 된다.
+    // 빠지면 image/goods/img1/0/5.jpg 라는 없는 경로가 되는데, PHP 가 404 대신 HTML 200 을
+    // 돌려주기 때문에 <img> 가 조용히 깨져 alt 만 남는다(2026-07-31 카드 이미지 깨짐).
+    return `${base}/image/goods/img/${path}`;
 }
 
 function goodsOtherImageUrl(uid: bigint | number | string, raw: string | null | undefined): string {
@@ -463,6 +468,55 @@ function isPickupReadyCate(cate?: bigint | null) {
     return String(cate ?? "") === "100001";
 }
 
+/** 서브도메인이지만 링커 스토어가 아닌 것들 — src/middleware.ts RESERVED_SUBDOMAINS 와 같은 목록 */
+const RESERVED_STORE_SUBDOMAINS = new Set([
+    "www",
+    "admin",
+    "auth",
+    "api",
+    "select-tenant",
+    "seller",
+    "hq",
+]);
+
+function storeSlugFromHost(host: string | undefined): string {
+    const hostOnly = String(host ?? "").split(",")[0].split(":")[0].trim().toLowerCase();
+    if (!hostOnly || hostOnly === "localhost") return "";
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return "";
+
+    const parts = hostOnly.split(".");
+    if (parts.length < 3) return "";
+
+    const sub = parts[0];
+    if (!sub || RESERVED_STORE_SUBDOMAINS.has(sub)) return "";
+    return sub;
+}
+
+/**
+ * 진열의 기준이 되는 링커 slug — **지금 보고 있는 스토어**가 무엇인지.
+ *
+ * ★ zpzp_ref 쿠키를 진열 기준으로 쓰면 안 된다. 그 쿠키는 "귀속(first-touch, 90일, 덮어쓰기 없음)"
+ * 값이라, A 링커 링크로 먼저 들어온 방문자는 이후 B 링커 스토어를 열어도 값이 A(또는 이미 없어진
+ * 예전 테스트 slug)로 남는다. 그 값으로 진열을 걸면 B 스토어에서 B 진열이 안 잡히고
+ * 링커 필터 자체가 풀려 **본사 카탈로그 전체**가 뜬다(2026-07-31 sue-linker 홈 회귀).
+ * 진열 = 현재 호스트, 귀속 = zpzp_ref 로 분리한다. 귀속 로직(zpzp_referral_attribution)은 무관.
+ *
+ * 우선순위:
+ *  1) x-zpzp-store-slug — 서버사이드 렌더가 명시. SSR fetch 는 내부 origin(127.0.0.1)으로 가서
+ *     호스트가 지워지므로 프런트 ssrHeaders() 가 원 호스트에서 뽑아 실어 보낸다.
+ *  2) x-forwarded-host 서브도메인 — 브라우저 직접 호출(/api/proxy)은 원 호스트가 그대로 온다.
+ *  3) zpzp_ref — 1·2 로 판별 불가일 때만 쓰는 폴백(구버전 프런트 호환).
+ */
+function getStoreSlug(req: any): string {
+    const explicit = String(req.headers?.["x-zpzp-store-slug"] ?? "").trim().toLowerCase();
+    if (explicit) return RESERVED_STORE_SUBDOMAINS.has(explicit) ? "" : explicit;
+
+    const fromHost = storeSlugFromHost(req.headers?.["x-forwarded-host"] ?? req.headers?.host);
+    if (fromHost) return fromHost;
+
+    return String(req.cookies?.zpzp_ref ?? "").trim().toLowerCase();
+}
+
 export async function publicProductRoutes(app: FastifyInstance) {
     app.addHook("preHandler", requireTenant());
 
@@ -485,7 +539,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
     const LINKER_EMPTY_SELECTION_POLICY: "empty-store" | "hq-catalog" = "empty-store";
 
     async function getLinkerSelection(req: any) {
-        const slug = String(req.cookies?.zpzp_ref ?? "").trim().toLowerCase();
+        const slug = getStoreSlug(req);
         if (!slug) return null;
         const linker = await app.prisma.zpzp_linker.findFirst({
             where: { shop_slug: slug, status: "active" },

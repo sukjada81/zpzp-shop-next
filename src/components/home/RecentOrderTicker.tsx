@@ -22,6 +22,24 @@ const FAKE_NAMES = [
 
 const TARGET_COUNT = 30;
 
+/**
+ * 실시간 주문 티커 — 2026-07-31 오픈 전 **비활성 확정**.
+ *
+ * 이 티커는 실주문이 TARGET_COUNT(30)에 못 미치면 부족분을 FAKE_NAMES 와 랜덤 시간/수량으로
+ * 채워서 섞는다. 즉 주문이 거의 없는 지금은 사실상 전부 가짜 주문이 흐른다.
+ * 없는 주문을 있는 것처럼 보이는 연출이라 전자상거래 표시·광고 관점에서 소비자 기만 소지가
+ * 있어 오픈 전에 내린다.
+ *
+ * 되살릴 때 — 주문이 쌓인 뒤 "실주문만 노출"로 갈지는 오픈 후 판단한다.
+ * 그때 이 플래그를 true 로 되돌리고, 아래 useTickerItems 의 generateFakeItems 채움을
+ * 함께 걷어내야 한다(플래그만 켜면 가짜 연출이 그대로 되살아난다).
+ * 컴포넌트 본문과 생성 로직은 재개 대비 그대로 보존한다.
+ *
+ * 이 플래그 하나로 노출 지점 3곳이 같이 꺼진다 — 홈 상단 티커, 오늘의공구 카드별 티커
+ * (OngoingGroupBuySection ItemNoticeTicker), 상품 상세 티커(GoodsDetailClient).
+ */
+const TICKER_ENABLED = false;
+
 export function formatAgo(minutesAgo: number) {
     if (minutesAgo <= 0) return "방금 전";
     if (minutesAgo < 60) return `${minutesAgo}분 전`;
@@ -60,6 +78,10 @@ export function useTickerItems(
     const [index, setIndex] = useState(0);
 
     useEffect(() => {
+        // 비활성 시 displayItems 를 비워 둔다 → 아래 return 이 null 이 되고 호출부 3곳이 모두
+        // 아무것도 그리지 않는다(각 호출부가 null 을 받으면 return null 하도록 이미 돼 있다).
+        if (!TICKER_ENABLED) return;
+
         const realItems = (items ?? []).filter(Boolean).map((item) => ({
             ...item,
             minutesAgo: Math.min(Math.max(item.minutesAgo, 1), 70),

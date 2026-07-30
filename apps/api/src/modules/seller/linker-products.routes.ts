@@ -61,7 +61,9 @@ function imageUrl(raw: string | null) {
     if (!value) return "";
     if (/^https?:\/\//i.test(value)) return value;
     const base = (process.env.GOODS_IMAGE_BASE_URL || "https://zpzp.kr").replace(/\/+$/, "");
-    return `${base}/image/goods/img${value.replace(/^\/+/, "")}`;
+    // 선행 슬래시는 PHP 경로 관례의 일부다 — 벗겨내면 img1/0/5.jpg 라는 없는 경로가 된다.
+    // 상세 주석은 public/products.routes.ts goodsImageUrl 참고.
+    return `${base}/image/goods/img/${value.replace(/^\/+/, "")}`;
 }
 
 function requestMeta(req: FastifyRequest) {

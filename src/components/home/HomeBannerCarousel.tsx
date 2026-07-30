@@ -4,9 +4,20 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-const banners = [
-    { id: 1, image: "/banners/banner_0.jpg" },
-    { id: 2, image: "/banners/banner_1.jpg" },
+/**
+ * 홈 상단 배너.
+ *
+ * 2026-07-31 — DAD 브랜드 배너 2종을 내렸다. public/banners/banner_0.jpg 는
+ * "디스카운트 올데이 / 365일 멈추지 않는 초특가 공동구매", banner_1.jpg 는
+ * "디스카운트 올데이 / All Day Sale, All Day Happy" 로 **문구가 이미지 안에 박혀 있어서**
+ * 2026-07-30 홈 프로모션 카피 정리(텍스트 검색 기반)에서 걸러지지 않았다.
+ *
+ * 줍줍 배너 이미지가 나오면 아래 배열에 넣기만 하면 캐러셀이 그대로 되살아난다.
+ * (파일은 지우지 않고 남겨둔다 — 교체 시안 비교용)
+ */
+const banners: { id: number; image: string }[] = [
+    // { id: 1, image: "/banners/banner_0.jpg" },  // DAD — 교체 전까지 비활성
+    // { id: 2, image: "/banners/banner_1.jpg" },  // DAD — 교체 전까지 비활성
 ];
 
 const SWIPE_THRESHOLD = 50;
@@ -20,6 +31,7 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
 
     // 드래그 중에는 자동 슬라이드 일시 정지
     useEffect(() => {
+        if (banners.length === 0) return;
         const interval = setInterval(() => {
             if (!isDragging.current) {
                 setCurrent((prev) => (prev + 1) % banners.length);
@@ -61,6 +73,9 @@ export default function HomeBannerCarousel({ tenant }: { tenant: string }) {
     const offsetPercent =
         containerWidth > 0 ? (dragOffset / containerWidth) * 100 : 0;
     const translateX = -(current * 100) + offsetPercent;
+
+    // 노출할 배너가 없으면 빈 상자 대신 섹션 자체를 그리지 않는다(위 주석 참고).
+    if (banners.length === 0) return null;
 
     return (
         <div className="mb-2">
