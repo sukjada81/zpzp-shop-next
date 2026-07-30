@@ -20,6 +20,13 @@ type OrderDetailItem = {
     optionName?: string;
     status: number;
     status2: number;
+    effectiveStatus?: number;
+    statusLabel?: string;
+    displayStatus?: string;
+    canCancelImmediate?: boolean;
+    canCancelRequest?: boolean;
+    canWithdrawCancelRequest?: boolean;
+    cancelMode?: "immediate" | "request" | "none";
     createdAt?: string | null;
 };
 
@@ -60,6 +67,10 @@ type OrderDetailResponse = {
         canReturn?: boolean;
         canExchange?: boolean;
         canConfirm?: boolean;
+        isPartiallyCanceled?: boolean;
+        activeItemCount?: number;
+        canceledItemCount?: number;
+        totalItemCount?: number;
         createdAt?: string | null;
         statusDate?: string | null;
         items: OrderDetailItem[];
@@ -130,6 +141,7 @@ export default function OrderDetailPage() {
     const [error, setError] = useState("");
     const [order, setOrder] = useState<OrderDetailResponse["order"] | null>(null);
     const [canceling, setCanceling] = useState(false);
+    const [itemActionId, setItemActionId] = useState("");
     const [claiming, setClaiming] = useState<"return" | "exchange" | "">("");
     const [confirming, setConfirming] = useState(false);
     const [isGuestMode, setIsGuestMode] = useState(false);
@@ -207,6 +219,130 @@ export default function OrderDetailPage() {
             cancelled = true;
         };
     }, [tenant, id]);
+
+    async function reloadOrder() {
+        const res = await fetch(endpoints.myOrderDetail(tenant, id), {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+            headers: {
+                Accept: "application/json",
+                ...tenantHeader(tenant),
+            },
+        });
+        const json = (await res.json().catch(() => null)) as OrderDetailResponse | null;
+        if (res.ok && json?.ok && json.order) {
+            setOrder(json.order);
+        }
+    }
+
+    async function handleItemCancel(item: OrderDetailItem) {
+        if (!order?.orderNum || itemActionId) return;
+
+        const isSinglePaidImmediate =
+            item.canCancelImmediate &&
+            item.effectiveStatus === 1 &&
+            (order.activeItemCount ?? 1) === 1;
+
+        if (isSinglePaidImmediate) {
+            await handleCancel();
+            return;
+        }
+
+        const ok = window.confirm("선택한 상품 주문을 취소할까요?");
+        if (!ok) return;
+
+        try {
+            setItemActionId(item.id);
+            const res = await fetch(endpoints.cancelOrderItem(tenant, order.orderNum, item.id), {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers: {
+                    Accept: "application/json",
+                    ...tenantHeader(tenant),
+                },
+            });
+            const json = (await res.json().catch(() => null)) as CancelOrderResponse | null;
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "상품 취소에 실패했습니다.");
+            }
+            alert(json.message || "상품의 주문이 취소 되었습니다.");
+            await reloadOrder();
+        } catch (e: any) {
+            alert(e?.message || "상품 취소 처리 중 오류가 발생했습니다.");
+        } finally {
+            setItemActionId("");
+        }
+    }
+
+    async function handleItemCancelRequest(item: OrderDetailItem) {
+        if (!order?.orderNum || itemActionId) return;
+
+        const reason = window.prompt("취소 사유를 입력해 주세요.");
+        if (!reason?.trim()) return;
+
+        try {
+            setItemActionId(item.id);
+            const res = await fetch(
+                endpoints.cancelOrderItemRequest(tenant, order.orderNum, item.id),
+                {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                        ...tenantHeader(tenant),
+                    },
+                    body: JSON.stringify({ reason: reason.trim() }),
+                }
+            );
+            const json = (await res.json().catch(() => null)) as CancelOrderResponse | null;
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "취소요청 접수에 실패했습니다.");
+            }
+            alert(json.message || "상품 취소 요청이 접수 되었습니다.");
+            await reloadOrder();
+        } catch (e: any) {
+            alert(e?.message || "취소요청 처리 중 오류가 발생했습니다.");
+        } finally {
+            setItemActionId("");
+        }
+    }
+
+    async function handleItemCancelWithdraw(item: OrderDetailItem) {
+        if (!order?.orderNum || itemActionId) return;
+
+        const ok = window.confirm("취소요청을 철회할까요?");
+        if (!ok) return;
+
+        try {
+            setItemActionId(item.id);
+            const res = await fetch(
+                endpoints.withdrawCancelOrderItemRequest(tenant, order.orderNum, item.id),
+                {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {
+                        Accept: "application/json",
+                        ...tenantHeader(tenant),
+                    },
+                }
+            );
+            const json = (await res.json().catch(() => null)) as CancelOrderResponse | null;
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.message || "취소요청 철회에 실패했습니다.");
+            }
+            alert(json.message || "취소철회 처리가 되었습니다.");
+            await reloadOrder();
+        } catch (e: any) {
+            alert(e?.message || "취소요청 철회 중 오류가 발생했습니다.");
+        } finally {
+            setItemActionId("");
+        }
+    }
 
     async function handleCancel() {
         if (!order?.orderNum || canceling) return;
@@ -470,7 +606,11 @@ export default function OrderDetailPage() {
                         disabled={canceling}
                         className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-[14px] font-extrabold text-rose-600 disabled:opacity-50"
                     >
-                        {canceling ? "처리 중..." : "주문 취소"}
+                        {canceling
+                            ? "처리 중..."
+                            : (order.activeItemCount ?? 1) > 1
+                              ? "전체 주문 취소"
+                              : "주문 취소"}
                     </button>
                 ) : null}
 
@@ -578,12 +718,18 @@ export default function OrderDetailPage() {
                 <div className="text-[15px] font-extrabold text-slate-900">주문 상품</div>
 
                 <div className="mt-4 space-y-3">
-                    {order.items.map((item, idx) => (
+                    {order.items.map((item, idx) => {
+                        const itemStatus = item.displayStatus || item.statusLabel || "";
+                        const itemTone = toneByStatus(itemStatus);
+                        const itemBusy = itemActionId === item.id;
+
+                        return (
                         <div
                             key={`${item.id}_${idx}`}
                             className="rounded-xl border border-slate-200 p-3"
                         >
-                            <div className="min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
                                 <div className="line-clamp-2 font-extrabold text-slate-900">
                                     {item.title}
                                 </div>
@@ -606,9 +752,55 @@ export default function OrderDetailPage() {
                                         {formatMoney(item.price * item.qty)}
                                     </span>
                                 </div>
+                                </div>
+
+                                {itemStatus ? (
+                                    <span
+                                        className={[
+                                            "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold",
+                                            itemTone,
+                                        ].join(" ")}
+                                    >
+                                        {itemStatus}
+                                    </span>
+                                ) : null}
                             </div>
+
+                            {item.canCancelImmediate && item.effectiveStatus === 0 ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleItemCancel(item)}
+                                    disabled={itemBusy}
+                                    className="mt-3 flex h-10 w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-[13px] font-extrabold text-rose-600 disabled:opacity-50"
+                                >
+                                    {itemBusy ? "처리 중..." : "상품 취소"}
+                                </button>
+                            ) : null}
+
+                            {item.canCancelRequest ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleItemCancelRequest(item)}
+                                    disabled={itemBusy}
+                                    className="mt-3 flex h-10 w-full items-center justify-center rounded-xl border border-rose-200 bg-white text-[13px] font-extrabold text-rose-600 disabled:opacity-50"
+                                >
+                                    {itemBusy ? "처리 중..." : "취소 요청"}
+                                </button>
+                            ) : null}
+
+                            {item.canWithdrawCancelRequest ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleItemCancelWithdraw(item)}
+                                    disabled={itemBusy}
+                                    className="mt-3 flex h-10 w-full items-center justify-center rounded-xl border border-slate-300 bg-slate-50 text-[13px] font-extrabold text-slate-700 disabled:opacity-50"
+                                >
+                                    {itemBusy ? "처리 중..." : "취소요청 철회"}
+                                </button>
+                            ) : null}
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-sm">

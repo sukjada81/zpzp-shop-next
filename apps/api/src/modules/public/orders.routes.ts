@@ -9,9 +9,12 @@ import {
     resolveMemberLoginId,
 } from "./coupon.service.js";
 import {
+    applyPartialCancelDisplay,
     buildGoodsStatusLabel,
     isOnlinePrepaidOrder,
     resolveCustomerOrderDisplay,
+    resolveCustomerOrderItemActions,
+    resolveOrderGoodsAggregate,
 } from "../../lib/order/customer-order-display.js";
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
@@ -263,18 +266,18 @@ function minutesAgoFromUnix(signdate: unknown): number {
     return Math.floor(diff / 60);
 }
 
-function resolveOrderGoodsStatus(items: Array<{ status: number; status2: number }>) {
-    const first = items[0];
-    return {
-        goodsStatus: toInt(first?.status, STATUS_ORDERED),
-        goodsStatus2: toInt(first?.status2, 0),
-    };
+function resolveOrderGoodsStatus(
+    items: Array<{ status: number; status2: number }>,
+    payStatus = "A"
+) {
+    return resolveOrderGoodsAggregate(items, payStatus);
 }
 
 async function readOrderGoodsStatus(
     prisma: FastifyInstance["prisma"],
     tenantId: bigint,
-    orderNum: string
+    orderNum: string,
+    payStatus = "A"
 ) {
     const goodsRows = await prisma.mallRN_order_goods.findMany({
         where: {
@@ -283,10 +286,10 @@ async function readOrderGoodsStatus(
             order_num: orderNum,
         },
         select: { status: true, status2: true },
-        take: 1,
+        orderBy: [{ uid: "asc" }],
     });
 
-    return resolveOrderGoodsStatus(goodsRows);
+    return resolveOrderGoodsStatus(goodsRows, payStatus);
 }
 
 // 셀러 취소 가능 조건: 이미 취소된 게 아니면 항상 허용
@@ -680,7 +683,13 @@ function extractAuthenticatedMemberUid(request: FastifyRequest): bigint | null {
 async function loadOrderGoods(
     prisma: FastifyInstance["prisma"],
     tenantId: bigint,
-    orderNum: string
+    orderNum: string,
+    orderMeta?: {
+        payType: string;
+        payStatus: string;
+        payInfo: string;
+        statusDate: number;
+    }
 ) {
     const goods = await prisma.mallRN_order_goods.findMany({
         where: {
@@ -705,20 +714,49 @@ async function loadOrderGoods(
         },
     });
 
-    return goods.map((row: OrderGoodsRow) => ({
-        id: String(row.uid),
-        productId: String(row.g_uid),
-        title: toSafeString(row.g_name, "주문 상품"),
-        goodsCode: toSafeString(row.g_code, ""),
-        price: toInt(row.price, 0),
-        origPrice: toInt(row.orig_price, 0),
-        qty: toInt(row.qty, 0),
-        optionId: toInt(row.option, 0),
-        optionName: toSafeString(row.option_name, ""),
-        status: toInt(row.status, 0),
-        status2: toInt(row.status2, 0),
-        createdAt: toIsoDate(row.signdate),
-    }));
+    const payStatus = orderMeta?.payStatus ?? "A";
+    const aggregate = resolveOrderGoodsAggregate(goods, payStatus);
+    const payType = orderMeta?.payType ?? "B";
+    const payInfo = orderMeta?.payInfo ?? "";
+    const statusDate = orderMeta?.statusDate ?? 0;
+
+    return goods.map((row: OrderGoodsRow) => {
+        const status = toInt(row.status, 0);
+        const status2 = toInt(row.status2, 0);
+        const itemActions = orderMeta
+            ? resolveCustomerOrderItemActions({
+                  status,
+                  status2,
+                  payType,
+                  payStatus,
+                  payInfo,
+                  orderItemCount: aggregate.totalCount,
+                  orderStatusDate: statusDate,
+              })
+            : null;
+
+        return {
+            id: String(row.uid),
+            productId: String(row.g_uid),
+            title: toSafeString(row.g_name, "주문 상품"),
+            goodsCode: toSafeString(row.g_code, ""),
+            price: toInt(row.price, 0),
+            origPrice: toInt(row.orig_price, 0),
+            qty: toInt(row.qty, 0),
+            optionId: toInt(row.option, 0),
+            optionName: toSafeString(row.option_name, ""),
+            status,
+            status2,
+            effectiveStatus: itemActions?.effectiveStatus ?? status,
+            statusLabel: itemActions?.statusLabel ?? buildGoodsStatusLabel(status, status2),
+            displayStatus: itemActions?.displayStatus ?? buildGoodsStatusLabel(status, status2),
+            canCancelImmediate: itemActions?.canCancelImmediate ?? false,
+            canCancelRequest: itemActions?.canCancelRequest ?? false,
+            canWithdrawCancelRequest: itemActions?.canWithdrawCancelRequest ?? false,
+            cancelMode: itemActions?.cancelMode ?? "none",
+            createdAt: toIsoDate(row.signdate),
+        };
+    });
 }
 
 async function serializeOrder(
@@ -727,23 +765,48 @@ async function serializeOrder(
     info: OrderInfoRow
 ) {
     const orderNum = toSafeString(info.order_num || info.id, "");
-    const items = await loadOrderGoods(prisma, tenantId, orderNum);
-    const { goodsStatus, goodsStatus2 } = resolveOrderGoodsStatus(items);
+    const payType = toSafeString(info.pay_type, "B");
+    const payStatus = toSafeString(info.pay_status, "A");
+    const payInfo = toSafeString(info.pay_info, "");
+    const items = await loadOrderGoods(prisma, tenantId, orderNum, {
+        payType,
+        payStatus,
+        payInfo,
+        statusDate: toInt(info.status_date, 0),
+    });
+    const { goodsStatus, goodsStatus2, isPartiallyCanceled, activeCount, canceledCount, totalCount } =
+        resolveOrderGoodsStatus(items, payStatus);
     const goodsTotal = items.reduce(
         (sum, item) => sum + toInt(item.price, 0) * toInt(item.qty, 0),
         0
     );
     const totalAmount = toInt(info.pay_total, goodsTotal);
 
-    const display = resolveCustomerOrderDisplay({
+    let display = resolveCustomerOrderDisplay({
         goodsStatus,
         goodsStatus2,
-        payType: toSafeString(info.pay_type, "B"),
-        payStatus: toSafeString(info.pay_status, "A"),
-        payInfo: toSafeString(info.pay_info, ""),
+        payType,
+        payStatus,
+        payInfo: payInfo,
         payMethod: toSafeString(info.pay_method, ""),
         pickupAt: info.pickup_at,
     });
+    display = applyPartialCancelDisplay(display, {
+        goodsStatus,
+        goodsStatus2,
+        isPartiallyCanceled,
+        activeCount,
+        canceledCount,
+        totalCount,
+    });
+
+    const hasItemCancelAction = items.some(
+        (item) =>
+            item.canCancelImmediate || item.canCancelRequest || item.canWithdrawCancelRequest
+    );
+    const orderCanCancel =
+        display.canCancel ||
+        items.some((item) => item.canCancelImmediate && item.cancelMode === "immediate");
 
     const addressLine = [
         toSafeString(info.postcode, ""),
@@ -783,7 +846,12 @@ async function serializeOrder(
         displayStatus: display.displayStatus,
         badgeText: display.badgeText,
         footerText: display.footerText,
-        canCancel: display.canCancel,
+        isPartiallyCanceled,
+        activeItemCount: activeCount,
+        canceledItemCount: canceledCount,
+        totalItemCount: totalCount,
+        canCancel: orderCanCancel,
+        hasItemCancelAction,
         cancelMode: display.cancelMode,
         canReturn: display.canReturn,
         canExchange: display.canExchange,
@@ -1500,7 +1568,8 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
                     prisma,
                     tenantId,
-                    orderNum
+                    orderNum,
+                    toSafeString(row.pay_status, "A")
                 );
                 const cancelDisplay = resolveCustomerOrderDisplay({
                     goodsStatus,
@@ -1616,7 +1685,8 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
                     prisma,
                     tenantId,
-                    orderNum
+                    orderNum,
+                    toSafeString(rawOrder.pay_status, "A")
                 );
                 const cancelDisplay = resolveCustomerOrderDisplay({
                     goodsStatus,
@@ -1799,11 +1869,12 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 });
             }
 
-            const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
-                prisma,
-                tenantId,
-                orderNum
-            );
+                const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
+                    prisma,
+                    tenantId,
+                    orderNum,
+                    toSafeString(rawOrder.pay_status, "A")
+                );
             const display = resolveCustomerOrderDisplay({
                 goodsStatus,
                 goodsStatus2,
@@ -1966,7 +2037,8 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 const { goodsStatus, goodsStatus2 } = await readOrderGoodsStatus(
                     prisma,
                     tenantId,
-                    orderNum
+                    orderNum,
+                    toSafeString(rawOrder.pay_status, "A")
                 );
                 const display = resolveCustomerOrderDisplay({
                     goodsStatus,
@@ -2021,6 +2093,295 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     ok: false,
                     message: detail,
                 });
+            }
+        }
+    );
+
+    fastify.post<{
+        Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
+        Body: { reason?: string };
+    }>(
+        "/v1/orders/:orderNum/items/:orderGoodsUid/cancel",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
+
+                if (!tenantId || !orderNum || orderGoodsUid <= 0) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "요청 정보가 올바르지 않습니다.",
+                    });
+                }
+
+                if (!memberUid) {
+                    return reply.code(401).send({
+                        ok: false,
+                        message: "로그인이 필요합니다.",
+                    });
+                }
+
+                const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+                if (!rawOrder) {
+                    return reply.code(404).send({
+                        ok: false,
+                        message: "주문을 찾을 수 없습니다.",
+                    });
+                }
+
+                const items = await loadOrderGoods(prisma, tenantId, orderNum, {
+                    payType: toSafeString(rawOrder.pay_type, "B"),
+                    payStatus: toSafeString(rawOrder.pay_status, "A"),
+                    payInfo: toSafeString(rawOrder.pay_info, ""),
+                    statusDate: toInt(rawOrder.status_date, 0),
+                });
+                const target = items.find((item) => toInt(item.id, 0) === orderGoodsUid);
+                if (!target) {
+                    return reply.code(404).send({
+                        ok: false,
+                        message: "주문상품을 찾을 수 없습니다.",
+                    });
+                }
+
+                if (!target.canCancelImmediate || target.effectiveStatus !== 0) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "입금대기 상품만 즉시 취소할 수 있습니다.",
+                    });
+                }
+
+                const bridge = await callPhpBridge<{
+                    orderNum?: string;
+                    orderGoodsUid?: number;
+                    status?: number;
+                    status2?: number;
+                    statusLabel?: string;
+                }>("/php/order_cancel_api.php", {
+                    action: "cancel_item_unpaid",
+                    member_uid: Number(memberUid),
+                    order_num: orderNum,
+                    order_goods_uid: orderGoodsUid,
+                });
+
+                if (!bridge.ok) {
+                    return reply.code(bridge.transportFailed ? 502 : 400).send({
+                        ok: false,
+                        message:
+                            bridge.message ||
+                            "상품 취소에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+                    });
+                }
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    orderGoodsUid,
+                    status: toInt(bridge.data?.status, 9),
+                    status2: toInt(bridge.data?.status2, 5),
+                    statusLabel: toSafeString(bridge.data?.statusLabel, "취소완료"),
+                    message: bridge.message || "상품의 주문이 취소 되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "상품 취소 처리 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_ITEM_CANCEL_ERROR");
+                return reply.code(500).send({ ok: false, message: detail });
+            }
+        }
+    );
+
+    fastify.post<{
+        Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
+        Body: { reason?: string };
+    }>(
+        "/v1/orders/:orderNum/items/:orderGoodsUid/cancel-request",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
+                const reason = toSafeString(request.body?.reason, "");
+
+                if (!tenantId || !orderNum || orderGoodsUid <= 0) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "요청 정보가 올바르지 않습니다.",
+                    });
+                }
+
+                if (!memberUid) {
+                    return reply.code(401).send({
+                        ok: false,
+                        message: "로그인이 필요합니다.",
+                    });
+                }
+
+                if (!reason) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "취소 사유를 입력해 주세요.",
+                    });
+                }
+
+                const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+                if (!rawOrder) {
+                    return reply.code(404).send({
+                        ok: false,
+                        message: "주문을 찾을 수 없습니다.",
+                    });
+                }
+
+                const items = await loadOrderGoods(prisma, tenantId, orderNum, {
+                    payType: toSafeString(rawOrder.pay_type, "B"),
+                    payStatus: toSafeString(rawOrder.pay_status, "A"),
+                    payInfo: toSafeString(rawOrder.pay_info, ""),
+                    statusDate: toInt(rawOrder.status_date, 0),
+                });
+                const target = items.find((item) => toInt(item.id, 0) === orderGoodsUid);
+                if (!target) {
+                    return reply.code(404).send({
+                        ok: false,
+                        message: "주문상품을 찾을 수 없습니다.",
+                    });
+                }
+
+                if (!target.canCancelRequest) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "현재 상태에서는 취소요청을 할 수 없습니다.",
+                    });
+                }
+
+                const bridge = await callPhpBridge<{
+                    orderNum?: string;
+                    orderGoodsUid?: number;
+                    status?: number;
+                    status2?: number;
+                    statusLabel?: string;
+                }>("/php/order_cancel_api.php", {
+                    action: "cancel_item_request",
+                    member_uid: Number(memberUid),
+                    order_num: orderNum,
+                    order_goods_uid: orderGoodsUid,
+                    reason,
+                });
+
+                if (!bridge.ok) {
+                    return reply.code(bridge.transportFailed ? 502 : 400).send({
+                        ok: false,
+                        message:
+                            bridge.message ||
+                            "취소요청 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+                    });
+                }
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    orderGoodsUid,
+                    status: toInt(bridge.data?.status, 9),
+                    status2: toInt(bridge.data?.status2, 1),
+                    statusLabel: toSafeString(bridge.data?.statusLabel, "취소요청"),
+                    message: bridge.message || "상품 취소 요청이 접수 되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "취소요청 처리 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_ITEM_CANCEL_REQUEST_ERROR");
+                return reply.code(500).send({ ok: false, message: detail });
+            }
+        }
+    );
+
+    fastify.post<{
+        Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
+    }>(
+        "/v1/orders/:orderNum/items/:orderGoodsUid/cancel-request/withdraw",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
+
+                if (!tenantId || !orderNum || orderGoodsUid <= 0) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "요청 정보가 올바르지 않습니다.",
+                    });
+                }
+
+                if (!memberUid) {
+                    return reply.code(401).send({
+                        ok: false,
+                        message: "로그인이 필요합니다.",
+                    });
+                }
+
+                const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
+                if (!rawOrder) {
+                    return reply.code(404).send({
+                        ok: false,
+                        message: "주문을 찾을 수 없습니다.",
+                    });
+                }
+
+                const items = await loadOrderGoods(prisma, tenantId, orderNum, {
+                    payType: toSafeString(rawOrder.pay_type, "B"),
+                    payStatus: toSafeString(rawOrder.pay_status, "A"),
+                    payInfo: toSafeString(rawOrder.pay_info, ""),
+                    statusDate: toInt(rawOrder.status_date, 0),
+                });
+                const target = items.find((item) => toInt(item.id, 0) === orderGoodsUid);
+                if (!target?.canWithdrawCancelRequest) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "철회할 취소요청이 없습니다.",
+                    });
+                }
+
+                const bridge = await callPhpBridge<{
+                    orderNum?: string;
+                    orderGoodsUid?: number;
+                    status?: number;
+                    status2?: number;
+                    statusLabel?: string;
+                }>("/php/order_cancel_api.php", {
+                    action: "withdraw_cancel_request",
+                    member_uid: Number(memberUid),
+                    order_num: orderNum,
+                    order_goods_uid: orderGoodsUid,
+                });
+
+                if (!bridge.ok) {
+                    return reply.code(bridge.transportFailed ? 502 : 400).send({
+                        ok: false,
+                        message:
+                            bridge.message ||
+                            "취소요청 철회에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+                    });
+                }
+
+                return reply.send({
+                    ok: true,
+                    orderNum,
+                    orderGoodsUid,
+                    status: toInt(bridge.data?.status, 1),
+                    status2: toInt(bridge.data?.status2, 0),
+                    statusLabel: toSafeString(bridge.data?.statusLabel, "취소철회"),
+                    message: bridge.message || "취소철회 처리가 되었습니다.",
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "취소요청 철회 중 오류가 발생했습니다.");
+                fastify.log.error(error, "ORDER_ITEM_CANCEL_WITHDRAW_ERROR");
+                return reply.code(500).send({ ok: false, message: detail });
             }
         }
     );

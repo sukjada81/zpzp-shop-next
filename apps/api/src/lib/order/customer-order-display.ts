@@ -209,6 +209,193 @@ export function resolveCustomerOrderActions(input: {
     };
 }
 
+export type CustomerOrderItemInput = {
+    status: number;
+    status2: number;
+    payType: string;
+    payStatus: string;
+    payInfo: string;
+    /** 주문 내 상품 총 건수 (shop-php: mallRN_order_goods count) */
+    orderItemCount: number;
+    /** 주문 status_date (unix) — 당일 계좌이체 즉시취소 판별용 */
+    orderStatusDate?: number;
+};
+
+export type CustomerOrderItemActions = {
+    canCancelImmediate: boolean;
+    canCancelRequest: boolean;
+    canWithdrawCancelRequest: boolean;
+    cancelMode: "immediate" | "request" | "none";
+    effectiveStatus: number;
+    statusLabel: string;
+    displayStatus: string;
+};
+
+/** shop-php order_list.php status_function — 상품 1건 기준 */
+export function resolveCustomerOrderItemActions(
+    input: CustomerOrderItemInput
+): CustomerOrderItemActions {
+    const payType = normalizePayType(input.payType);
+    const payStatus = normalizePayStatus(input.payStatus);
+    const payInfo = String(input.payInfo ?? "");
+    const status = resolveEffectiveGoodsStatus(
+        Number.isFinite(input.status) ? Math.trunc(input.status) : 0,
+        payStatus
+    );
+    const status2 =
+        input.status2 != null && Number.isFinite(input.status2) ? Math.trunc(input.status2) : 0;
+    const orderItemCount = Math.max(0, Math.trunc(input.orderItemCount || 0));
+    const statusLabel = buildGoodsStatusLabel(status, status2);
+
+    if (status === 9) {
+        return {
+            canCancelImmediate: false,
+            canCancelRequest: false,
+            canWithdrawCancelRequest: false,
+            cancelMode: "none",
+            effectiveStatus: status,
+            statusLabel,
+            displayStatus: statusLabel,
+        };
+    }
+
+    if (status2 === 1 && (status === 7 || status === 8 || status === 9)) {
+        return {
+            canCancelImmediate: false,
+            canCancelRequest: false,
+            canWithdrawCancelRequest: true,
+            cancelMode: "none",
+            effectiveStatus: status,
+            statusLabel,
+            displayStatus: statusLabel,
+        };
+    }
+
+    if (status === 0) {
+        return {
+            canCancelImmediate: true,
+            canCancelRequest: false,
+            canWithdrawCancelRequest: false,
+            cancelMode: "immediate",
+            effectiveStatus: status,
+            statusLabel,
+            displayStatus: statusLabel,
+        };
+    }
+
+    const isToss =
+        payInfo.toUpperCase().startsWith("TOSS|") ||
+        payInfo.toUpperCase().startsWith("TOSS:") ||
+        payInfo.toUpperCase() === "TOSS";
+    const statusDate = input.orderStatusDate ?? 0;
+    const isSameDayTransfer =
+        payType === "R" &&
+        statusDate > 0 &&
+        new Date(statusDate * 1000).toDateString() === new Date().toDateString();
+
+    const prepaidImmediatePath =
+        payType === "M" ||
+        payType === "C" ||
+        isToss ||
+        isSameDayTransfer ||
+        isOnlinePrepaidOrder(payType, payStatus, payInfo);
+
+    if (status === 1) {
+        if (prepaidImmediatePath && orderItemCount === 1) {
+            return {
+                canCancelImmediate: true,
+                canCancelRequest: false,
+                canWithdrawCancelRequest: false,
+                cancelMode: "immediate",
+                effectiveStatus: status,
+                statusLabel,
+                displayStatus: statusLabel,
+            };
+        }
+        return {
+            canCancelImmediate: false,
+            canCancelRequest: true,
+            canWithdrawCancelRequest: false,
+            cancelMode: "request",
+            effectiveStatus: status,
+            statusLabel,
+            displayStatus: statusLabel,
+        };
+    }
+
+    if (status === 2) {
+        return {
+            canCancelImmediate: false,
+            canCancelRequest: true,
+            canWithdrawCancelRequest: false,
+            cancelMode: "request",
+            effectiveStatus: status,
+            statusLabel,
+            displayStatus: statusLabel,
+        };
+    }
+
+    return {
+        canCancelImmediate: false,
+        canCancelRequest: false,
+        canWithdrawCancelRequest: false,
+        cancelMode: "none",
+        effectiveStatus: status,
+        statusLabel,
+        displayStatus: statusLabel,
+    };
+}
+
+export type OrderGoodsAggregate = {
+    goodsStatus: number;
+    goodsStatus2: number;
+    isPartiallyCanceled: boolean;
+    activeCount: number;
+    canceledCount: number;
+    totalCount: number;
+};
+
+/** 주문 전체 대표 상태 — 부분취소 시 집계 */
+export function resolveOrderGoodsAggregate(
+    items: Array<{ status: number; status2: number }>,
+    payStatus: string
+): OrderGoodsAggregate {
+    if (!items.length) {
+        return {
+            goodsStatus: 0,
+            goodsStatus2: 0,
+            isPartiallyCanceled: false,
+            activeCount: 0,
+            canceledCount: 0,
+            totalCount: 0,
+        };
+    }
+
+    const normalized = items.map((item) => ({
+        status: resolveEffectiveGoodsStatus(toIntStatus(item.status), payStatus),
+        status2: toIntStatus(item.status2),
+    }));
+
+    const canceledCount = normalized.filter((row) => row.status === 9).length;
+    const active = normalized.filter((row) => row.status !== 9);
+    const activeCount = active.length;
+    const rep = active[0] ?? normalized[0];
+
+    return {
+        goodsStatus: rep.status,
+        goodsStatus2: rep.status2,
+        isPartiallyCanceled: canceledCount > 0 && activeCount > 0,
+        activeCount,
+        canceledCount,
+        totalCount: items.length,
+    };
+}
+
+function toIntStatus(value: unknown): number {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.trunc(n) : 0;
+}
+
 export function resolveCustomerOrderDisplay(input: CustomerOrderDisplayInput): CustomerOrderDisplay {
     const goodsStatus = Number.isFinite(input.goodsStatus) ? Math.trunc(input.goodsStatus) : 0;
     const goodsStatus2 =
@@ -259,5 +446,23 @@ export function resolveCustomerOrderDisplay(input: CustomerOrderDisplayInput): C
         payStatusLabel: resolvePayStatusLabel(payStatus, payType),
         footerText,
         badgeText,
+    };
+}
+
+export function applyPartialCancelDisplay(
+    display: CustomerOrderDisplay,
+    aggregate: OrderGoodsAggregate
+): CustomerOrderDisplay {
+    if (!aggregate.isPartiallyCanceled) return display;
+
+    const partialLabel = `부분취소 (${aggregate.activeCount}/${aggregate.totalCount})`;
+    const mixedStatusLabel = `${partialLabel} · ${display.statusLabel}`;
+
+    return {
+        ...display,
+        displayStatus: mixedStatusLabel,
+        badgeText: partialLabel,
+        footerText: "일부 상품이 취소되었습니다.",
+        canCancel: aggregate.activeCount > 0 && display.canCancel,
     };
 }

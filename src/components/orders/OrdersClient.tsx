@@ -20,6 +20,10 @@ type ApiOrderItem = {
     badgeText?: string | null;
     footerText?: string | null;
     canCancel?: boolean;
+    isPartiallyCanceled?: boolean;
+    activeItemCount?: number;
+    canceledItemCount?: number;
+    totalItemCount?: number;
     createdAt: string;
     items?: Array<{
         id: string;
@@ -29,6 +33,12 @@ type ApiOrderItem = {
         qty: number;
         optionName?: string;
         status: number;
+        status2?: number;
+        statusLabel?: string;
+        displayStatus?: string;
+        canCancelImmediate?: boolean;
+        canCancelRequest?: boolean;
+        canWithdrawCancelRequest?: boolean;
     }>;
 };
 
@@ -67,11 +77,16 @@ export type OrderSummary = {
     badgeText?: string | null;
     footerText?: string | null;
     canCancel?: boolean;
+    isPartiallyCanceled?: boolean;
     guestPhone?: string;
     lines: Array<{
         id: string;
         text: string;
         amount: number;
+        statusLabel?: string;
+        canCancelImmediate?: boolean;
+        canCancelRequest?: boolean;
+        canWithdrawCancelRequest?: boolean;
     }>;
 };
 
@@ -113,10 +128,15 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
         const label = item.optionName?.trim()
             ? item.optionName.trim()
             : item.title;
+        const statusLabel = item.displayStatus || item.statusLabel || "";
         return {
             id: item.id,
-            text: `${label} ${item.qty}개`,
+            text: statusLabel ? `${label} ${item.qty}개 · ${statusLabel}` : `${label} ${item.qty}개`,
             amount: Number(item.price ?? 0) * Number(item.qty ?? 0),
+            statusLabel: statusLabel || undefined,
+            canCancelImmediate: item.canCancelImmediate,
+            canCancelRequest: item.canCancelRequest,
+            canWithdrawCancelRequest: item.canWithdrawCancelRequest,
         };
     });
 
@@ -137,6 +157,7 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
         badgeText: order.badgeText ?? null,
         footerText: order.footerText ?? null,
         canCancel: Boolean(order.canCancel),
+        isPartiallyCanceled: Boolean(order.isPartiallyCanceled),
         guestPhone,
         lines,
     };
@@ -201,6 +222,9 @@ function getFooterIcon(variant: string) {
 }
 
 function getBadgeClass(text: string) {
+    if (text.includes("부분취소")) {
+        return "border-rose-200 bg-rose-50 text-rose-600";
+    }
     if (text.includes("픽업 기간")) {
         return "border-[#cfd8ff] bg-[#eef2ff] text-[#6477d7]";
     }
@@ -508,8 +532,13 @@ export default function OrdersClient(props: {
                                                 key={line.id}
                                                 className="flex items-start justify-between gap-3 text-[14px]"
                                             >
-                                                <div className="min-w-0 flex-1 text-[#566072]">
-                                                    {line.text}
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="text-[#566072]">{line.text}</div>
+                                                    {line.statusLabel?.includes("취소") ? (
+                                                        <div className="mt-1 text-[11px] font-bold text-rose-500">
+                                                            {line.statusLabel}
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                                 <div className="shrink-0 font-semibold text-[#1f2940]">
                                                     {formatMoney(line.amount)}
