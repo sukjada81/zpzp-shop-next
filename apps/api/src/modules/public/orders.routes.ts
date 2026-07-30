@@ -18,6 +18,7 @@ import {
 } from "../../lib/order/customer-order-display.js";
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
+import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -498,15 +499,20 @@ async function executeCustomerImmediateCancel(input: {
             },
         });
 
-        await writeOrderActionLog(tx, {
+        await writeOrderAuditLog(tx, {
             tenantId: input.tenantId,
-            eventType: "cancel",
+            eventType: "cancel_full",
             orderNum: input.orderNum,
             actorRole: input.actorRole,
             actorMemberUid: input.actorMemberUid ?? null,
             actorNickname: input.actorNickname,
             beforeStatus: input.cancelDisplay.effectiveGoodsStatus,
             afterStatus: STATUS_CANCELED,
+            reason: "고객 주문 전체 취소",
+            metaJson: {
+                pg: isOnlinePrepaid ? "toss" : "none",
+                path: "executeCustomerImmediateCancel",
+            },
         });
     });
 
@@ -2151,10 +2157,20 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
-                if (!target.canCancelImmediate || target.effectiveStatus !== 0) {
+                if (!target.canCancelImmediate) {
                     return reply.code(400).send({
                         ok: false,
-                        message: "입금대기 상품만 즉시 취소할 수 있습니다.",
+                        message: "현재 상태에서는 즉시 취소할 수 없습니다.",
+                    });
+                }
+
+                const bridgeAction =
+                    target.effectiveStatus === 1 ? "cancel_item_paid" : "cancel_item_unpaid";
+
+                if (target.effectiveStatus !== 0 && target.effectiveStatus !== 1) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "현재 상태에서는 즉시 취소할 수 없습니다.",
                     });
                 }
 
@@ -2164,8 +2180,17 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     status?: number;
                     status2?: number;
                     statusLabel?: string;
+                    cancelType?: string;
+                    cancelAmount?: number;
+                    toss?: {
+                        cancelType?: string;
+                        cancelAmount?: number;
+                        logUid?: number;
+                        refundableAmount?: number;
+                        paymentStatus?: string;
+                    };
                 }>("/php/order_cancel_api.php", {
-                    action: "cancel_item_unpaid",
+                    action: bridgeAction,
                     member_uid: Number(memberUid),
                     order_num: orderNum,
                     order_goods_uid: orderGoodsUid,
@@ -2180,6 +2205,38 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
+                const tossMeta = bridge.data?.toss;
+                const auditEventType =
+                    bridgeAction === "cancel_item_paid" &&
+                    (bridge.data?.cancelType === "partial" || tossMeta?.cancelType === "partial")
+                        ? "cancel_partial"
+                        : bridgeAction === "cancel_item_paid"
+                          ? "cancel_full"
+                          : "cancel";
+
+                await writeOrderAuditLog(fastify.prisma, {
+                    tenantId,
+                    eventType: auditEventType,
+                    orderNum,
+                    orderGoodsUid,
+                    actorRole: "member",
+                    actorMemberUid: memberUid,
+                    actorNickname: toSafeString(rawOrder.name, "회원"),
+                    beforeStatus: target.effectiveStatus,
+                    afterStatus: 9,
+                    beforeStatus2: target.status2,
+                    afterStatus2: 5,
+                    reason: "고객 상품 즉시 취소",
+                    metaJson: {
+                        bridgeAction,
+                        cancelType: bridge.data?.cancelType ?? tossMeta?.cancelType ?? null,
+                        cancelAmount: bridge.data?.cancelAmount ?? tossMeta?.cancelAmount ?? null,
+                        tossLogUid: tossMeta?.logUid ?? null,
+                        refundableAmount: tossMeta?.refundableAmount ?? null,
+                        paymentStatus: tossMeta?.paymentStatus ?? null,
+                    },
+                });
+
                 return reply.send({
                     ok: true,
                     orderNum,
@@ -2187,6 +2244,8 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     status: toInt(bridge.data?.status, 9),
                     status2: toInt(bridge.data?.status2, 5),
                     statusLabel: toSafeString(bridge.data?.statusLabel, "취소완료"),
+                    cancelType: bridge.data?.cancelType ?? tossMeta?.cancelType,
+                    cancelAmount: bridge.data?.cancelAmount ?? tossMeta?.cancelAmount,
                     message: bridge.message || "상품의 주문이 취소 되었습니다.",
                 });
             } catch (error: unknown) {
@@ -2284,6 +2343,21 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             "취소요청 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.",
                     });
                 }
+
+                await writeOrderAuditLog(fastify.prisma, {
+                    tenantId,
+                    eventType: "cancel_request",
+                    orderNum,
+                    orderGoodsUid,
+                    actorRole: "member",
+                    actorMemberUid: memberUid,
+                    actorNickname: toSafeString(rawOrder.name, "회원"),
+                    beforeStatus: target.effectiveStatus,
+                    afterStatus: 9,
+                    beforeStatus2: target.status2,
+                    afterStatus2: 1,
+                    reason,
+                });
 
                 return reply.send({
                     ok: true,

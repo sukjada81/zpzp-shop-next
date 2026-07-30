@@ -1,5 +1,7 @@
 // apps/api/src/modules/admin/orders.routes.ts
 import type { FastifyInstance } from "fastify";
+import { buildOrderTimeline } from "../../lib/order/order-timeline.js";
+import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 
 type AdminSession = {
     admin?: {
@@ -574,6 +576,25 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
                     },
                 });
             }
+
+            const infoRow = await tx.mallRN_order_info.findFirst({
+                where: { order_num: orderNum, platform_type: "DAD" },
+                select: { tenant_id: true },
+            });
+
+            if (infoRow?.tenant_id != null) {
+                await writeOrderAuditLog(tx, {
+                    tenantId: BigInt(String(infoRow.tenant_id)),
+                    eventType: "status_change",
+                    orderNum,
+                    actorRole: "admin",
+                    actorNickname: adminId,
+                    beforeStatus: Number(goodsRows[0]?.status ?? 0),
+                    afterStatus: nextStatus,
+                    reason: "관리자 주문 상태 일괄 변경",
+                    metaJson: { goodsCount: goodsRows.length },
+                });
+            }
         });
 
         return reply.send({
@@ -585,5 +606,73 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
                 updatedAt: new Date(now * 1000).toISOString(),
             },
         });
+    });
+
+    app.get("/admin/orders/:orderNum/timeline", async (req: any, reply) => {
+        const denied = requireSuperAdmin(req, reply);
+        if (denied) return denied;
+
+        const orderNum = String(req.params?.orderNum ?? "").trim();
+        if (!orderNum) {
+            return reply.code(400).send({ ok: false, message: "orderNum required" });
+        }
+
+        const auditRows = await app.prisma.dad_order_action_log.findMany({
+            where: { order_num: orderNum },
+            orderBy: { created_at: "desc" },
+            take: 200,
+        });
+
+        const orderLogRows = await app.prisma.mallRN_order_log.findMany({
+            where: { order_num: orderNum },
+            orderBy: { signdate: "desc" },
+            take: 200,
+        });
+
+        const tossPrepareRows = await app.prisma.mallRN_toss_prepare.findMany({
+            where: { order_num: orderNum },
+            orderBy: { uid: "desc" },
+            take: 20,
+        });
+
+        type TossCancelRow = {
+            uid: bigint;
+            cancel_type: string;
+            cancel_amount: number;
+            cancel_reason: string;
+            request_source: string;
+            requested_by: string;
+            result_status: string;
+            toss_payment_status: string;
+            refundable_amount: number;
+            error_message: string;
+            requested_at: Date;
+        };
+
+        let tossCancelRows: TossCancelRow[] = [];
+        try {
+            tossCancelRows = await app.prisma.$queryRaw<TossCancelRow[]>`
+                SELECT uid, cancel_type, cancel_amount, cancel_reason, request_source, requested_by,
+                       result_status, toss_payment_status, refundable_amount, error_message, requested_at
+                FROM mallRN_toss_cancel_log
+                WHERE order_num = ${orderNum}
+                ORDER BY requested_at DESC
+                LIMIT 200
+            `;
+        } catch {
+            tossCancelRows = [];
+        }
+
+        const timeline = buildOrderTimeline({
+            auditRows,
+            orderLogRows,
+            tossCancelRows: tossCancelRows.map((row) => ({
+                ...row,
+                order_goods_uid: null,
+            })),
+            tossPrepareRows,
+        });
+
+        return reply.send(jsonSafe({ ok: true, orderNum, timeline }));
     });
 }

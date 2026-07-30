@@ -241,16 +241,6 @@ export default function OrderDetailPage() {
     async function handleItemCancel(item: OrderDetailItem) {
         if (!order?.orderNum || itemActionId) return;
 
-        const isSinglePaidImmediate =
-            item.canCancelImmediate &&
-            item.effectiveStatus === 1 &&
-            (order.activeItemCount ?? 1) === 1;
-
-        if (isSinglePaidImmediate) {
-            await handleCancel();
-            return;
-        }
-
         const ok = window.confirm("선택한 상품 주문을 취소할까요?");
         if (!ok) return;
 

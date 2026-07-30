@@ -325,7 +325,7 @@ export function resolveCustomerOrderItemActions(
         isOnlinePrepaidOrder(payType, payStatus, payInfo);
 
     if (status === 1) {
-        if (prepaidImmediatePath && orderItemCount === 1) {
+        if (prepaidImmediatePath) {
             return buildCustomerOrderItemActions({
                 status,
                 status2,

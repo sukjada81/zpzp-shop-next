@@ -2,6 +2,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import OrderStatusSelect from "../ui/OrderStatusSelect";
+import OrderTimeline from "../ui/OrderTimeline";
 
 type OrderItem = {
     id: string;
@@ -56,6 +57,37 @@ type DetailRes = {
     message?: string;
 };
 
+type TimelineRes = {
+    ok: boolean;
+    timeline?: Array<{
+        id: string;
+        source: string;
+        eventType: string;
+        label: string;
+        detail: string | null;
+        orderGoodsUid: number | null;
+        actor: string | null;
+        amount: number | null;
+        at: string;
+    }>;
+};
+
+async function fetchOrderTimeline(orderNum: string): Promise<TimelineRes> {
+    const origin = await getOrigin();
+    const h = await headers();
+    const cookie = h.get("cookie") ?? "";
+
+    const res = await fetch(
+        `${origin}/api/admin/orders/${encodeURIComponent(orderNum)}/timeline`,
+        {
+            cache: "no-store",
+            headers: { cookie },
+        }
+    );
+
+    return res.json();
+}
+
 async function getOrigin() {
     const h = await headers();
     const host = h.get("host") ?? "localhost:3000";
@@ -96,6 +128,7 @@ export default async function AdminOrderDetailPage({
     }
 
     const data = await fetchOrder(orderNum);
+    const timelineData = await fetchOrderTimeline(orderNum);
 
     if (!data?.ok || !data.order) {
         return <div className="p-6">주문 정보를 찾을 수 없습니다.</div>;
@@ -221,6 +254,13 @@ export default async function AdminOrderDetailPage({
                         </tbody>
                     </table>
                 </div>
+            </section>
+
+            <section className="dad-card mt-4 p-5">
+                <div className="mb-4 text-base font-extrabold text-[var(--dad-ink)]">
+                    결제 · 취소 · 상태 이력
+                </div>
+                <OrderTimeline entries={timelineData?.timeline ?? []} />
             </section>
         </main>
     );

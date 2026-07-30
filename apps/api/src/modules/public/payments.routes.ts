@@ -17,6 +17,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { captureRefFromRequest } from "../attribution/capture.js";
+import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import {
     buildTossOrderId,
     getTossClientKey,
@@ -740,6 +741,23 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                             updated_at: new Date(),
                         },
                     });
+
+                    if (tenantId) {
+                        await writeOrderAuditLog(prisma, {
+                            tenantId,
+                            eventType: "payment_confirm",
+                            orderNum,
+                            actorRole: "member",
+                            actorNickname: String(form.buyerName ?? "회원").slice(0, 100),
+                            metaJson: {
+                                amount: requestAmount,
+                                tossOrderId: orderId,
+                                paymentMethod,
+                                easyProvider,
+                                prepareUid: prepare.uid,
+                            },
+                        });
+                    }
                 }
 
                 return reply.send({
