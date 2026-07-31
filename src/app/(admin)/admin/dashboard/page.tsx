@@ -92,17 +92,23 @@ export default async function AdminDashboardPage({
 
                     <div className="sm:ml-auto flex items-center gap-2">
                         <FilterPill active={tenant === "all"} href="/dashboard?tenant=all" label="전체" />
+                        {/* [숨김 2026-07-31] DAD 하드코딩 지점 필터(A/B 지점) — 줍줍 실점포명과 무관하고
+                            slug 도 a/b 고정이라 항상 빈 결과. 지점 운영이 필요해지면 dad_tenants 기준 동적 생성으로 되살릴 것.
                         <FilterPill active={tenant === "a"} href="/dashboard?tenant=a" label="A 지점" />
                         <FilterPill active={tenant === "b"} href="/dashboard?tenant=b" label="B 지점" />
+                        */}
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Kpi title="주문 수" value={data?.kpi?.ordersCount ?? 0} />
                 <Kpi title="상품 수" value={data?.kpi?.productsCount ?? 0} />
                 <Kpi title="총 매출" value={Number(data?.kpi?.totalSales ?? 0).toLocaleString()} suffix="원" />
+                {/* [숨김 2026-07-31] 포인트 합계 — DAD 전용. 줍줍 dad_points_ledger 0행이라 항상 0P 로 표시됨.
+                    API(dashboard.routes.ts)는 그대로 두어 되살릴 때 프론트만 주석 해제하면 되도록 함.
                 <Kpi title="포인트 합계" value={Number(data?.kpi?.pointsSum ?? 0).toLocaleString()} suffix="P" />
+                */}
             </div>
 
             <div className="dad-card p-5">

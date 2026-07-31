@@ -5,14 +5,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAdminUiStore } from "@/lib/admin/adminUiStore";
 
+// DAD 잔재 메뉴는 삭제하지 않고 주석으로 보존한다(DAD 재사용 가능성).
+// 되살리려면 해당 줄의 주석만 해제하면 된다 — 라우트/페이지 파일은 그대로 남아 있다.
 const items = [
     { label: "대시보드", href: "/admin/dashboard", icon: "📊" },
     // ✅ FIX: page.tsx 파일 경로가 아니라 실제 페이지 라우트로 이동해야 함
-    { label: "지점 관리", href: "/admin/tenant", icon: "🏬" },
+    // [숨김 2026-07-31] 지점 관리 — 줍줍은 링커 기반 운영이고 본사 관리자는 shop-php 가 담당.
+    // { label: "지점 관리", href: "/admin/tenant", icon: "🏬" },
     { label: "상품", href: "/admin/products", icon: "🧾" },
     { label: "링커 상품", href: "/admin/linker-products", icon: "🔗" },
     { label: "주문", href: "/admin/orders", icon: "📦" },
-    { label: "포인트", href: "/admin/points", icon: "🪙" },
+    // [숨김 2026-07-31] 포인트 — DAD 전용. 줍줍 라이브 dad_points_ledger 0행(미사용).
+    // { label: "포인트", href: "/admin/points", icon: "🪙" },
 ];
 
 export default function AdminSidebar() {
@@ -76,8 +80,13 @@ export default function AdminSidebar() {
                         <div className="text-xs font-semibold text-[var(--dad-muted)]">Quick</div>
                         <div className="mt-2 grid grid-cols-2 gap-2">
                             {/* ✅ Quick도 실제 존재 라우트로 */}
+                            {/* [숨김 2026-07-31] 지점 Quick — 지점 관리 메뉴 숨김과 동반
                             <Link className="dad-btn dad-btn-ghost px-3 py-2 text-xs text-center" href="/admin/tenant" onClick={closeSidebar}>
                                 지점
+                            </Link>
+                            */}
+                            <Link className="dad-btn dad-btn-ghost px-3 py-2 text-xs text-center" href="/admin/orders" onClick={closeSidebar}>
+                                주문
                             </Link>
                             <Link className="dad-btn dad-btn-primary px-3 py-2 text-xs text-center" href="/admin/dashboard" onClick={closeSidebar}>
                                 현황
