@@ -183,6 +183,31 @@ export function canCustomerConfirmPurchase(goodsStatus: number, goodsStatus2: nu
     return goodsStatus === 4 && goodsStatus2 === 0;
 }
 
+/**
+ * 취소가 막혔을 때 고객에게 돌려줄 안내 문구.
+ *
+ * 차단 판정 자체는 canCustomerCancelOrder(주문 단위)와 resolveCustomerOrderItemActions
+ * (상품 단위)가 이미 하고 있다 — 배송준비중(2)부터 취소 플래그가 꺼지고, 배송중(3)·
+ * 배송완료(4)는 확정/반품/교환만 남는다. 이 함수는 판정을 바꾸지 않고 "왜 막혔고 어디로
+ * 가야 하는지"만 문장으로 만든다. 배송완료 이후의 정상 경로는 취소가 아니라 반품이다.
+ */
+export function buildCancelBlockedMessage(goodsStatus: number, goodsStatus2: number): string {
+    if (goodsStatus === 9) return "이미 취소된 상품입니다.";
+    if (goodsStatus === 5) return "구매확정된 상품은 취소할 수 없습니다.";
+    if (goodsStatus === 7 || goodsStatus === 8) {
+        return "교환·반품이 진행 중인 상품입니다. 진행 상황은 주문 상세에서 확인해 주세요.";
+    }
+    if (goodsStatus === 4) {
+        return canCustomerReturnOrExchange(goodsStatus, goodsStatus2)
+            ? "배송이 완료된 상품은 취소할 수 없습니다. 반품 신청으로 진행해 주세요."
+            : "배송이 완료된 상품은 취소할 수 없습니다.";
+    }
+    if (goodsStatus === 3) {
+        return "배송이 시작된 상품은 취소할 수 없습니다. 상품 수령 후 반품 신청으로 진행해 주세요.";
+    }
+    return "현재 상태에서는 주문취소가 불가능합니다.";
+}
+
 export function resolveCustomerOrderActions(input: {
     goodsStatus: number;
     goodsStatus2: number;

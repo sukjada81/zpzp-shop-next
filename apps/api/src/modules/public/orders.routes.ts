@@ -10,6 +10,7 @@ import {
 } from "./coupon.service.js";
 import {
     applyPartialCancelDisplay,
+    buildCancelBlockedMessage,
     buildGoodsStatusLabel,
     isOnlinePrepaidOrder,
     resolveCustomerOrderDisplay,
@@ -1595,7 +1596,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     return reply.code(400).send({
                         ok: false,
                         error: "cannot_cancel",
-                        message: "현재 상태에서는 주문취소가 불가능합니다.",
+                        message: buildCancelBlockedMessage(
+                            cancelDisplay.effectiveGoodsStatus,
+                            cancelDisplay.goodsStatus2
+                        ),
                     });
                 }
 
@@ -1712,7 +1716,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     return reply.code(400).send({
                         ok: false,
                         error: "cannot_cancel",
-                        message: "현재 상태에서는 주문취소가 불가능합니다.",
+                        message: buildCancelBlockedMessage(
+                            cancelDisplay.effectiveGoodsStatus,
+                            cancelDisplay.goodsStatus2
+                        ),
                     });
                 }
 
@@ -2160,7 +2167,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 if (!target.canCancelImmediate) {
                     return reply.code(400).send({
                         ok: false,
-                        message: "현재 상태에서는 즉시 취소할 수 없습니다.",
+                        message: buildCancelBlockedMessage(
+                            target.effectiveStatus,
+                            toInt(target.status2, 0)
+                        ),
                     });
                 }
 
@@ -2170,7 +2180,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 if (target.effectiveStatus !== 0 && target.effectiveStatus !== 1) {
                     return reply.code(400).send({
                         ok: false,
-                        message: "현재 상태에서는 즉시 취소할 수 없습니다.",
+                        message: buildCancelBlockedMessage(
+                            target.effectiveStatus,
+                            toInt(target.status2, 0)
+                        ),
                     });
                 }
 
