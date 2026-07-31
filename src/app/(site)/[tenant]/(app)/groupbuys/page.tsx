@@ -88,7 +88,7 @@ function mapProductToItem(
         id: String(p.id),
         tenant,
         title: String(p.title ?? ""),
-        // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "?????원"으로 표시된다
+        // 비회원 마스킹(§8): null을 0으로 접지 말 것 — null이어야 "회원가"으로 표시된다
         price: p.price == null ? null : Number(p.price),
         masked: p.masked ?? p.price == null,
         href: `/${tenant}/goods/${p.id}`,

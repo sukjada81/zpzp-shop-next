@@ -358,7 +358,7 @@ function GroupBuyItemBlock({
                 {options.map((option) => {
                     const key = buildOptionKey(item.id, option.id);
                     const qty = qtyMap[key] ?? 0;
-                    // 비회원 마스킹(§8): null 보존 — 헬퍼가 "?????원"으로 표시
+                    // 비회원 마스킹(§8): null 보존 — 헬퍼가 "회원가"으로 표시
                     const price = option.price ?? item.price;
                     const soldout = !!option.soldout;
                     // TODO(2026-04-24): 한정수량 상품 도입 시 stockText 뱃지 재활성화
@@ -481,7 +481,7 @@ export default function OngoingGroupBuySection({
         return map;
     }, [displayItems]);
 
-    // 비회원 마스킹(§8): 한 건이라도 마스킹이면 합계 금액도 "?????원"으로 표시
+    // 비회원 마스킹(§8): 한 건이라도 마스킹이면 합계 금액도 "회원가"으로 표시
     const anyMasked = useMemo(() => displayItems.some((i) => i.masked), [displayItems]);
 
     const selectedEntries = useMemo(

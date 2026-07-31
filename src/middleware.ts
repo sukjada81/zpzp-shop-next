@@ -51,7 +51,7 @@ function isSellerInternalPath(pathname: string) {
 
 function needsAuth(pathname: string) {
     // 노출정책 (a) — 2026-07-27 확정(docs/FOLLOWUP_MASKING_PICKUP.md F-8).
-    // 스토어 홈·상품 목록·상세는 비회원 public(가격은 API가 마스킹해 ?????원으로 노출).
+    // 스토어 홈·상품 목록·상세는 비회원 public(가격은 API가 마스킹해 회원가으로 노출).
     // 기획서 §8은 "비회원이 스토어를 보되 실판매가만 못 본다"를 전제하므로 열람 자체를 막지 않는다.
     // 로그인 게이트는 장바구니·주문·주문내역·포인트·설정(마이페이지)과 셀러 콘솔에만 둔다.
     const siteProtected = /^\/[^/]+\/(cart|order|orders|points|settings)(\/|$)/;
