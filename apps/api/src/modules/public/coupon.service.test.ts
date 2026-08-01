@@ -4,7 +4,10 @@
 import { describe, it, expect } from "vitest";
 import {
     clampCouponRows,
+    deriveMemberCouponStatus,
     evaluateCouponDiscount,
+    formatCouponDiscountLabel,
+    memberCouponStatusLabel,
     pickRepresentativeCoupon,
     type CouponManagerRow,
     type CouponRow,
@@ -142,5 +145,33 @@ describe("pickRepresentativeCoupon — order_info.coupon_uid 하위호환", () =
 
     it("쿠폰 미사용이면 0", () => {
         expect(pickRepresentativeCoupon([])).toBe(0);
+    });
+});
+
+describe("deriveMemberCouponStatus — my_coupon.php 미러", () => {
+    const future = new Date("2099-01-01T00:00:00Z");
+    const past = new Date("2020-01-01T00:00:00Z");
+
+    it("미사용·유효기간 남음 → available", () => {
+        expect(deriveMemberCouponStatus(0, future)).toBe("available");
+        expect(memberCouponStatusLabel("available")).toBe("사용가능");
+    });
+
+    it("사용됨 → used", () => {
+        expect(deriveMemberCouponStatus(1, future)).toBe("used");
+        expect(memberCouponStatusLabel("used")).toBe("사용완료");
+    });
+
+    it("만료 status 또는 e_date 지남 → expired", () => {
+        expect(deriveMemberCouponStatus(2, future)).toBe("expired");
+        expect(deriveMemberCouponStatus(0, past)).toBe("expired");
+        expect(memberCouponStatusLabel("expired")).toBe("기간만료");
+    });
+});
+
+describe("formatCouponDiscountLabel", () => {
+    it("정액·정률 라벨", () => {
+        expect(formatCouponDiscountLabel(def())).toBe("3,000원");
+        expect(formatCouponDiscountLabel(def({ discount_type: "P", discount: 10 }))).toBe("10%");
     });
 });

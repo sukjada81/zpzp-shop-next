@@ -35,7 +35,12 @@ import {
     type OrderItemInput,
     validateOrderItems,
 } from "./order-create.service.js";
-import { listAvailableCoupons, resolveCouponSelection } from "./coupon.service.js";
+import {
+    listAvailableCoupons,
+    listMemberCoupons,
+    resolveCouponSelection,
+    type MemberCouponFilter,
+} from "./coupon.service.js";
 
 type TenantContext = {
     tenantId?: bigint | string | number | null;
@@ -241,6 +246,34 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
         }
         return reply.send({ ok: true, clientKey });
     });
+
+    // 마이페이지 — 보유 쿠폰 목록(사용가능/사용완료/기간만료).
+    fastify.get<{ Querystring: { status?: string }; Params: { tenant?: string } }>(
+        "/v1/coupons/me",
+        async (request, reply: FastifyReply) => {
+            const memberUid = extractAuthenticatedMemberUid(request);
+            if (!memberUid) {
+                return reply.code(401).send({ ok: false, msg: "로그인이 필요합니다." });
+            }
+
+            const raw = String(request.query?.status ?? "all").trim().toLowerCase();
+            const allowed: MemberCouponFilter[] = ["all", "available", "used", "expired"];
+            const filter: MemberCouponFilter = allowed.includes(raw as MemberCouponFilter)
+                ? (raw as MemberCouponFilter)
+                : "all";
+
+            try {
+                const result = await listMemberCoupons(prisma, memberUid, filter);
+                return reply.send({ ok: true, ...result });
+            } catch (error: unknown) {
+                fastify.log.error(error, "COUPON_MY_LIST_ERROR");
+                return reply.code(500).send({
+                    ok: false,
+                    msg: "쿠폰 목록을 불러오지 못했습니다.",
+                });
+            }
+        }
+    );
 
     // 주문서 쿠폰 섹션용 — 보유 쿠폰 + 각 쿠폰의 할인액(할인 전 상품합계 기준) + 스택 허용 여부.
     fastify.get<{ Querystring: { subtotal?: string }; Params: { tenant?: string } }>(
