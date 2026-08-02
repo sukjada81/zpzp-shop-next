@@ -20,6 +20,7 @@ import {
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
+import { getCheckoutShopSlug } from "../../lib/store-slug.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -970,6 +971,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             }
 
             const now = toUnixNow();
+            const checkoutShopSlug = getCheckoutShopSlug(request);
 
             const products: Array<{
                 item: PublicCreateOrderBody["items"][number];
@@ -1066,6 +1068,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 platform_type: PLATFORM_TYPE,
                                 pickup_at: body.pickupAt ? new Date(body.pickupAt) : null,
                                 order_num: orderNum,
+                                checkout_shop_slug: checkoutShopSlug,
                                 name: toSafeString(body.buyerName, "주문자"),
                                 cell: toSafeString(body.buyerPhone, ""),
                                 email: "",

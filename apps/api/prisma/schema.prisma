@@ -2165,6 +2165,7 @@ model mallRN_order_info {
   platform_type  String                       @default("DTD") @db.VarChar(20)
   pickup_at      DateTime?                    @db.DateTime(0)
   order_num      String                       @unique(map: "order_num") @default("") @db.VarChar(32)
+  checkout_shop_slug String                   @default("") @db.VarChar(64)
   name           String                       @default("") @db.VarChar(50)
   cell           String                       @default("") @db.VarChar(30)
   email          String                       @default("") @db.VarChar(80)
