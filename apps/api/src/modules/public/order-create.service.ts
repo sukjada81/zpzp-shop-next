@@ -42,6 +42,8 @@ export type CreateStoreOrderInput = {
     tenantId: bigint;
     tenantSlug: string;
     memberUid: bigint;
+    /** 결제 시점 링커 스토어 slug (sue.zpzp.kr → sue). 본사몰이면 ''. */
+    checkoutShopSlug?: string;
     buyerName: string;
     buyerPhone: string;
     receiverName: string;
@@ -218,6 +220,7 @@ export async function createStoreOrder(
                         platform_type: PLATFORM_TYPE,
                         pickup_at: input.pickupAt ? new Date(input.pickupAt) : null,
                         order_num: orderNum,
+                        checkout_shop_slug: toSafeString(input.checkoutShopSlug, ""),
                         name: toSafeString(input.buyerName, "주문자"),
                         cell: toSafeString(input.buyerPhone, ""),
                         email: "",

@@ -36,6 +36,7 @@ import {
     validateOrderItems,
 } from "./order-create.service.js";
 import { listAvailableCoupons, resolveCouponSelection } from "./coupon.service.js";
+import { getCheckoutShopSlug } from "../../lib/store-slug.js";
 
 type TenantContext = {
     tenantId?: bigint | string | number | null;
@@ -190,6 +191,7 @@ type StoredPrepareForm = {
     couponUids: number[];
     memberUid: string;
     tenantSlug: string;
+    checkoutShopSlug?: string;
 };
 
 function toCouponUidList(value: unknown): number[] {
@@ -221,6 +223,7 @@ function parsePrepareForm(raw: string | null | undefined): StoredPrepareForm | n
             couponUids: toCouponUidList(data.couponUids),
             memberUid: toSafeString(data.memberUid, ""),
             tenantSlug: toSafeString(data.tenantSlug, ""),
+            checkoutShopSlug: toSafeString(data.checkoutShopSlug, ""),
         };
     } catch {
         return null;
@@ -354,6 +357,8 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
             const orderId = buildTossOrderId();
             const nowTs = toUnixNow();
 
+            const checkoutShopSlug = getCheckoutShopSlug(request);
+
             const formPayload: StoredPrepareForm = {
                 buyerName: toSafeString(body.buyerName, "주문자"),
                 buyerPhone: toSafeString(body.buyerPhone, ""),
@@ -370,6 +375,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 couponUids,
                 memberUid: memberUid.toString(),
                 tenantSlug,
+                checkoutShopSlug,
             };
 
             await prisma.mallRN_toss_prepare.create({
@@ -669,6 +675,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                     const created = await createStoreOrder(prisma, {
                         tenantId,
                         tenantSlug: tenantSlug || form.tenantSlug,
+                        checkoutShopSlug: form.checkoutShopSlug || getCheckoutShopSlug(request),
                         memberUid,
                         buyerName: form.buyerName,
                         buyerPhone: form.buyerPhone,
