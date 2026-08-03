@@ -443,6 +443,8 @@ type CustomerCancelOrderRow = {
 /** 배송준비 전 고객 즉시 취소 — 온라인 선결제는 Toss PG 취소 성공 후 DB 반영 */
 async function executeCustomerImmediateCancel(input: {
     prisma: FastifyInstance["prisma"];
+    /** 취소 마감 브리지 실패를 ERROR 로 남기기 위한 로거. 없으면 로그만 유실되고 흐름은 동일. */
+    fastify?: FastifyInstance;
     tenantId: bigint;
     orderNum: string;
     orderRow: CustomerCancelOrderRow;
@@ -517,7 +519,65 @@ async function executeCustomerImmediateCancel(input: {
         });
     });
 
+    // 쿠폰 복원 + 수수료 리버설은 PHP 헬퍼가 단일 진실원이므로 내부 브리지로 태운다.
+    // (웰컴 확정 후 미복원 게이팅·스택 2장 처리 규칙을 Node 에 복제하지 않기 위함 —
+    //  반품 timer_reconcile 브리지와 같은 패턴.)
+    // 트랜잭션 밖에서 호출한다: 상태 변경은 이미 확정됐고, 브리지는 별도 커넥션이라
+    // 트랜잭션 안에서 부르면 아직 커밋 안 된 상태를 PHP 가 못 본다.
+    // og 목록은 넘기지 않는다 — PHP 쪽이 order_num 으로 직접 조회한다(목록 계산 중복 방지).
+    await finalizeCancelViaPhpBridge(input.fastify, {
+        orderNum: input.orderNum,
+        orderGoodsUids: [],
+        reason: "cancel",
+    });
+
     return { ok: true };
+}
+
+/**
+ * 취소 마감(쿠폰 복원·수수료 리버설)을 PHP 브리지에 위임한다.
+ *
+ * ★비치명이지만 무음 금지 — 돈 정합이 걸린 작업이다.
+ * 취소 자체는 이미 커밋됐으므로 여기서 실패해도 예외를 던져 취소를 되돌리지는 않는다.
+ * 대신 ERROR 레벨로 남기고, 재처리가 필요한 건임을 식별 가능한 고정 마커
+ * (CANCEL_FINALIZE_UNPROCESSED)를 붙인다. 이 마커로 로그를 긁어 수동/배치 재처리한다.
+ * (후속: 미처리 건을 스스로 찾아 재시도하는 sweep — 취소 상태인데 쿠폰이 status=1 로
+ *  남아 있거나 적립 원장에 리버설이 없는 건을 주기적으로 훑는 방식. 별도 승인 후 추가.)
+ */
+async function finalizeCancelViaPhpBridge(
+    fastify: FastifyInstance | undefined,
+    input: { orderNum: string; orderGoodsUids: number[]; reason: "cancel" | "return" }
+) {
+    try {
+        const result = await callPhpBridge("/php/settlement_api.php", {
+            action: "order_cancel_finalize",
+            order_num: input.orderNum,
+            order_goods_uids: input.orderGoodsUids,
+            reason: input.reason,
+        });
+
+        if (!result.ok) {
+            fastify?.log.error(
+                {
+                    marker: "CANCEL_FINALIZE_UNPROCESSED",
+                    orderNum: input.orderNum,
+                    status: result.status,
+                },
+                "CANCEL_FINALIZE_FAILED — 쿠폰 복원·수수료 리버설 미처리. 수동 재처리 필요"
+            );
+            return;
+        }
+
+        fastify?.log.info(
+            { orderNum: input.orderNum, data: result.data },
+            "CANCEL_FINALIZE_OK"
+        );
+    } catch (error) {
+        fastify?.log.error(
+            { marker: "CANCEL_FINALIZE_UNPROCESSED", error, orderNum: input.orderNum },
+            "CANCEL_FINALIZE_ERROR — 쿠폰 복원·수수료 리버설 미처리. 수동 재처리 필요"
+        );
+    }
 }
 
 type ClaimGoodsRow = {
@@ -1605,6 +1665,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
 
                 const cancelResult = await executeCustomerImmediateCancel({
                     prisma,
+                    fastify,
                     tenantId,
                     orderNum,
                     orderRow: row,
@@ -1734,6 +1795,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
 
                 const cancelResult = await executeCustomerImmediateCancel({
                     prisma,
+                    fastify,
                     tenantId,
                     orderNum,
                     orderRow: rawOrder,
