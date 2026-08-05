@@ -128,6 +128,68 @@ function buildTenantOrigin(req: NextRequest, tenant: string) {
     return `${proto}://${tenant}.${baseDomain}${portPart}`;
 }
 
+/**
+ * 미가입자 인계용 — 본사 간편가입 진입점의 서명 URL을 만든다.
+ *
+ * 서명 규약은 shop-php lib/internal_auth.php 와 동일해야 한다(zpzpInternalSign):
+ *   HMAC-SHA256( `${ts}\n${canonical}` , ZPZP_INTERNAL_SECRET )
+ * canonical 은 kakao_signup_entry.php 의 zpzpSignupCanonical() 과 **필드 순서까지** 같아야 한다.
+ * 어긋나면 가입 진입이 400으로 막히므로, 한쪽만 고치지 말 것.
+ */
+function buildHqSignupUrl(input: {
+    snsId: string;
+    snsType: string;
+    email: string;
+    name: string;
+    returnTo: string;
+}): string {
+    const base =
+        process.env.HQ_SIGNUP_URL || "https://zpzp.kr/php/kakao_signup_entry.php";
+    const secret = String(process.env.ZPZP_INTERNAL_SECRET || "");
+    const ts = Math.floor(Date.now() / 1000).toString();
+
+    const canonical =
+        `sns_id=${input.snsId}` +
+        `&sns_type=${input.snsType}` +
+        `&email=${input.email}` +
+        `&name=${input.name}` +
+        `&returnTo=${input.returnTo}`;
+
+    const sign = crypto
+        .createHmac("sha256", secret)
+        .update(`${ts}\n${canonical}`)
+        .digest("hex");
+
+    const u = new URL(base);
+    u.searchParams.set("sns_id", input.snsId);
+    u.searchParams.set("sns_type", input.snsType);
+    u.searchParams.set("email", input.email);
+    u.searchParams.set("name", input.name);
+    u.searchParams.set("returnTo", input.returnTo);
+    u.searchParams.set("ts", ts);
+    u.searchParams.set("sign", sign);
+    return u.toString();
+}
+
+/**
+ * 가입 완료 후 돌아올 절대 URL. 상대 경로면 요청 호스트 기준으로 절대화한다
+ * (가입은 zpzp.kr 에서 끝나므로 상대 경로를 넘기면 본사로 돌아와 스토어 귀속이 끊긴다).
+ * 최종 화이트리스트 판정은 PHP 쪽에서도 다시 한다.
+ */
+function resolveSignupReturnTo(req: NextRequest, returnTo: string): string {
+    try {
+        const origin = new URL(req.url).origin;
+        const abs = isAbsoluteUrl(returnTo)
+            ? returnTo
+            : new URL(returnTo.startsWith("/") ? returnTo : "/home", origin).toString();
+        const host = new URL(abs).hostname.toLowerCase();
+        if (host === "zpzp.kr" || host.endsWith(".zpzp.kr")) return abs;
+        return "";
+    } catch {
+        return "";
+    }
+}
+
 function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
     if (isAbsoluteUrl(returnTo)) return returnTo;
     const path = returnTo.startsWith("/") ? returnTo : "/home";
@@ -374,11 +436,25 @@ export async function GET(req: NextRequest) {
         if (!completeRes.ok) {
             // [줍줍] 미가입 카카오 유저는 자동생성하지 않고 본사(zpzp.kr) 가입/로그인으로 유도
             if (completeData?.code === "NOT_REGISTERED") {
-                const hqLoginUrl =
-                    process.env.HQ_LOGIN_URL || "https://zpzp.kr/php/login.php";
+                // 본사 간편가입 폼으로 인계한다.
+                //
+                // 종전엔 php/login.php 로 보냈는데 그 파일은 인클루드 전용(`!defined('_B2BMALL_') → exit`)이라
+                // 직접 열면 빈 화면으로 끝났고(2026-08-05 실측), 카카오 인증 결과와 returnTo 도 실리지 않아
+                // 가입을 이어받을 수 없었다. → 전용 진입점 kakao_signup_entry.php 로 서명해서 넘긴다.
+                //
+                // sns_id 를 쿼리로 넘기는 이상 위조 진입 = 대리 가입 벡터이므로 HMAC 서명이 필수다.
+                // 서명 규약은 내부 브리지와 동일(ZPZP_INTERNAL_SECRET, ts 포함, 5분 스큐).
+                const hqSignupUrl = buildHqSignupUrl({
+                    snsId: completePayload.providerUserId,
+                    snsType: "kakao",
+                    email: completePayload.email,
+                    name: completePayload.name,
+                    returnTo: resolveSignupReturnTo(req, returnTo),
+                });
+
                 const notReg = new Headers();
-                notReg.set("Location", hqLoginUrl);
-                console.log("KAKAO_NOT_REGISTERED_REDIRECT", hqLoginUrl);
+                notReg.set("Location", hqSignupUrl);
+                console.log("KAKAO_NOT_REGISTERED_REDIRECT", hqSignupUrl.split("?")[0]);
                 return new Response(null, { status: 302, headers: notReg });
             }
             return Response.json(
