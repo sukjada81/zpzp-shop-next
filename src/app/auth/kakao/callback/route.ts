@@ -145,7 +145,16 @@ function buildHqSignupUrl(input: {
 }): string {
     const base =
         process.env.HQ_SIGNUP_URL || "https://zpzp.kr/php/kakao_signup_entry.php";
+
+    // ★시크릿 미설정을 조용히 넘기지 않는다.
+    //   종전엔 `|| ""` 폴백만 있어서, 이 웹 프로세스(.env.production)에 시크릿이 없으면
+    //   빈 키로 서명한 URL을 정상인 척 발급했다. PHP 쪽은 당연히 signature mismatch 400 →
+    //   "가입 화면이 안 뜬다"로만 보이고 원인이 콜백 로그 어디에도 안 남았다(2026-08-09 실측).
+    //   apps/api/src/lib/php-bridge.ts 의 bridgeSecret() 과 같은 규약으로 즉시 throw 한다.
     const secret = String(process.env.ZPZP_INTERNAL_SECRET || "");
+    if (secret.length < 32) {
+        throw new Error("ZPZP_INTERNAL_SECRET is missing or too short (min 32 chars).");
+    }
     const ts = Math.floor(Date.now() / 1000).toString();
 
     const canonical =
@@ -159,6 +168,11 @@ function buildHqSignupUrl(input: {
         .createHmac("sha256", secret)
         .update(`${ts}\n${canonical}`)
         .digest("hex");
+
+    // 시크릿 지문(값이 아니라 sha256 앞 8자리) — PHP 쪽 로그의 지문과 대조하면
+    // "시크릿 불일치"인지 "canonical 불일치"인지 로그만 보고 즉시 갈린다.
+    const secretFp = crypto.createHash("sha256").update(secret).digest("hex").slice(0, 8);
+    console.log("KAKAO_HQ_SIGNUP_SIGN", { ts, secretFp });
 
     const u = new URL(base);
     u.searchParams.set("sns_id", input.snsId);
@@ -444,13 +458,23 @@ export async function GET(req: NextRequest) {
                 //
                 // sns_id 를 쿼리로 넘기는 이상 위조 진입 = 대리 가입 벡터이므로 HMAC 서명이 필수다.
                 // 서명 규약은 내부 브리지와 동일(ZPZP_INTERNAL_SECRET, ts 포함, 5분 스큐).
-                const hqSignupUrl = buildHqSignupUrl({
-                    snsId: completePayload.providerUserId,
-                    snsType: "kakao",
-                    email: completePayload.email,
-                    name: completePayload.name,
-                    returnTo: resolveSignupReturnTo(req, returnTo),
-                });
+                let hqSignupUrl: string;
+                try {
+                    hqSignupUrl = buildHqSignupUrl({
+                        snsId: completePayload.providerUserId,
+                        snsType: "kakao",
+                        email: completePayload.email,
+                        name: completePayload.name,
+                        returnTo: resolveSignupReturnTo(req, returnTo),
+                    });
+                } catch (e) {
+                    // 서명할 수 없으면 400 날 URL로 보내지 않는다 — 여기서 끊고 원인을 로그에 남긴다.
+                    console.error("KAKAO_HQ_SIGNUP_SIGN_FAILED", (e as Error)?.message);
+                    return Response.json(
+                        { ok: false, error: "HQ_SIGNUP_LINK_UNAVAILABLE" },
+                        { status: 500 }
+                    );
+                }
 
                 const notReg = new Headers();
                 notReg.set("Location", hqSignupUrl);
