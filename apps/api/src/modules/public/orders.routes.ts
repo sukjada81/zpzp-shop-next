@@ -28,6 +28,8 @@ const STATUS_CANCELED = 9;
 const STATUS_EXCHANGE = 7;
 const STATUS_RETURN = 8;
 const STATUS2_REQUEST = 1;
+/** 취소/클레임 완료 — 관리자 접수목록(order_change_list)의 status2=5 */
+const STATUS2_DONE = 5;
 
 const ORDER_INFO_PUBLIC_SELECT = {
     uid: true,
@@ -435,11 +437,67 @@ async function writeOrderActionLog(
 }
 
 type CustomerCancelOrderRow = {
+    id?: string | null;
     pay_type?: string | null;
     pay_status?: string | null;
     pay_info?: string | null;
     name?: string | null;
 };
+
+/**
+ * 고객 즉시 취소 완료 건을 본사 교환/반품/취소접수(order_change_list)에 남긴다.
+ * status=9, status2=5(취소완료) — 요청(status2=1)과 같은 테이블, 완료 상태만 다름.
+ */
+async function writeImmediateCancelStatusChangeRecords(
+    tx: {
+        mallRN_order_status_change: {
+            findFirst: (args: unknown) => Promise<{ uid: number } | null>;
+            create: (args: unknown) => Promise<unknown>;
+        };
+    },
+    goodsRows: Array<{ uid: number; vendor: string }>,
+    input: {
+        orderNum: string;
+        memberId: string;
+        memberName: string;
+        reason: string;
+        now: number;
+    }
+) {
+    const reason = toSafeString(input.reason, "고객 주문 취소").slice(0, 100);
+    const memberId = toSafeString(input.memberId, "").slice(0, 50) || "회원";
+    const memberName = toSafeString(input.memberName, "회원").slice(0, 50);
+
+    for (const row of goodsRows) {
+        const existing = await tx.mallRN_order_status_change.findFirst({
+            where: {
+                order_num: input.orderNum,
+                og_uid: row.uid,
+                status: STATUS_CANCELED,
+                status2: STATUS2_DONE,
+            },
+            select: { uid: true },
+        });
+        if (existing) continue;
+
+        await tx.mallRN_order_status_change.create({
+            data: {
+                id: memberId,
+                name: memberName,
+                manager: "즉시취소",
+                vendor: toSafeString(row.vendor, "").slice(0, 50),
+                order_num: input.orderNum,
+                og_uid: row.uid,
+                reason,
+                bank_info: "",
+                status: STATUS_CANCELED,
+                status2: STATUS2_DONE,
+                status_date: input.now,
+                signdate: input.now,
+            },
+        });
+    }
+}
 
 /** 배송준비 전 고객 즉시 취소 — 온라인 선결제는 Toss PG 취소 성공 후 DB 반영 */
 async function executeCustomerImmediateCancel(input: {
@@ -477,6 +535,17 @@ async function executeCustomerImmediateCancel(input: {
     }
 
     await input.prisma.$transaction(async (tx: any) => {
+        const goodsRows = await tx.mallRN_order_goods.findMany({
+            where: {
+                tenant_id: input.tenantId,
+                platform_type: PLATFORM_TYPE,
+                order_num: input.orderNum,
+                status: { not: STATUS_CANCELED },
+            },
+            select: { uid: true, vendor: true },
+            orderBy: [{ uid: "asc" }],
+        });
+
         await tx.mallRN_order_info.updateMany({
             where: {
                 tenant_id: input.tenantId,
@@ -496,10 +565,25 @@ async function executeCustomerImmediateCancel(input: {
             },
             data: {
                 status: STATUS_CANCELED,
-                status2: STATUS_CANCELED,
+                status2: STATUS2_DONE,
                 status_date: input.now,
             },
         });
+
+        await writeImmediateCancelStatusChangeRecords(
+            tx,
+            goodsRows.map((row: { uid: number; vendor: string }) => ({
+                uid: Number(row.uid),
+                vendor: toSafeString(row.vendor, ""),
+            })),
+            {
+                orderNum: input.orderNum,
+                memberId: toSafeString(input.orderRow.id, input.actorNickname),
+                memberName: toSafeString(input.orderRow.name, input.actorNickname),
+                reason: "고객 주문 취소",
+                now: input.now,
+            }
+        );
 
         await writeOrderAuditLog(tx, {
             tenantId: input.tenantId,
@@ -1629,7 +1713,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     ok: true,
                     orderNum,
                     status: STATUS_CANCELED,
-                    statusLabel: buildGoodsStatusLabel(STATUS_CANCELED, 0),
+                    statusLabel: buildGoodsStatusLabel(STATUS_CANCELED, STATUS2_DONE),
                     message: "주문이 취소되었습니다.",
                 });
             } catch (error: unknown) {
@@ -1759,7 +1843,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     ok: true,
                     orderNum,
                     status: STATUS_CANCELED,
-                    statusLabel: buildGoodsStatusLabel(STATUS_CANCELED, 0),
+                    statusLabel: buildGoodsStatusLabel(STATUS_CANCELED, STATUS2_DONE),
                     message: "주문이 취소되었습니다.",
                 });
             } catch (error: unknown) {
