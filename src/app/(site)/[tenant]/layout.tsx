@@ -27,5 +27,5 @@ export default async function SiteTenantLayout({
     // DB에 새 지점이 추가될 때마다 프론트가 404를 내게 됩니다.
     // 테넌트 존재/상태 검증은 백엔드(tenant plugin + DB)에서 처리하세요.
 
-    return <CartProvider>{children}</CartProvider>;
+    return <CartProvider tenant={tenant}>{children}</CartProvider>;
 }
