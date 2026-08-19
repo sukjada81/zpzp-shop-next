@@ -653,6 +653,21 @@ async function finalizeCancelViaPhpBridge(
             return;
         }
 
+        // ok=true 라도 쿠폰을 못 되돌린 건이 있으면 그건 성공이 아니다.
+        // PHP 가 failed_coupons 로 갈라 주므로(대상 없음 no-op 과 매칭 실패를 구분) 여기서 승격시킨다.
+        const failedCoupons = (result.data as { failed_coupons?: unknown } | undefined)?.failed_coupons;
+        if (Array.isArray(failedCoupons) && failedCoupons.length > 0) {
+            fastify?.log.error(
+                {
+                    marker: "CANCEL_FINALIZE_UNPROCESSED",
+                    orderNum: input.orderNum,
+                    data: result.data,
+                },
+                "COUPON_RESTORE_FAILED — 쿠폰 복원 실패. 수동 재처리 필요"
+            );
+            return;
+        }
+
         fastify?.log.info(
             { orderNum: input.orderNum, data: result.data },
             "CANCEL_FINALIZE_OK"
