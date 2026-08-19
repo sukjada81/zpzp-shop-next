@@ -7,9 +7,10 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { endpoints, tenantHeader } from "@/lib/api/endpoints";
+import { useCart, CART_PENDING_KEY } from "@/lib/cart/CartProvider";
 
 type ConfirmResponse = {
     ok?: boolean;
@@ -24,6 +25,10 @@ export default function TossPaymentConfirmPage() {
     const searchParams = useSearchParams();
 
     const [message, setMessage] = useState("결제를 확인하는 중입니다...");
+    const cart = useCart();
+    // effect 의존성에 cart 를 넣으면 장바구니가 바뀔 때마다 승인 요청이 다시 나간다. ref 로 고정한다.
+    const cartRef = useRef(cart);
+    cartRef.current = cart;
 
     const query = useMemo(
         () => ({
@@ -70,6 +75,19 @@ export default function TossPaymentConfirmPage() {
                         `/${tenant}/order/payment/fail?reason=${encodeURIComponent(json?.reason || "confirm")}&msg=${encodeURIComponent(failMsg)}`
                     );
                     return;
+                }
+
+                // 결제 승인이 끝난 뒤에야 장바구니를 비운다. 주문서까지 갔다가 결제창에서
+                // 이탈한 경우에는 장바구니가 그대로 남아야 한다.
+                // 장바구니發 주문에만 표시가 붙으므로 바로구매는 여기서 건드리지 않는다.
+                try {
+                    const pendingKey = CART_PENDING_KEY(tenant);
+                    if (sessionStorage.getItem(pendingKey) === query.orderId) {
+                        cartRef.current.clear();
+                        sessionStorage.removeItem(pendingKey);
+                    }
+                } catch {
+                    // sessionStorage 불가 환경 — 장바구니만 남고 주문 완료 흐름은 그대로
                 }
 
                 router.replace(`/${tenant}/orders?highlight=${encodeURIComponent(json.orderNum)}`);

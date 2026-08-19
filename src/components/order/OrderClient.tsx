@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCart } from "@/lib/cart/CartProvider";
+import { useCart, CART_PENDING_KEY } from "@/lib/cart/CartProvider";
 import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 import {
     mergeQuickOrderProfile,
@@ -78,6 +78,7 @@ function buildLoginHref(tenant: string, returnTo: string) {
 }
 
 const ORDER_DRAFT_KEY = (tenant: string) => `zpzp_order_draft_${tenant}`;
+
 
 function getMaxSelectableQty(item?: { qtyType?: number; stockQty?: number }) {
     if (!item) return Number.POSITIVE_INFINITY;
@@ -592,6 +593,16 @@ export default function OrderClient(props: {
                 throw new Error(
                     `쿠폰 적용 금액이 변경되었습니다. 결제금액 ${payAmount.toLocaleString()}원을 확인 후 다시 시도해 주세요.`
                 );
+            }
+
+            // 장바구니에서 넘어온 주문이면, 승인 성공 후 비울 대상으로 표시해 둔다.
+            // (바로구매는 draftItems 로 오므로 대상이 아니다)
+            if (draftItems.length === 0 && initialItems.length === 0) {
+                try {
+                    sessionStorage.setItem(CART_PENDING_KEY(tenant), orderId);
+                } catch {
+                    // sessionStorage 불가 환경 — 장바구니가 남을 뿐 결제에는 영향 없음
+                }
             }
 
             // 2. Toss 결제창 — success/fail URL 은 tenant 서브도메인 기준
