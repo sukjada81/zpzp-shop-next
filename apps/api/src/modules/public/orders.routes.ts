@@ -1,5 +1,4 @@
 // apps/api/src/modules/public/orders.routes.ts
-import type { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { captureRefFromRequest } from "../attribution/capture.js";
 import { requireAdmin } from "../../common/guard.js";
@@ -23,7 +22,6 @@ import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
-import { quoteOrderDelivery } from "../../lib/delivery/order-delivery.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -1251,21 +1249,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             }
 
             const couponRows = selection.rows;
-
-            // 무통장 POST /v1/orders — Toss 와 동일 배송비(1차) 반영
-            const deliveryQuoted = await quoteOrderDelivery(
-                prisma,
-                body.items.map((item) => ({ productId: item.productId, qty: item.qty }))
-            );
-            if (!deliveryQuoted.ok) {
-                return reply.send({
-                    ok: false,
-                    error: "delivery_invalid",
-                    message: deliveryQuoted.message,
-                });
-            }
-            const deliveryTotal = deliveryQuoted.quote.deliveryTotal;
-            const payTotal = subtotal - selection.discountTotal + deliveryTotal;
+            const payTotal = subtotal - selection.discountTotal;
 
             const couponOwnerId = couponRows.length
                 ? await resolveMemberLoginId(prisma, memberUid)
@@ -1287,8 +1271,8 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
 
                 try {
                     await prisma.$transaction(async (tx) => {
-                        // Prisma Client 생성 시점 차이로 create() 추론이 흔들릴 수 있어 입력 타입을 명시 고정한다.
-                        const orderInfoData: Prisma.mallRN_order_infoUncheckedCreateInput = {
+                        await tx.mallRN_order_info.create({
+                            data: {
                                 id: orderNum,
                                 tenant_id: tenantId,
                                 member_uid: memberUid,
@@ -1310,7 +1294,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 pay_total: payTotal,
                                 cancel_total: 0,
                                 refund_total: 0,
-                                delivery_total: deliveryTotal,
+                                delivery_total: 0,
                                 pay_info: "",
                                 pay_number: "",
                                 escrow: 0,
@@ -1333,10 +1317,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 use_td_money: BigInt(0),
                                 use_td_point: 0,
                                 pay_method: "",
-                        };
-
-                        await tx.mallRN_order_info.create({
-                            data: orderInfoData,
+                            },
                         });
 
                         for (const row of products) {

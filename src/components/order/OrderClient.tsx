@@ -409,20 +409,17 @@ export default function OrderClient(props: {
         [items]
     );
 
-    // 배송비(1차): 서버 quote — shop-php 본사 P 정책. 쿠폰은 subtotal 기준 유지.
+    // 배송비(1차): 서버 quote. 장바구니/상품상세는 건드리지 않음.
     const [deliveryTotal, setDeliveryTotal] = useState(0);
-    const [deliveryLoading, setDeliveryLoading] = useState(false);
-
+    const itemsKey = items.map((it) => `${it.id}:${it.qty}`).join(",");
     useEffect(() => {
         if (!items.length) {
             setDeliveryTotal(0);
             return;
         }
-
         let cancelled = false;
         const timer = window.setTimeout(() => {
             void (async () => {
-                setDeliveryLoading(true);
                 try {
                     const res = await fetch(endpoints.deliveryQuote(tenant), {
                         method: "POST",
@@ -449,17 +446,16 @@ export default function OrderClient(props: {
                     }
                 } catch {
                     if (!cancelled) setDeliveryTotal(0);
-                } finally {
-                    if (!cancelled) setDeliveryLoading(false);
                 }
             })();
         }, 200);
-
         return () => {
             cancelled = true;
             window.clearTimeout(timer);
         };
-    }, [tenant, items]);
+        // itemsKey 로 품목/수량 변경만 추적 (장바구니 로직 비침투)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tenant, itemsKey]);
 
     // 쿠폰(W-1). 표시용 계산이며 최종 승인액은 prepare 응답의 amount 가 진실원이다.
     const [couponUids, setCouponUids] = useState<number[]>([]);
@@ -630,10 +626,7 @@ export default function OrderClient(props: {
 
             const orderId = prepareJson?.orderId || "";
             // 서버가 내려준 금액이 실제 승인액이다(상품합 − 쿠폰 + 배송비).
-            const serverDelivery = Math.max(0, Number(prepareJson?.deliveryTotal ?? deliveryTotal));
-            const serverDiscount = Math.max(0, Number(prepareJson?.discountTotal ?? couponDiscount));
             const payAmount = Number(prepareJson?.amount ?? payTotal) || payTotal;
-            const expectedPay = Math.max(0, subtotal + serverDelivery - serverDiscount);
 
             if (!prepareRes.ok || prepareJson?.ok !== true || !orderId) {
                 throw new Error(
@@ -643,12 +636,14 @@ export default function OrderClient(props: {
                 );
             }
 
-            // prepare 성공 후 서버 산출값으로 화면 동기화
-            setDeliveryTotal(serverDelivery);
-            setCouponDiscount(serverDiscount);
-
             // 화면에 보여준 금액보다 더 청구되는 일은 없어야 한다. 어긋나면 결제를 진행하지 않는다.
-            if (payAmount !== expectedPay) {
+            if (payAmount !== payTotal) {
+                const serverDelivery = Math.max(
+                    0,
+                    Number(prepareJson?.deliveryTotal ?? deliveryTotal)
+                );
+                setDeliveryTotal(serverDelivery);
+                setCouponDiscount(Math.max(0, subtotal + serverDelivery - payAmount));
                 throw new Error(
                     `결제 금액이 변경되었습니다. 결제금액 ${payAmount.toLocaleString()}원을 확인 후 다시 시도해 주세요.`
                 );
@@ -770,27 +765,25 @@ export default function OrderClient(props: {
                 )}
 
                 <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-                    <div className="flex items-center justify-between text-[13px] text-slate-500">
-                        <span>상품 금액</span>
-                        <span>{subtotal.toLocaleString()}원</span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-[13px] text-slate-500">
+                    {couponDiscount > 0 && (
+                        <>
+                            <div className="flex items-center justify-between text-[13px] text-slate-500">
+                                <span>상품 금액</span>
+                                <span>{subtotal.toLocaleString()}원</span>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[13px] text-rose-500">
+                                <span>쿠폰 할인</span>
+                                <span>-{couponDiscount.toLocaleString()}원</span>
+                            </div>
+                            <div className="my-2 border-t border-slate-200" />
+                        </>
+                    )}
+                    <div className="mb-1 flex items-center justify-between text-[13px] text-slate-500">
                         <span>배송비</span>
                         <span>
-                            {deliveryLoading
-                                ? "계산 중..."
-                                : deliveryTotal > 0
-                                  ? `${deliveryTotal.toLocaleString()}원`
-                                  : "무료"}
+                            {deliveryTotal > 0 ? `${deliveryTotal.toLocaleString()}원` : "무료"}
                         </span>
                     </div>
-                    {couponDiscount > 0 && (
-                        <div className="mt-1 flex items-center justify-between text-[13px] text-rose-500">
-                            <span>쿠폰 할인</span>
-                            <span>-{couponDiscount.toLocaleString()}원</span>
-                        </div>
-                    )}
-                    <div className="my-2 border-t border-slate-200" />
                     <div className="flex items-center justify-between text-[14px] font-bold text-slate-700">
                         <span>총 결제 금액</span>
                         <span className="text-[18px] font-extrabold text-slate-900">

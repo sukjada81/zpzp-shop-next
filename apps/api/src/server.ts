@@ -93,7 +93,7 @@ app.register(
     async (tenantScoped) => {
         await publicTenantRoutes(tenantScoped);
         await publicProductRoutes(tenantScoped);
-        await publicDeliveryRoutes(tenantScoped); // 배송비 quote·정책 (1차)
+        await publicDeliveryRoutes(tenantScoped); // 배송비 quote (1차)
         await publicPaymentRoutes(tenantScoped); // Toss PG (prepare/confirm/client-key)
         await publicOrderRoutes(tenantScoped);
     },

@@ -403,7 +403,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
             return reply.send({
                 ok: true,
                 orderId,
-                // OrderClient 는 이 값을 그대로 requestPayment 청구액으로 쓴다(할인 후 금액 + 배송비).
+                // OrderClient 는 이 값을 그대로 requestPayment 청구액으로 쓴다(할인 후 금액).
                 amount: payableAmount,
                 subtotal: validated.amount,
                 deliveryTotal: validated.deliveryTotal,
