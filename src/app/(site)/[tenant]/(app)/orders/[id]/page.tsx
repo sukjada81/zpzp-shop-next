@@ -55,8 +55,6 @@ type OrderDetailResponse = {
         cancelTotal: number;
         refundTotal: number;
         deliveryTotal: number;
-        activeItemCount?: number;
-        totalItemCount?: number;
         payType: string;
         payStatus: string;
         payTypeLabel?: string;
