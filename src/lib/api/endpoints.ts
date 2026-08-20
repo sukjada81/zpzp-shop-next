@@ -53,9 +53,6 @@ export const endpoints = {
     publicProductDetail: (tenant: string, id: string | number) =>
         apiProxy(`${tenant}/v1/public/products/${id}`),
 
-    /** 주문서 배송비 미리보기 (1차) */
-    deliveryQuote: (tenant: string) => apiProxy(`${tenant}/v1/public/delivery/quote`),
-
     createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
 
     /** 주문서 쿠폰 섹션 — 보유 쿠폰 + 각 쿠폰 할인액(할인 전 상품합계 기준) + 스택 허용 여부 */

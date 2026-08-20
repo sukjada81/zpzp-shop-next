@@ -784,7 +784,7 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     <div aria-hidden className={MOBILE_BOTTOM_ACTION_BAR_SPACER} />
                 </section>
 
-                <div className="fixed inset-x-0 bottom-0 z-50 border-t border-[color:var(--border)] bg-white px-3">
+                <div className="fixed inset-x-0 bottom-0 z-30 px-3">
                     <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
                         <div className="flex gap-2">
                             <button

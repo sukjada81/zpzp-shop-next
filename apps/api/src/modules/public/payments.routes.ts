@@ -345,8 +345,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 return reply.code(400).send({ ok: false, msg: selection.message });
             }
 
-            const payableAmount =
-                validated.amount + validated.deliveryTotal - selection.discountTotal;
+            const payableAmount = validated.amount - selection.discountTotal;
             if (payableAmount <= 0) {
                 return reply.code(400).send({
                     ok: false,
@@ -406,7 +405,6 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 // OrderClient 는 이 값을 그대로 requestPayment 청구액으로 쓴다(할인 후 금액).
                 amount: payableAmount,
                 subtotal: validated.amount,
-                deliveryTotal: validated.deliveryTotal,
                 discountTotal: selection.discountTotal,
                 cart_id: cartId,
                 member_id: memberUid.toString(),

@@ -409,54 +409,6 @@ export default function OrderClient(props: {
         [items]
     );
 
-    // 배송비(1차): 서버 quote. 장바구니/상품상세는 건드리지 않음.
-    const [deliveryTotal, setDeliveryTotal] = useState(0);
-    const itemsKey = items.map((it) => `${it.id}:${it.qty}`).join(",");
-    useEffect(() => {
-        if (!items.length) {
-            setDeliveryTotal(0);
-            return;
-        }
-        let cancelled = false;
-        const timer = window.setTimeout(() => {
-            void (async () => {
-                try {
-                    const res = await fetch(endpoints.deliveryQuote(tenant), {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Accept: "application/json",
-                            ...tenantHeader(tenant),
-                        },
-                        credentials: "include",
-                        cache: "no-store",
-                        body: JSON.stringify({
-                            items: items.map((it) => ({
-                                productId: Number(it.id),
-                                qty: Number(it.qty ?? 0),
-                            })),
-                        }),
-                    });
-                    const json = (await res.json().catch(() => null)) as {
-                        ok?: boolean;
-                        deliveryTotal?: number;
-                    } | null;
-                    if (!cancelled && json?.ok) {
-                        setDeliveryTotal(Math.max(0, Number(json.deliveryTotal ?? 0)));
-                    }
-                } catch {
-                    if (!cancelled) setDeliveryTotal(0);
-                }
-            })();
-        }, 200);
-        return () => {
-            cancelled = true;
-            window.clearTimeout(timer);
-        };
-        // itemsKey 로 품목/수량 변경만 추적 (장바구니 로직 비침투)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tenant, itemsKey]);
-
     // 쿠폰(W-1). 표시용 계산이며 최종 승인액은 prepare 응답의 amount 가 진실원이다.
     const [couponUids, setCouponUids] = useState<number[]>([]);
     const [couponDiscount, setCouponDiscount] = useState(0);
@@ -464,7 +416,7 @@ export default function OrderClient(props: {
         setCouponUids(uids);
         setCouponDiscount(discountTotal);
     }, []);
-    const payTotal = Math.max(0, subtotal + deliveryTotal - couponDiscount);
+    const payTotal = Math.max(0, subtotal - couponDiscount);
 
     const canSubmit = items.length > 0 && !submitting;
     const isDirectOrder = draftItems.length > 0 || initialItems.length > 0;
@@ -615,7 +567,6 @@ export default function OrderClient(props: {
                 orderId?: string;
                 amount?: number;
                 subtotal?: number;
-                deliveryTotal?: number;
                 discountTotal?: number;
             };
 
@@ -625,7 +576,7 @@ export default function OrderClient(props: {
             }
 
             const orderId = prepareJson?.orderId || "";
-            // 서버가 내려준 금액이 실제 승인액이다(상품합 − 쿠폰 + 배송비).
+            // 서버가 내려준 금액이 실제 승인액이다(할인 후). 로컬 계산은 폴백일 뿐.
             const payAmount = Number(prepareJson?.amount ?? payTotal) || payTotal;
 
             if (!prepareRes.ok || prepareJson?.ok !== true || !orderId) {
@@ -638,14 +589,9 @@ export default function OrderClient(props: {
 
             // 화면에 보여준 금액보다 더 청구되는 일은 없어야 한다. 어긋나면 결제를 진행하지 않는다.
             if (payAmount !== payTotal) {
-                const serverDelivery = Math.max(
-                    0,
-                    Number(prepareJson?.deliveryTotal ?? deliveryTotal)
-                );
-                setDeliveryTotal(serverDelivery);
-                setCouponDiscount(Math.max(0, subtotal + serverDelivery - payAmount));
+                setCouponDiscount(Math.max(0, subtotal - payAmount));
                 throw new Error(
-                    `결제 금액이 변경되었습니다. 결제금액 ${payAmount.toLocaleString()}원을 확인 후 다시 시도해 주세요.`
+                    `쿠폰 적용 금액이 변경되었습니다. 결제금액 ${payAmount.toLocaleString()}원을 확인 후 다시 시도해 주세요.`
                 );
             }
 
@@ -778,12 +724,6 @@ export default function OrderClient(props: {
                             <div className="my-2 border-t border-slate-200" />
                         </>
                     )}
-                    <div className="mb-1 flex items-center justify-between text-[13px] text-slate-500">
-                        <span>배송비</span>
-                        <span>
-                            {deliveryTotal > 0 ? `${deliveryTotal.toLocaleString()}원` : "무료"}
-                        </span>
-                    </div>
                     <div className="flex items-center justify-between text-[14px] font-bold text-slate-700">
                         <span>총 결제 금액</span>
                         <span className="text-[18px] font-extrabold text-slate-900">

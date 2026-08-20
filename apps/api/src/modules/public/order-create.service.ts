@@ -8,7 +8,6 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
-import { calcHqDeliveryTotal } from "../../lib/delivery/hq-delivery.js";
 import {
     consumeCoupons,
     pickRepresentativeCoupon,
@@ -183,9 +182,7 @@ export async function createStoreOrder(
 
     const couponRows = selection.rows;
     const couponTotal = selection.discountTotal;
-    // 배송비(1차): 쿠폰은 상품합 기준, 배송비는 쿠폰 후 가산 (shop-php 동일)
-    const deliveryTotal = await calcHqDeliveryTotal(prisma, input.items);
-    const payTotal = subtotal - couponTotal + deliveryTotal;
+    const payTotal = subtotal - couponTotal;
 
     // 클라이언트·Toss 승인 금액과 서버 재계산 금액 일치 검증
     if (input.payment && payTotal !== input.payment.amount) {
@@ -238,7 +235,7 @@ export async function createStoreOrder(
                         pay_total: payTotal,
                         cancel_total: 0,
                         refund_total: 0,
-                        delivery_total: deliveryTotal,
+                        delivery_total: 0,
                         pay_type: isPaid ? "C" : "B",
                         pay_status: isPaid ? "C" : "A",
                         pay_info: isPaid
@@ -351,22 +348,15 @@ export async function validateOrderItems(
     prisma: PrismaClient,
     items: OrderItemInput[]
 ): Promise<
-    | {
-          ok: true;
-          products: Array<{ item: OrderItemInput; product: GoodsRow }>;
-          amount: number;
-          deliveryTotal: number;
-      }
+    | { ok: true; products: Array<{ item: OrderItemInput; product: GoodsRow }>; amount: number }
     | { ok: false; message: string }
 > {
     const loaded = await loadProducts(prisma, items);
     if (!loaded.ok) return loaded;
 
-    const deliveryTotal = await calcHqDeliveryTotal(prisma, items);
     return {
         ok: true,
         products: loaded.products,
         amount: computeOrderAmount(loaded.products),
-        deliveryTotal,
     };
 }
