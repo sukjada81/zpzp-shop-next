@@ -48,6 +48,12 @@ type PrepareBody = {
     amount?: number;
     /** 사용할 쿠폰(mallRN_coupon.uid). 스택 ON이면 일반 1 + 웰컴 1까지. */
     couponUids?: number[];
+    /**
+     * 프론트가 화면에 표시한 배송비. amount 에 더해 보내지 말 것 — amount 계약은 그대로다.
+     * 서버가 상품별 delivery_price 로 재계산해 대조하며, 다르면 400 이다.
+     * 필드를 안 보내면 배송비 0 으로 처리한다(프론트 배포 전 하위호환).
+     */
+    deliveryFee?: number;
     cartId?: string;
     buyerName?: string;
     buyerPhone?: string;
@@ -189,6 +195,8 @@ type StoredPrepareForm = {
     direct?: number;
     items: OrderItemInput[];
     couponUids: number[];
+    /** confirm 이 주문 생성 때 재사용. 저장값도 그대로 믿지 않고 거기서 다시 재계산·대조한다. */
+    deliveryFee?: number;
     memberUid: string;
     tenantSlug: string;
     checkoutShopSlug?: string;
@@ -345,13 +353,29 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 return reply.code(400).send({ ok: false, msg: selection.message });
             }
 
-            const payableAmount = validated.amount - selection.discountTotal;
-            if (payableAmount <= 0) {
+            // 쿠폰 과할인 판정은 '상품합계 − 할인' 기준이다. 배송비로 메워서 통과시키면 안 된다.
+            const goodsAfterDiscount = validated.amount - selection.discountTotal;
+            if (goodsAfterDiscount <= 0) {
                 return reply.code(400).send({
                     ok: false,
                     msg: "할인 금액이 결제금액과 같거나 커서 결제할 수 없습니다. 쿠폰 선택을 조정해 주세요.",
                 });
             }
+
+            // 배송비 — 프론트 값을 신뢰하지 않고 서버 재계산값과 대조한다(금액 가드와 동일 원칙).
+            // 미전송(구 프론트)이면 0 → 기존 동작 유지.
+            const requestedDeliveryFee =
+                body.deliveryFee === undefined ? 0 : toInt(body.deliveryFee, 0);
+            if (requestedDeliveryFee !== 0 && requestedDeliveryFee !== validated.deliveryFee) {
+                return reply.code(400).send({
+                    ok: false,
+                    msg: "배송비가 변경되었습니다. 주문 페이지를 새로고침해 주세요.",
+                });
+            }
+            const deliveryFee = requestedDeliveryFee;
+
+            // 최종 승인액 = 상품합계 − 할인 + 배송비
+            const payableAmount = goodsAfterDiscount + deliveryFee;
 
             const cartId = toSafeString(body.cartId) || buildCartId(memberUid, body.items);
             const orderId = buildTossOrderId();
@@ -373,6 +397,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 direct: toInt(body.direct, 0),
                 items: body.items,
                 couponUids,
+                deliveryFee,
                 memberUid: memberUid.toString(),
                 tenantSlug,
                 checkoutShopSlug,
@@ -406,6 +431,9 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 amount: payableAmount,
                 subtotal: validated.amount,
                 discountTotal: selection.discountTotal,
+                deliveryFee,
+                /** 서버가 계산한 배송비. 프론트 표시값이 이와 다르면 프론트를 맞춰야 한다. */
+                deliveryFeeExpected: validated.deliveryFee,
                 cart_id: cartId,
                 member_id: memberUid.toString(),
             });
@@ -690,6 +718,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                         direct: form.direct,
                         items: form.items,
                         couponUids: form.couponUids,
+                        deliveryFee: form.deliveryFee,
                         payment: {
                             paymentKey,
                             tossOrderId: orderId,

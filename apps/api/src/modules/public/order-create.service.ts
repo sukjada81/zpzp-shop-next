@@ -36,7 +36,47 @@ type GoodsRow = {
     goods_code: string | null;
     price: number | null;
     orig_price: number | null;
+    /** 상품별 배송비(mallRN_goods.delivery_price). 서버 배송비 재계산의 유일한 근거다. */
+    delivery_price: number | null;
 };
+
+/**
+ * 배송비 정책 — 1차 확정본.
+ *
+ * "주문에 담긴 상품들의 delivery_price 중 최대값을 1회만 부과한다."
+ *
+ * 근거: 가방쟁이 상품DB(2026-08-07) 4,446건 중 4,083건이 3,500원 단일이고 전 건이 선불이라,
+ * 상품별 합산은 실제 배송 실무와 어긋난다(같은 택배로 묶여 나가는데 건당 부과가 됨).
+ *
+ * ⚠️ 정책 미확정 상태다. 팀장·본사가 확정하면 아래 상수/함수 하나만 바꾸면 된다.
+ *   - 상품별 합산으로 갈 경우      → SUM 으로 교체
+ *   - 조건부 무료(N원 이상) 도입 시 → FREE_THRESHOLD 를 켜고 계산부에 반영
+ * 계산식을 호출부에 흩지 말고 반드시 이 함수 하나만 고칠 것.
+ */
+export const DELIVERY_FEE_POLICY = {
+    /** 'max' = 최대값 1회 부과(1차). 'sum' = 상품별 합산. */
+    mode: "max" as "max" | "sum",
+    /** 0보다 크면 '상품합계가 이 금액 이상이면 배송비 0'. 0 = 미적용(1차). */
+    freeThreshold: 0,
+} as const;
+
+/**
+ * 서버측 배송비 산정. 프론트가 보낸 값은 신뢰하지 않고 항상 이 결과와 대조한다.
+ * (금액 가드와 동일 원칙 — 아니면 배송비 0원으로 조작해서 결제할 수 있다)
+ */
+export function computeDeliveryFee(
+    products: Array<{ product: GoodsRow }>,
+    goodsSubtotal: number
+): number {
+    if (!products.length) return 0;
+    if (DELIVERY_FEE_POLICY.freeThreshold > 0 && goodsSubtotal >= DELIVERY_FEE_POLICY.freeThreshold) {
+        return 0;
+    }
+    const fees = products.map((row) => Math.max(0, toInt(row.product.delivery_price, 0)));
+    return DELIVERY_FEE_POLICY.mode === "sum"
+        ? fees.reduce((sum, fee) => sum + fee, 0)
+        : fees.reduce((max, fee) => Math.max(max, fee), 0);
+}
 
 export type CreateStoreOrderInput = {
     tenantId: bigint;
@@ -53,6 +93,8 @@ export type CreateStoreOrderInput = {
     address1?: string;
     address2?: string;
     pickupAt?: string | null;
+    /** 프론트가 청구한 배송비. 서버가 재계산해 대조하며, 없으면 0(배포 순서 하위호환). */
+    deliveryFee?: number;
     message?: string;
     memo?: string;
     direct?: number;
@@ -127,6 +169,7 @@ async function loadProducts(
                 goods_code: true,
                 price: true,
                 orig_price: true,
+                delivery_price: true,
             },
         });
 
@@ -142,6 +185,7 @@ async function loadProducts(
                 goods_code: product.goods_code,
                 price: product.price,
                 orig_price: product.orig_price,
+                delivery_price: product.delivery_price,
             },
         });
     }
@@ -182,7 +226,24 @@ export async function createStoreOrder(
 
     const couponRows = selection.rows;
     const couponTotal = selection.discountTotal;
-    const payTotal = subtotal - couponTotal;
+
+    // 배송비 — 저장된 prepare 값을 그대로 믿지 않고 여기서도 상품 기준으로 재계산한다.
+    // 요청에 deliveryFee 가 없으면(구 프론트) 0 → 기존 동작 그대로.
+    const expectedDeliveryFee = computeDeliveryFee(products, subtotal);
+    const requestedDeliveryFee = input.deliveryFee === undefined ? 0 : toInt(input.deliveryFee, 0);
+    if (requestedDeliveryFee !== 0 && requestedDeliveryFee !== expectedDeliveryFee) {
+        return { ok: false, message: "배송비가 변경되었습니다. 주문 페이지를 새로고침해 주세요." };
+    }
+    const deliveryFee = requestedDeliveryFee;
+
+    // 최종 승인액 = 상품합계 − 할인 + 배송비
+    const payTotal = subtotal - couponTotal + deliveryFee;
+
+    // 배송비를 실제로 만든 상품 1건에만 delivery_price 를 실어, 품목 합계와 order_info 총액이
+    // 어긋나지 않게 한다(정책이 'max 1회 부과'라 전 품목에 실으면 중복 집계가 된다).
+    const deliveryBearerUid = deliveryFee > 0
+        ? (products.find((row) => toInt(row.product.delivery_price, 0) === deliveryFee)?.product.uid ?? 0)
+        : 0;
 
     // 클라이언트·Toss 승인 금액과 서버 재계산 금액 일치 검증
     if (input.payment && payTotal !== input.payment.amount) {
@@ -235,7 +296,7 @@ export async function createStoreOrder(
                         pay_total: payTotal,
                         cancel_total: 0,
                         refund_total: 0,
-                        delivery_total: 0,
+                        delivery_total: deliveryFee,
                         pay_type: isPaid ? "C" : "B",
                         pay_status: isPaid ? "C" : "A",
                         pay_info: isPaid
@@ -286,9 +347,14 @@ export async function createStoreOrder(
                             hotdeal_setting_id: 0,
                             hotdeal_price: 0,
                             option_name: toSafeString(row.item.optionName, ""),
+                            // 배송비는 주문당 1회 부과라, 그 금액을 만든 상품 1건만 값을 갖는다.
+                            // 나머지는 0 — 품목 합계가 order_info.delivery_total 과 일치한다.
                             delivery_type: 0,
                             delivery_type_qty: 1,
-                            delivery_price: 0,
+                            delivery_price:
+                                deliveryBearerUid && row.product.uid === deliveryBearerUid
+                                    ? deliveryFee
+                                    : 0,
                             delivery_add_price: 0,
                             delivery_info: "",
                             use_coupon: 0,
@@ -348,15 +414,25 @@ export async function validateOrderItems(
     prisma: PrismaClient,
     items: OrderItemInput[]
 ): Promise<
-    | { ok: true; products: Array<{ item: OrderItemInput; product: GoodsRow }>; amount: number }
+    | {
+        ok: true;
+        products: Array<{ item: OrderItemInput; product: GoodsRow }>;
+        /** ★계약: 할인 전 '상품합계'. 배송비는 여기 포함하지 않는다. */
+        amount: number;
+        /** 서버가 상품별 delivery_price 로 재계산한 배송비. 프론트 값 대조용. */
+        deliveryFee: number;
+    }
     | { ok: false; message: string }
 > {
     const loaded = await loadProducts(prisma, items);
     if (!loaded.ok) return loaded;
 
+    const amount = computeOrderAmount(loaded.products);
+
     return {
         ok: true,
         products: loaded.products,
-        amount: computeOrderAmount(loaded.products),
+        amount,
+        deliveryFee: computeDeliveryFee(loaded.products, amount),
     };
 }
