@@ -51,6 +51,7 @@ type OrderDetailResponse = {
         message?: string;
         memo?: string;
         totalAmount: number;
+        goodsTotal?: number;
         cancelTotal: number;
         refundTotal: number;
         deliveryTotal: number;
@@ -836,9 +837,13 @@ export default function OrderDetailPage() {
                     <span className="font-semibold text-slate-500">상품 금액</span>
                     <span className="font-bold text-slate-900">
                         {formatMoney(
-                            Math.max(
-                                0,
-                                Number(order.totalAmount ?? 0) - Number(order.deliveryTotal ?? 0)
+                            Number(
+                                order.goodsTotal ??
+                                    Math.max(
+                                        0,
+                                        Number(order.totalAmount ?? 0) -
+                                            Number(order.deliveryTotal ?? 0)
+                                    )
                             )
                         )}
                     </span>

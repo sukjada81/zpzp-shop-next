@@ -148,6 +148,10 @@ type OrderGoodsRow = {
     qty: number;
     option: number;
     option_name: string;
+    /** 본사 마이페이지/관리 주문리스트와 동일 — 품목 배송비 */
+    delivery_price: number;
+    use_coupon: number;
+    discount: number;
     status: number;
     status2: number;
     signdate: number;
@@ -908,6 +912,9 @@ async function loadOrderGoods(
             qty: true,
             option: true,
             option_name: true,
+            delivery_price: true,
+            use_coupon: true,
+            discount: true,
             status: true,
             status2: true,
             signdate: true,
@@ -943,6 +950,9 @@ async function loadOrderGoods(
             price: toInt(row.price, 0),
             origPrice: toInt(row.orig_price, 0),
             qty: toInt(row.qty, 0),
+            deliveryPrice: toInt(row.delivery_price, 0),
+            useCoupon: toInt(row.use_coupon, 0),
+            discount: toInt(row.discount, 0),
             optionId: toInt(row.option, 0),
             optionName: toSafeString(row.option_name, ""),
             status,
@@ -980,11 +990,21 @@ async function serializeOrder(
     });
     const { goodsStatus, goodsStatus2, isPartiallyCanceled, activeCount, canceledCount, totalCount } =
         resolveOrderGoodsStatus(items, payStatus);
-    const goodsTotal = items.reduce(
-        (sum, item) => sum + toInt(item.price, 0) * toInt(item.qty, 0),
+    // 본사 managers/order/order_list.php goods_total 과 동일:
+    // (price + use_coupon + discount) * qty — 취소 품목도 합산에 포함
+    const goodsTotal = items.reduce((sum, item) => {
+        const unit =
+            toInt(item.price, 0) + toInt(item.useCoupon, 0) + toInt(item.discount, 0);
+        return sum + unit * toInt(item.qty, 0);
+    }, 0);
+    const lineDeliveryTotal = items.reduce(
+        (sum, item) => sum + Math.max(0, toInt(item.deliveryPrice, 0)),
         0
     );
-    const totalAmount = toInt(info.pay_total, goodsTotal);
+    const infoDeliveryTotal = toInt(info.delivery_total, 0);
+    // order_info.delivery_total 우선, 없으면 품목 delivery_price 합(본사 마이페이지 표시 근거)
+    const deliveryTotal = infoDeliveryTotal > 0 ? infoDeliveryTotal : lineDeliveryTotal;
+    const totalAmount = toInt(info.pay_total, goodsTotal + deliveryTotal);
 
     let display = resolveCustomerOrderDisplay({
         goodsStatus,
@@ -1054,9 +1074,10 @@ async function serializeOrder(
         message: toSafeString(info.message, ""),
         memo: toSafeString(info.memo, ""),
         totalAmount,
+        goodsTotal,
         cancelTotal: toInt(info.cancel_total, 0),
         refundTotal: toInt(info.refund_total, 0),
-        deliveryTotal: toInt(info.delivery_total, 0),
+        deliveryTotal,
         payType: display.payType,
         payStatus: display.payStatus,
         payTypeLabel: display.payTypeLabel,
