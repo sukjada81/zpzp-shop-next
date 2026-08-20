@@ -30,17 +30,17 @@ export default function MobileHeader({
     const showBackButton = isOrder || isBack;
 
     return (
-        <header className="sticky top-0 z-40 w-full bg-white/92 backdrop-blur supports-[backdrop-filter]:bg-white/75">
+        <header className="sticky top-0 z-[60] w-full bg-white/92 backdrop-blur supports-[backdrop-filter]:bg-white/75">
             <div className="mx-auto w-full max-w-[520px] px-4">
                 <div className="flex h-[68px] items-center">
                     <div
-                        className="flex shrink-0 items-center justify-start"
+                        className="relative z-[61] flex shrink-0 items-center justify-start"
                         style={{ width: `${SIDE_W}px` }}
                     >
                         <button
                             onClick={onMenuAction}
                             aria-label={showBackButton ? "뒤로가기" : "메뉴 열기"}
-                            className="grid h-10 w-10 place-items-center rounded-xl text-slate-800 transition active:scale-95"
+                            className="grid h-11 w-11 place-items-center rounded-xl text-slate-800 transition active:scale-95 touch-manipulation"
                             type="button"
                         >
                             {showBackButton ? (

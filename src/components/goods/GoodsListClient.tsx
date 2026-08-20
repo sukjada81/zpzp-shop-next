@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, type RefObject } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatDisplayPrice } from "@/lib/price";
 import { useInfiniteProducts } from "@/lib/goods/useInfiniteProducts";
+import { safeBack } from "@/lib/nav/safeBack";
 
 export type GoodsListItem = {
     id: string;
@@ -150,9 +151,9 @@ export default function GoodsListClient(props: {
                 <div className="flex items-start gap-3">
                     <button
                         type="button"
-                        onClick={() => router.back()}
+                        onClick={() => safeBack(router, `/${tenant}/home`)}
                         aria-label="뒤로가기"
-                        className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[color:var(--border)] bg-white active:scale-[0.98]"
+                        className="mt-1 grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[color:var(--border)] bg-white active:scale-[0.98] touch-manipulation"
                     >
                         <span className="text-[18px] font-black text-[color:var(--brand)]">←</span>
                     </button>

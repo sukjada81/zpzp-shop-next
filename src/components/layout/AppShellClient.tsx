@@ -7,6 +7,7 @@ import SideDrawer from "./SideDrawer";
 import Footer from "./Footer";
 
 import { BRAND_NAME } from "@/lib/brand";
+import { safeBack } from "@/lib/nav/safeBack";
 
 function normalizeTenant(raw: string) {
     const t = (raw || "").trim().toLowerCase();
@@ -102,7 +103,12 @@ export default function AppShellClient({
                     mode={headerMode}
                     onMenuAction={() => {
                         if (isOrderPage || isGoodsDetailPage) {
-                            router.back();
+                            const fallback = !tenant
+                                ? "/"
+                                : isOrderPage
+                                  ? `/${tenant}/cart`
+                                  : `/${tenant}/home`;
+                            safeBack(router, fallback);
                             return;
                         }
                         setDrawerOpen(true);
