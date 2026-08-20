@@ -53,9 +53,8 @@ export const endpoints = {
     publicProductDetail: (tenant: string, id: string | number) =>
         apiProxy(`${tenant}/v1/public/products/${id}`),
 
-    /** 배송비 1차 — shop-php order_post.php 본사 P 정책 quote */
+    /** 주문서 배송비 미리보기(1차) — prepare/order-create 와 동일 서버 계산 */
     deliveryQuote: (tenant: string) => apiProxy(`${tenant}/v1/public/delivery/quote`),
-    deliveryPolicy: (tenant: string) => apiProxy(`${tenant}/v1/public/delivery/policy`),
 
     createOrder: (tenant: string) => apiProxy(`${tenant}/v1/orders`),
 

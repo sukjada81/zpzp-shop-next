@@ -3,9 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/lib/cart/CartProvider";
-import { endpoints, tenantHeader } from "@/lib/api/endpoints";
 
 function getOptionKey(item: { optionId?: number | string; optionName?: string }) {
     if (item.optionId != null && String(item.optionId).trim() !== "") {
@@ -26,100 +24,11 @@ function getMaxSelectableQty(item?: { qtyType?: number; stockQty?: number }) {
 
 export default function CartPageClient({ tenant }: { tenant: string }) {
     const router = useRouter();
-    const { items, updateQuantity, removeItem } = useCart();
-
-    const subtotal = useMemo(
-        () =>
-            items.reduce(
-                (sum, item) => sum + Number(item.price ?? 0) * Number(item.quantity ?? 0),
-                0
-            ),
-        [items]
-    );
-
-    // 장바구니 배송비 미리보기(1차) — 주문서와 동일 quote API
-    const [deliveryTotal, setDeliveryTotal] = useState(0);
-    const [deliveryLoading, setDeliveryLoading] = useState(false);
-    const [policyLabel, setPolicyLabel] = useState("");
-
-    useEffect(() => {
-        void (async () => {
-            try {
-                const res = await fetch(endpoints.deliveryPolicy(tenant), {
-                    cache: "no-store",
-                    headers: tenantHeader(tenant),
-                });
-                const json = (await res.json().catch(() => null)) as {
-                    ok?: boolean;
-                    policy?: { label?: string };
-                } | null;
-                if (json?.ok && json.policy?.label) {
-                    setPolicyLabel(String(json.policy.label));
-                }
-            } catch {
-                // 안내 문구만 — 실패해도 장바구니 사용 가능
-            }
-        })();
-    }, [tenant]);
-
-    useEffect(() => {
-        if (!items.length) {
-            setDeliveryTotal(0);
-            return;
-        }
-
-        let cancelled = false;
-        const timer = window.setTimeout(() => {
-            void (async () => {
-                setDeliveryLoading(true);
-                try {
-                    const res = await fetch(endpoints.deliveryQuote(tenant), {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Accept: "application/json",
-                            ...tenantHeader(tenant),
-                        },
-                        cache: "no-store",
-                        body: JSON.stringify({
-                            items: items.map((item) => ({
-                                productId: Number(item.productId),
-                                qty: Number(item.quantity ?? 0),
-                            })),
-                        }),
-                    });
-                    const json = (await res.json().catch(() => null)) as {
-                        ok?: boolean;
-                        deliveryTotal?: number;
-                    } | null;
-                    if (!cancelled && json?.ok) {
-                        setDeliveryTotal(Math.max(0, Number(json.deliveryTotal ?? 0)));
-                    }
-                } catch {
-                    if (!cancelled) setDeliveryTotal(0);
-                } finally {
-                    if (!cancelled) setDeliveryLoading(false);
-                }
-            })();
-        }, 200);
-
-        return () => {
-            cancelled = true;
-            window.clearTimeout(timer);
-        };
-    }, [tenant, items]);
-
-    const payTotal = subtotal + deliveryTotal;
+    const { items, totalPrice, updateQuantity, removeItem } = useCart();
 
     return (
         <main className="mx-auto max-w-[520px] px-4 pb-24 pt-3">
             <div className="mb-3 text-base font-extrabold text-slate-900">장바구니</div>
-
-            {policyLabel ? (
-                <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-semibold text-slate-600">
-                    배송: {policyLabel}
-                </div>
-            ) : null}
 
             {items.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
@@ -222,24 +131,9 @@ export default function CartPageClient({ tenant }: { tenant: string }) {
                     </section>
 
                     <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex justify-between text-[13px] font-semibold text-slate-600">
-                            <span>상품 금액</span>
-                            <span>{subtotal.toLocaleString()}원</span>
-                        </div>
-                        <div className="mt-1 flex justify-between text-[13px] font-semibold text-slate-600">
-                            <span>배송비</span>
-                            <span>
-                                {deliveryLoading
-                                    ? "계산 중..."
-                                    : deliveryTotal > 0
-                                      ? `${deliveryTotal.toLocaleString()}원`
-                                      : "무료"}
-                            </span>
-                        </div>
-                        <div className="my-2 border-t border-slate-200" />
                         <div className="flex justify-between text-base font-extrabold text-slate-900">
-                            <span>예상 결제 금액</span>
-                            <span>{payTotal.toLocaleString()}원</span>
+                            <span>총 결제 금액</span>
+                            <span>{totalPrice.toLocaleString()}원</span>
                         </div>
                     </div>
 

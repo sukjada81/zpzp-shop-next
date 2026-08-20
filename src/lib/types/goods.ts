@@ -80,10 +80,5 @@ export type PublicProductDetailResponse = {
         sourceTenantId?: string | null;
         saleStartAt?: string | null;
         saleEndAt?: string | null;
-        /** 1차 배송비 — mallRN_goods.delivery_type + 본사 정책 문구 */
-        delivery?: {
-            type?: number;
-            label?: string;
-        };
     };
 };

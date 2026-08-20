@@ -71,7 +71,6 @@ async function fetchProductDetail(tenant: string, id: string): Promise<GoodsDeta
                                 },
                             ],
                     notices: Array.isArray((p as any).notices) ? (p as any).notices : [],
-                    deliveryLabel: p.delivery?.label,
                 };
 
                 return detail;
