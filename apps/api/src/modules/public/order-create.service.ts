@@ -56,8 +56,20 @@ type GoodsRow = {
 export const DELIVERY_FEE_POLICY = {
     /** 'max' = 최대값 1회 부과(1차). 'sum' = 상품별 합산. */
     mode: "max" as "max" | "sum",
-    /** 0보다 크면 '상품합계가 이 금액 이상이면 배송비 0'. 0 = 미적용(1차). */
-    freeThreshold: 0,
+    /**
+     * 이 금액 이상이면 배송비 0. 기준은 **할인 전 상품합계**다.
+     * 쿠폰을 써서 이 밑으로 내려가도 배송비가 되살아나지 않는다(주문 확정 후 할인 변동에
+     * 배송비가 흔들리면 승인액 재검증이 무너진다).
+     *
+     * 30,000 은 본사 정책값이다 — mallRN_configuration.delivery_p_price1 과 같은 값이고
+     * PHP 장바구니도 "조건부 무료상품 30,000원 이상 구매시 무료"로 안내하고 있다(php/cart.php).
+     *
+     * ⚠️ 팀장 확인 항목: 임계값 미만일 때 부과액이 PHP 와 다르다.
+     *   PHP  = mallRN_configuration.delivery_p_price2 고정 3,000원
+     *   Next = 상품별 delivery_price 중 최대값 1회 (이 파일)
+     *   어느 쪽으로 통일할지 확정 전까지 두 계산이 공존한다.
+     */
+    freeThreshold: 30000,
 } as const;
 
 /**
@@ -66,6 +78,7 @@ export const DELIVERY_FEE_POLICY = {
  */
 export function computeDeliveryFee(
     products: Array<{ product: GoodsRow }>,
+    /** ★할인 전 상품합계★ — 쿠폰 차감 후 금액을 넣으면 안 된다. */
     goodsSubtotal: number
 ): number {
     if (!products.length) return 0;
