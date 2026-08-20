@@ -1,12 +1,22 @@
 /**
- * 고객/관리자 주문 취소 시 Toss PG 전액 취소 (shop-php zpzpTossCancelPayment full 취소 대응)
+ * 고객/관리자 주문 취소 시 Toss PG 취소 (shop-php zpzpTossCancelPayment 대응)
+ *
+ * 2026-08-20
+ * 부분 상품 취소 후 "전체 주문 취소" 시:
+ * - PG는 잔액 취소에 성공했는데 Node가 CANCELED 만 성공으로 봐 DB가 안 바뀌던 문제
+ * - 이미 취소된 결제에 전액취소를 다시 보내 실패로 보이던 문제
+ * 를 막기 위해 조회(GET) → 남은 금액이면 부분취소 → 실패 시 한 번 더 조회로 맞춘다.
  */
 import type { PrismaClient } from "@prisma/client";
 import {
     getTossSecretKey,
     tossCancelPaymentFull,
+    tossCancelPaymentPartial,
     tossCancelSucceeded,
+    tossGetPayment,
     tossJsonEncode,
+    tossPaymentFullyCanceled,
+    type TossApiResult,
 } from "./toss-payment.js";
 
 export type TossOrderCancelResult =
@@ -32,7 +42,44 @@ function limitText(value: string, max: number): string {
     return trimmed.slice(0, max);
 }
 
-/** 온라인 선결제 주문 — PG 전액 취소. 성공·이미취소만 ok=true */
+function tossFailMessage(apiResult: TossApiResult): string {
+    if (typeof apiResult.data?.message === "string" && apiResult.data.message.trim()) {
+        return apiResult.data.message;
+    }
+    return apiResult.curlError || "결제 취소에 실패했습니다.";
+}
+
+async function markPrepareCanceled(
+    prisma: PrismaClient,
+    prepareUid: number,
+    payload: Record<string, unknown>
+) {
+    const now = toUnixNow();
+    await prisma.mallRN_toss_prepare.update({
+        where: { uid: prepareUid },
+        data: {
+            status: 7,
+            payment_status: "CANCELED",
+            payload: tossJsonEncode(payload),
+            signdate: now,
+            updated_at: new Date(),
+        },
+    });
+}
+
+/** 2026-08-20 취소 API 실패 시 PG 실상태를 한 번 조회해 잔액 0이면 성공으로 본다. */
+async function reconcileFromTossLookup(
+    secretKey: string,
+    paymentKey: string
+): Promise<{ ok: true } | { ok: false }> {
+    const lookup = await tossGetPayment(secretKey, paymentKey);
+    if (lookup.httpCode >= 200 && lookup.httpCode < 300 && tossPaymentFullyCanceled(lookup.data)) {
+        return { ok: true };
+    }
+    return { ok: false };
+}
+
+/** 온라인 선결제 주문 — 남은 금액까지 PG 취소. 성공·이미취소만 ok=true */
 export async function cancelTossPaymentForOrder(
     prisma: PrismaClient,
     input: CancelTossOrderPaymentInput
@@ -91,46 +138,79 @@ export async function cancelTossPaymentForOrder(
         return { ok: true, skipped: true, reason: "already_canceled" };
     }
 
-    const idempotencySeed = `${orderId}|${requestKey}|full|0`;
-    const apiResult = await tossCancelPaymentFull(
-        secretKey,
-        paymentKey,
-        orderId,
-        cancelReason,
-        idempotencySeed
-    );
-    const cancelOk = tossCancelSucceeded(apiResult);
-
-    if (!cancelOk) {
-        const tossMessage =
-            typeof apiResult.data?.message === "string"
-                ? apiResult.data.message
-                : apiResult.curlError || "결제 취소에 실패했습니다.";
-
-        return {
-            ok: false,
-            code: "TOSS_CANCEL_FAILED",
-            message: tossMessage,
-        };
-    }
-
-    const now = toUnixNow();
-    await prisma.mallRN_toss_prepare.update({
-        where: { uid: prepare.uid },
-        data: {
-            status: 7,
-            payment_status: "CANCELED",
-            payload: tossJsonEncode({
+    // 2026-08-20: 부분취소 이력(PARTIAL_CANCELED)이 있으면 잔액을 조회한 뒤 그 금액만 취소한다.
+    const lookup = await tossGetPayment(secretKey, paymentKey);
+    if (lookup.httpCode >= 200 && lookup.httpCode < 300) {
+        if (tossPaymentFullyCanceled(lookup.data)) {
+            await markPrepareCanceled(prisma, prepare.uid, {
                 event: "CUSTOMER_ORDER_CANCEL",
                 requestKey,
                 requestSource,
                 requestedBy,
                 cancelReason,
-                httpCode: apiResult.httpCode,
-            }),
-            signdate: now,
-            updated_at: new Date(),
-        },
+                syncedFrom: "toss_get_already_canceled",
+            });
+            return { ok: true, skipped: true, reason: "already_canceled" };
+        }
+    }
+
+    const remaining = Number(lookup.data?.balanceAmount ?? 0);
+    const usePartialRemaining =
+        lookup.httpCode >= 200 &&
+        lookup.httpCode < 300 &&
+        remaining > 0 &&
+        String(lookup.data?.status ?? "").toUpperCase() === "PARTIAL_CANCELED";
+
+    let apiResult: TossApiResult;
+    let cancelType: "full" | "partial" = "full";
+
+    if (usePartialRemaining) {
+        cancelType = "partial";
+        const idempotencySeed = `${orderId}|${requestKey}|partial|${remaining}`;
+        apiResult = await tossCancelPaymentPartial(
+            secretKey,
+            paymentKey,
+            orderId,
+            cancelReason,
+            remaining,
+            idempotencySeed
+        );
+    } else {
+        const idempotencySeed = `${orderId}|${requestKey}|full|0`;
+        apiResult = await tossCancelPaymentFull(
+            secretKey,
+            paymentKey,
+            orderId,
+            cancelReason,
+            idempotencySeed
+        );
+    }
+
+    let cancelOk = tossCancelSucceeded(apiResult, cancelType);
+
+    // 2026-08-20: API 실패여도 PG 잔액이 0이면 성공으로 본다 (조회 1회).
+    if (!cancelOk) {
+        const reconciled = await reconcileFromTossLookup(secretKey, paymentKey);
+        cancelOk = reconciled.ok;
+    }
+
+    if (!cancelOk) {
+        return {
+            ok: false,
+            code: "TOSS_CANCEL_FAILED",
+            message: tossFailMessage(apiResult),
+        };
+    }
+
+    await markPrepareCanceled(prisma, prepare.uid, {
+        event: "CUSTOMER_ORDER_CANCEL",
+        requestKey,
+        requestSource,
+        requestedBy,
+        cancelReason,
+        httpCode: apiResult.httpCode,
+        cancelType,
+        remainingBefore: remaining,
     });
 
     return { ok: true, canceled: true };

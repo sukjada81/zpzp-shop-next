@@ -19,6 +19,7 @@ type ApiOrderItem = {
     displayStatus?: string;
     badgeText?: string | null;
     footerText?: string | null;
+    statusNotice?: string | null;
     canCancel?: boolean;
     isPartiallyCanceled?: boolean;
     activeItemCount?: number;
@@ -76,6 +77,7 @@ export type OrderSummary = {
     pickupAt?: string | null;
     badgeText?: string | null;
     footerText?: string | null;
+    statusNotice?: string | null;
     canCancel?: boolean;
     isPartiallyCanceled?: boolean;
     guestPhone?: string;
@@ -156,6 +158,7 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
         pickupAt: order.pickupAt ?? null,
         badgeText: order.badgeText ?? null,
         footerText: order.footerText ?? null,
+        statusNotice: order.statusNotice ?? null,
         canCancel: Boolean(order.canCancel),
         isPartiallyCanceled: Boolean(order.isPartiallyCanceled),
         guestPhone,
@@ -568,6 +571,12 @@ export default function OrdersClient(props: {
                                     {getFooterIcon(footerVariant)}
                                     <span>{footerText}</span>
                                 </div>
+
+                                {order.statusNotice ? (
+                                    <div className="mt-3 rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-3 text-center text-[13px] font-bold leading-5 text-amber-950">
+                                        {order.statusNotice}
+                                    </div>
+                                ) : null}
                             </Link>
                         </article>
                     );
