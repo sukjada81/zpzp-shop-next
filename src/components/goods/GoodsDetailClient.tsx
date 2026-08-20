@@ -783,63 +783,64 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     </div>
                     <div aria-hidden className={MOBILE_BOTTOM_ACTION_BAR_SPACER} />
                 </section>
+            </main>
 
-                <div className="fixed inset-x-0 bottom-0 z-30 px-3">
-                    <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={submitCart}
-                                disabled={!isActive || allSoldout}
-                                className="h-12 flex-[2.2] rounded-[12px] border bg-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                                style={{
-                                    borderColor: allSoldout ? "var(--border)" : "var(--accent)",
-                                    color: allSoldout ? "var(--muted)" : "var(--accent)",
-                                }}
-                                aria-label="장바구니 담기"
-                            >
-                                <span className="flex items-center justify-center">
-                                    <ShoppingCart size={20} />
+            {/* fixed 바는 main 밖에 둔다. 조상 relative/overflow 영향으로 하단에서 안 보이는 경우 방지 */}
+            <div className="fixed inset-x-0 bottom-0 z-[100] border-t border-[color:var(--border)] bg-white px-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)]">
+                <div className="mx-auto w-full max-w-[520px] px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={submitCart}
+                            disabled={!isActive || allSoldout}
+                            className="h-12 flex-[2.2] rounded-[12px] border bg-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                            style={{
+                                borderColor: allSoldout ? "var(--border)" : "var(--accent)",
+                                color: allSoldout ? "var(--muted)" : "var(--accent)",
+                            }}
+                            aria-label="장바구니 담기"
+                        >
+                            <span className="flex items-center justify-center">
+                                <ShoppingCart size={20} />
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={submitQuickOrder}
+                            disabled={!isActive || allSoldout || submitting}
+                            className="relative h-12 flex-[7.8] rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                            style={{
+                                background: isActive && !allSoldout
+                                    ? "var(--accent)"
+                                    : allSoldout
+                                        ? "#b0b0b0"
+                                        : "var(--accent)",
+                                boxShadow: isActive && !allSoldout
+                                    ? "0 10px 22px color-mix(in srgb, var(--accent) 30%, transparent)"
+                                    : "none",
+                                opacity: isActive && !allSoldout ? 1 : 0.55,
+                            }}
+                        >
+                            <div className="relative flex w-full items-center justify-center">
+                                <span className="inline-flex items-center gap-2">
+                                    <ShoppingBag size={18} />
+                                    {submitting ? "주문 처리 중..." : "주문하기"}
                                 </span>
-                            </button>
 
-                            <button
-                                type="button"
-                                onClick={submitQuickOrder}
-                                disabled={!isActive || allSoldout || submitting}
-                                className="relative h-12 flex-[7.8] rounded-[12px] font-bold text-white transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                                style={{
-                                    background: isActive && !allSoldout
-                                        ? "var(--accent)"
-                                        : allSoldout
-                                            ? "#b0b0b0"
-                                            : "color-mix(in srgb, var(--accent) 55%, white)",
-                                    boxShadow: isActive && !allSoldout
-                                        ? "0 10px 22px color-mix(in srgb, var(--accent) 30%, transparent)"
-                                        : "none",
-                                    opacity: 1,
-                                }}
-                            >
-                                <div className="relative flex w-full items-center justify-center">
-                                    <span className="inline-flex items-center gap-2">
-                                        <ShoppingBag size={18} />
-                                        {submitting ? "주문 처리 중..." : "주문하기"}
-                                    </span>
-
-                                    {isActive ? (
-                                        <span className="absolute inset-y-0 right-4 flex flex-col items-end justify-center text-right">
-                                            <span className="text-[13px] opacity-90">총 {totalQty}개</span>
-                                            <span className="text-[13px] opacity-90">
-                                                {formatDisplayPrice(data.masked ? null : totalPrice, data.masked)}
-                                            </span>
+                                {isActive ? (
+                                    <span className="absolute inset-y-0 right-4 flex flex-col items-end justify-center text-right">
+                                        <span className="text-[13px] opacity-90">총 {totalQty}개</span>
+                                        <span className="text-[13px] opacity-90">
+                                            {formatDisplayPrice(data.masked ? null : totalPrice, data.masked)}
                                         </span>
-                                    ) : null}
-                                </div>
-                            </button>
-                        </div>
+                                    </span>
+                                ) : null}
+                            </div>
+                        </button>
                     </div>
                 </div>
-            </main>
+            </div>
 
             {cartConfirmOpen ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

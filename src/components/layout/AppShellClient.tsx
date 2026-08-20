@@ -125,7 +125,8 @@ export default function AppShellClient({
             )}
 
             <div className="relative pb-10">{children}</div>
-            <Footer />
+            {/* 상품상세 하단 주문/장바구니 바와 푸터가 겹치지 않게 숨김 */}
+            {!isGoodsDetailPage && <Footer />}
         </div>
     );
 }
