@@ -13,6 +13,7 @@ type ApiOrderItem = {
     buyerName?: string;
     buyerPhone?: string;
     totalAmount: number;
+    deliveryTotal?: number;
     pickupAt?: string | null;
     status: number;
     statusLabel: string;
@@ -73,6 +74,7 @@ export type OrderSummary = {
     status: string;
     title: string;
     totalPrice: number;
+    deliveryTotal: number;
     createdAt: string;
     pickupAt?: string | null;
     badgeText?: string | null;
@@ -154,6 +156,7 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
         status: order.displayStatus || order.statusLabel || "주문접수",
         title,
         totalPrice: Number(order.totalAmount ?? 0),
+        deliveryTotal: Number(order.deliveryTotal ?? 0),
         createdAt: order.createdAt,
         pickupAt: order.pickupAt ?? null,
         badgeText: order.badgeText ?? null,
@@ -554,8 +557,16 @@ export default function OrdersClient(props: {
                                 <div className="my-4 h-px bg-[#e8e8eb]" />
 
                                 <div className="flex items-end justify-between gap-3">
-                                    <div className="text-[15px] font-bold text-[#25324a]">
-                                        주문금액
+                                    <div>
+                                        <div className="text-[15px] font-bold text-[#25324a]">
+                                            주문금액
+                                        </div>
+                                        <div className="mt-1 text-[12px] font-semibold text-[#7a8499]">
+                                            배송비{" "}
+                                            {order.deliveryTotal > 0
+                                                ? formatMoney(order.deliveryTotal)
+                                                : "무료"}
+                                        </div>
                                     </div>
                                     <div className="text-[20px] font-extrabold tracking-[-0.02em] text-[#182032]">
                                         {formatMoney(order.totalPrice)}

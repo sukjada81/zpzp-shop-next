@@ -835,18 +835,23 @@ export default function OrderDetailPage() {
                 <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-sm">
                     <span className="font-semibold text-slate-500">상품 금액</span>
                     <span className="font-bold text-slate-900">
-                        {formatMoney(order.totalAmount)}
+                        {formatMoney(
+                            Math.max(
+                                0,
+                                Number(order.totalAmount ?? 0) - Number(order.deliveryTotal ?? 0)
+                            )
+                        )}
                     </span>
                 </div>
 
-                {Number(order.deliveryTotal ?? 0) > 0 ? (
-                    <div className="mt-2 flex justify-between text-sm">
-                        <span className="font-semibold text-slate-500">배송비</span>
-                        <span className="font-bold text-slate-900">
-                            {formatMoney(Number(order.deliveryTotal))}
-                        </span>
-                    </div>
-                ) : null}
+                <div className="mt-2 flex justify-between text-sm">
+                    <span className="font-semibold text-slate-500">배송비</span>
+                    <span className="font-bold text-slate-900">
+                        {Number(order.deliveryTotal ?? 0) > 0
+                            ? formatMoney(Number(order.deliveryTotal))
+                            : "무료"}
+                    </span>
+                </div>
 
                 {Number(order.cancelTotal ?? 0) > 0 ? (
                     <div className="mt-2 flex justify-between text-sm">

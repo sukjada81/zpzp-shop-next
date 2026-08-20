@@ -22,6 +22,7 @@ import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
+import { calcHqDeliveryTotal } from "../../lib/delivery/hq-delivery.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -1249,7 +1250,14 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             }
 
             const couponRows = selection.rows;
-            const payTotal = subtotal - selection.discountTotal;
+            const deliveryTotal = await calcHqDeliveryTotal(
+                prisma,
+                body.items.map((item) => ({
+                    productId: item.productId,
+                    qty: item.qty,
+                }))
+            );
+            const payTotal = subtotal - selection.discountTotal + deliveryTotal;
 
             const couponOwnerId = couponRows.length
                 ? await resolveMemberLoginId(prisma, memberUid)
@@ -1294,7 +1302,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 pay_total: payTotal,
                                 cancel_total: 0,
                                 refund_total: 0,
-                                delivery_total: 0,
+                                delivery_total: deliveryTotal,
                                 pay_info: "",
                                 pay_number: "",
                                 escrow: 0,
