@@ -66,6 +66,7 @@ type OrderDetailResponse = {
         displayStatus?: string;
         badgeText?: string | null;
         footerText?: string | null;
+        statusNotice?: string | null;
         canCancel?: boolean;
         cancelMode?: "immediate" | "request" | "none";
         canReturn?: boolean;
@@ -607,6 +608,12 @@ export default function OrderDetailPage() {
                         </span>
                     </div>
                 </div>
+
+                {order.statusNotice ? (
+                    <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-[13px] font-bold leading-5 text-amber-950">
+                        {order.statusNotice}
+                    </div>
+                ) : null}
 
                 {order.footerText ? (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-[14px] font-bold text-slate-700">

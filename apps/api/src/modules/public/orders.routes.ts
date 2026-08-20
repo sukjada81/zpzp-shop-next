@@ -18,6 +18,7 @@ import {
     resolveOrderGoodsAggregate,
 } from "../../lib/order/customer-order-display.js";
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
+import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
@@ -631,8 +632,7 @@ async function executeCustomerImmediateCancel(input: {
         return {
             ok: false,
             code: "CANCEL_DB_FAILED",
-            message:
-                "결제 취소는 진행됐을 수 있으나 주문 상태 저장에 실패했습니다. 고객센터로 문의해 주세요.",
+            message: CANCEL_PG_OK_DB_FAIL_MESSAGE,
         };
     }
 
@@ -1005,6 +1005,25 @@ async function serializeOrder(
         .join(" ")
         .trim();
 
+    // 2026-08-20: PG(toss_prepare)는 전액 취소인데 상품이 아직 결제완료면
+    // 상태 화면에 관리자 문의 안내를 고정 노출한다. alert만 보면 놓칠 수 있다.
+    let statusNotice: string | null = null;
+    if (activeCount > 0 && display.isOnlinePrepaid) {
+        const tossPrepare = await prisma.mallRN_toss_prepare.findFirst({
+            where: {
+                order_num: orderNum,
+                NOT: { payment_key: "" },
+            },
+            orderBy: { uid: "desc" },
+            select: { status: true, payment_status: true },
+        });
+        const pgStatus = toSafeString(tossPrepare?.payment_status, "").toUpperCase();
+        const pgFullyCanceled = pgStatus === "CANCELED" || Number(tossPrepare?.status ?? 0) === 7;
+        if (pgFullyCanceled) {
+            statusNotice = CANCEL_PG_OK_DB_FAIL_MESSAGE;
+        }
+    }
+
     return {
         id: orderNum,
         orderNum,
@@ -1034,6 +1053,7 @@ async function serializeOrder(
         displayStatus: display.displayStatus,
         badgeText: display.badgeText,
         footerText: display.footerText,
+        statusNotice,
         isPartiallyCanceled,
         activeItemCount: activeCount,
         canceledItemCount: canceledCount,
