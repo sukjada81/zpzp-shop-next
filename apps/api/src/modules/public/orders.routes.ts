@@ -18,6 +18,7 @@ import {
     resolveOrderGoodsAggregate,
 } from "../../lib/order/customer-order-display.js";
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
+import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
@@ -536,73 +537,104 @@ async function executeCustomerImmediateCancel(input: {
         }
     }
 
-    await input.prisma.$transaction(async (tx: any) => {
-        const goodsRows = await tx.mallRN_order_goods.findMany({
-            where: {
-                tenant_id: input.tenantId,
-                platform_type: PLATFORM_TYPE,
-                order_num: input.orderNum,
-                status: { not: STATUS_CANCELED },
-            },
-            select: { uid: true, vendor: true },
-            orderBy: [{ uid: "asc" }],
-        });
+    // 2026-08-20: PG 성공 후 DB만 실패하면 환불은 됐는데 관리자는 결제완료로 남는다.
+    // 트랜잭션을 최대 3회 재시도하고, 그래도 실패하면 취소를 성공으로 속이지 않는다.
+    const persistCancelDb = async () => {
+        await input.prisma.$transaction(async (tx: any) => {
+            const goodsRows = await tx.mallRN_order_goods.findMany({
+                where: {
+                    tenant_id: input.tenantId,
+                    platform_type: PLATFORM_TYPE,
+                    order_num: input.orderNum,
+                    status: { not: STATUS_CANCELED },
+                },
+                select: { uid: true, vendor: true },
+                orderBy: [{ uid: "asc" }],
+            });
 
-        await tx.mallRN_order_info.updateMany({
-            where: {
-                tenant_id: input.tenantId,
-                platform_type: PLATFORM_TYPE,
-                order_num: input.orderNum,
-            },
-            data: {
-                status_date: input.now,
-            },
-        });
+            await tx.mallRN_order_info.updateMany({
+                where: {
+                    tenant_id: input.tenantId,
+                    platform_type: PLATFORM_TYPE,
+                    order_num: input.orderNum,
+                },
+                data: {
+                    status_date: input.now,
+                },
+            });
 
-        await tx.mallRN_order_goods.updateMany({
-            where: {
-                tenant_id: input.tenantId,
-                platform_type: PLATFORM_TYPE,
-                order_num: input.orderNum,
-            },
-            data: {
-                status: STATUS_CANCELED,
-                status2: STATUS2_DONE,
-                status_date: input.now,
-            },
-        });
+            await tx.mallRN_order_goods.updateMany({
+                where: {
+                    tenant_id: input.tenantId,
+                    platform_type: PLATFORM_TYPE,
+                    order_num: input.orderNum,
+                },
+                data: {
+                    status: STATUS_CANCELED,
+                    status2: STATUS2_DONE,
+                    status_date: input.now,
+                },
+            });
 
-        await writeImmediateCancelStatusChangeRecords(
-            tx,
-            goodsRows.map((row: { uid: number; vendor: string }) => ({
-                uid: Number(row.uid),
-                vendor: toSafeString(row.vendor, ""),
-            })),
-            {
+            await writeImmediateCancelStatusChangeRecords(
+                tx,
+                goodsRows.map((row: { uid: number; vendor: string }) => ({
+                    uid: Number(row.uid),
+                    vendor: toSafeString(row.vendor, ""),
+                })),
+                {
+                    orderNum: input.orderNum,
+                    memberId: toSafeString(input.orderRow.id, input.actorNickname),
+                    memberName: toSafeString(input.orderRow.name, input.actorNickname),
+                    reason: "고객 주문 취소",
+                    now: input.now,
+                }
+            );
+
+            await writeOrderAuditLog(tx, {
+                tenantId: input.tenantId,
+                eventType: "cancel_full",
                 orderNum: input.orderNum,
-                memberId: toSafeString(input.orderRow.id, input.actorNickname),
-                memberName: toSafeString(input.orderRow.name, input.actorNickname),
-                reason: "고객 주문 취소",
-                now: input.now,
-            }
-        );
-
-        await writeOrderAuditLog(tx, {
-            tenantId: input.tenantId,
-            eventType: "cancel_full",
-            orderNum: input.orderNum,
-            actorRole: input.actorRole,
-            actorMemberUid: input.actorMemberUid ?? null,
-            actorNickname: input.actorNickname,
-            beforeStatus: input.cancelDisplay.effectiveGoodsStatus,
-            afterStatus: STATUS_CANCELED,
-            reason: "고객 주문 전체 취소",
-            metaJson: {
-                pg: isOnlinePrepaid ? "toss" : "none",
-                path: "executeCustomerImmediateCancel",
-            },
+                actorRole: input.actorRole,
+                actorMemberUid: input.actorMemberUid ?? null,
+                actorNickname: input.actorNickname,
+                beforeStatus: input.cancelDisplay.effectiveGoodsStatus,
+                afterStatus: STATUS_CANCELED,
+                reason: "고객 주문 전체 취소",
+                metaJson: {
+                    pg: isOnlinePrepaid ? "toss" : "none",
+                    path: "executeCustomerImmediateCancel",
+                },
+            });
         });
-    });
+    };
+
+    let persistError: unknown = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            await persistCancelDb();
+            persistError = null;
+            break;
+        } catch (error: unknown) {
+            persistError = error;
+            input.fastify?.log.error(
+                { error, orderNum: input.orderNum, attempt, marker: "CANCEL_DB_RETRY" },
+                "2026-08-20 PG 취소 후 DB 반영 재시도"
+            );
+        }
+    }
+
+    if (persistError) {
+        input.fastify?.log.error(
+            { error: persistError, orderNum: input.orderNum, marker: "CANCEL_DB_UNPROCESSED" },
+            "2026-08-20 PG는 취소됐거나 스킵됐는데 주문 status 반영 실패. 수동 확인 필요"
+        );
+        return {
+            ok: false,
+            code: "CANCEL_DB_FAILED",
+            message: CANCEL_PG_OK_DB_FAIL_MESSAGE,
+        };
+    }
 
     // 쿠폰 복원 + 수수료 리버설은 PHP 헬퍼가 단일 진실원이므로 내부 브리지로 태운다.
     // (웰컴 확정 후 미복원 게이팅·스택 2장 처리 규칙을 Node 에 복제하지 않기 위함 —
@@ -988,6 +1020,25 @@ async function serializeOrder(
         .join(" ")
         .trim();
 
+    // 2026-08-20: PG(toss_prepare)는 전액 취소인데 상품이 아직 결제완료면
+    // 상태 화면에 관리자 문의 안내를 고정 노출한다. alert만 보면 놓칠 수 있다.
+    let statusNotice: string | null = null;
+    if (activeCount > 0 && display.isOnlinePrepaid) {
+        const tossPrepare = await prisma.mallRN_toss_prepare.findFirst({
+            where: {
+                order_num: orderNum,
+                NOT: { payment_key: "" },
+            },
+            orderBy: { uid: "desc" },
+            select: { status: true, payment_status: true },
+        });
+        const pgStatus = toSafeString(tossPrepare?.payment_status, "").toUpperCase();
+        const pgFullyCanceled = pgStatus === "CANCELED" || Number(tossPrepare?.status ?? 0) === 7;
+        if (pgFullyCanceled) {
+            statusNotice = CANCEL_PG_OK_DB_FAIL_MESSAGE;
+        }
+    }
+
     return {
         id: orderNum,
         orderNum,
@@ -1017,6 +1068,7 @@ async function serializeOrder(
         displayStatus: display.displayStatus,
         badgeText: display.badgeText,
         footerText: display.footerText,
+        statusNotice,
         isPartiallyCanceled,
         activeItemCount: activeCount,
         canceledItemCount: canceledCount,
