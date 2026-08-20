@@ -17,8 +17,6 @@ type ApiOrderItem = {
     deliveryTotal?: number;
     cancelTotal?: number;
     refundTotal?: number;
-    activeItemCount?: number;
-    totalItemCount?: number;
     pickupAt?: string | null;
     status: number;
     statusLabel: string;
