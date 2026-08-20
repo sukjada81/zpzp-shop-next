@@ -3,6 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireTenant } from "../../common/guard.js";
+import { formatProductDeliveryHint } from "../../lib/delivery/calculate-delivery.js";
+import { loadShopDeliveryConfig } from "../../lib/delivery/delivery-config.js";
 
 type ImageItem = { key: string; label?: string };
 
@@ -807,6 +809,7 @@ export async function publicProductRoutes(app: FastifyInstance) {
                 pickup_note: true,
                 qty_type: true,
                 qty: true,
+                delivery_type: true,
             },
         });
 
@@ -814,6 +817,9 @@ export async function publicProductRoutes(app: FastifyInstance) {
             reply.code(404).send({ ok: false });
             return;
         }
+
+        const shopDeliveryConfig = await loadShopDeliveryConfig(app.prisma);
+        const goodsDeliveryType = toNumber(row.delivery_type, 1);
 
         const optionRows =
             Number(row.option_use ?? 0) === 1
@@ -885,6 +891,11 @@ export async function publicProductRoutes(app: FastifyInstance) {
             saleStartAt: formatDbDateTime(row.sale_start_at),
             saleEndAt: formatDbDateTime(row.sale_end_at),
             cate: row.cate != null ? toId(row.cate) : null,
+            // 1차: 본사 P 정책 안내 — shop-php mallRN_goods.delivery_type + configuration
+            delivery: {
+                type: goodsDeliveryType,
+                label: formatProductDeliveryHint(goodsDeliveryType, shopDeliveryConfig),
+            },
         };
 
         return {

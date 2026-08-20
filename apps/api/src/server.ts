@@ -12,6 +12,7 @@ import { healthRoutes } from "./modules/health/health.routes.js";
 import { publicProductRoutes } from "./modules/public/products.routes.js";
 import { publicOrderRoutes } from "./modules/public/orders.routes.js";
 import { publicPaymentRoutes } from "./modules/public/payments.routes.js";
+import { publicDeliveryRoutes } from "./modules/public/delivery.routes.js";
 import { publicTenantRoutes } from "./modules/public/tenants.routes.js";
 
 import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
@@ -92,6 +93,7 @@ app.register(
     async (tenantScoped) => {
         await publicTenantRoutes(tenantScoped);
         await publicProductRoutes(tenantScoped);
+        await publicDeliveryRoutes(tenantScoped); // 배송비 quote·정책 (1차)
         await publicPaymentRoutes(tenantScoped); // Toss PG (prepare/confirm/client-key)
         await publicOrderRoutes(tenantScoped);
     },

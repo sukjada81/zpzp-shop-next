@@ -7,7 +7,8 @@
  * shop-php order_post.php 와 동일한 mallRN_order_info / mallRN_order_goods 스키마 사용.
  */
 
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { quoteOrderDelivery } from "../../lib/delivery/order-delivery.js";
 import {
     consumeCoupons,
     pickRepresentativeCoupon,
@@ -36,6 +37,9 @@ type GoodsRow = {
     goods_code: string | null;
     price: number | null;
     orig_price: number | null;
+    delivery_type: number | null;
+    delivery_type_qty: number | null;
+    delivery_price: number | null;
 };
 
 export type CreateStoreOrderInput = {
@@ -127,6 +131,9 @@ async function loadProducts(
                 goods_code: true,
                 price: true,
                 orig_price: true,
+                delivery_type: true,
+                delivery_type_qty: true,
+                delivery_price: true,
             },
         });
 
@@ -142,6 +149,9 @@ async function loadProducts(
                 goods_code: product.goods_code,
                 price: product.price,
                 orig_price: product.orig_price,
+                delivery_type: product.delivery_type,
+                delivery_type_qty: product.delivery_type_qty,
+                delivery_price: product.delivery_price,
             },
         });
     }
@@ -182,7 +192,16 @@ export async function createStoreOrder(
 
     const couponRows = selection.rows;
     const couponTotal = selection.discountTotal;
-    const payTotal = subtotal - couponTotal;
+
+    // 배송비(1차): shop-php 와 동일하게 쿠폰은 상품합(subtotal) 기준, 배송비는 쿠폰 후 pay_total 에 가산
+    const deliveryQuoted = await quoteOrderDelivery(
+        prisma,
+        input.items.map((item) => ({ productId: item.productId, qty: item.qty }))
+    );
+    if (!deliveryQuoted.ok) return { ok: false, message: deliveryQuoted.message };
+    const deliveryTotal = deliveryQuoted.quote.deliveryTotal;
+
+    const payTotal = subtotal - couponTotal + deliveryTotal;
 
     // 클라이언트·Toss 승인 금액과 서버 재계산 금액 일치 검증
     if (input.payment && payTotal !== input.payment.amount) {
@@ -212,8 +231,8 @@ export async function createStoreOrder(
 
         try {
             await prisma.$transaction(async (tx) => {
-                await tx.mallRN_order_info.create({
-                    data: {
+                // Prisma Client 생성 시점 차이로 create() 추론이 흔들릴 수 있어 입력 타입을 명시 고정한다.
+                const orderInfoData: Prisma.mallRN_order_infoUncheckedCreateInput = {
                         id: orderNum,
                         tenant_id: input.tenantId,
                         member_uid: input.memberUid,
@@ -235,7 +254,7 @@ export async function createStoreOrder(
                         pay_total: payTotal,
                         cancel_total: 0,
                         refund_total: 0,
-                        delivery_total: 0,
+                        delivery_total: deliveryTotal,
                         pay_type: isPaid ? "C" : "B",
                         pay_status: isPaid ? "C" : "A",
                         pay_info: isPaid
@@ -262,7 +281,10 @@ export async function createStoreOrder(
                         use_td_money: BigInt(0),
                         use_td_point: 0,
                         pay_method: isPaid ? paymentMethod : "",
-                    },
+                };
+
+                await tx.mallRN_order_info.create({
+                    data: orderInfoData,
                 });
 
                 for (const row of products) {
@@ -286,9 +308,9 @@ export async function createStoreOrder(
                             hotdeal_setting_id: 0,
                             hotdeal_price: 0,
                             option_name: toSafeString(row.item.optionName, ""),
-                            delivery_type: 0,
-                            delivery_type_qty: 1,
-                            delivery_price: 0,
+                            delivery_type: toInt(row.product.delivery_type, 1),
+                            delivery_type_qty: toInt(row.product.delivery_type_qty, 1),
+                            delivery_price: toInt(row.product.delivery_price, 0),
                             delivery_add_price: 0,
                             delivery_info: "",
                             use_coupon: 0,
@@ -343,20 +365,37 @@ export function computeOrderAmount(
     );
 }
 
-/** prepare 단계: 서버-side 금액 재계산 (클라이언트 amount 신뢰하지 않음) */
+/**
+ * prepare 단계: 서버-side 금액 재계산 (클라이언트 amount 신뢰하지 않음)
+ * - amount: 할인 전 상품합(subtotal) — 쿠폰·prepare body.amount 검증용
+ * - deliveryTotal: 본사 P 정책 배송비(1차)
+ */
 export async function validateOrderItems(
     prisma: PrismaClient,
     items: OrderItemInput[]
 ): Promise<
-    | { ok: true; products: Array<{ item: OrderItemInput; product: GoodsRow }>; amount: number }
+    | {
+          ok: true;
+          products: Array<{ item: OrderItemInput; product: GoodsRow }>;
+          amount: number;
+          deliveryTotal: number;
+      }
     | { ok: false; message: string }
 > {
     const loaded = await loadProducts(prisma, items);
     if (!loaded.ok) return loaded;
 
+    const subtotal = computeOrderAmount(loaded.products);
+    const deliveryQuoted = await quoteOrderDelivery(
+        prisma,
+        items.map((item) => ({ productId: item.productId, qty: item.qty }))
+    );
+    if (!deliveryQuoted.ok) return { ok: false, message: deliveryQuoted.message };
+
     return {
         ok: true,
         products: loaded.products,
-        amount: computeOrderAmount(loaded.products),
+        amount: subtotal,
+        deliveryTotal: deliveryQuoted.quote.deliveryTotal,
     };
 }

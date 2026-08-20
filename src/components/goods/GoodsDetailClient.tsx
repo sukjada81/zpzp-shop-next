@@ -47,6 +47,8 @@ export type GoodsDetailData = {
     images: { key: string; label?: string }[];
     options: GoodsOption[];
     notices?: { icon?: string; text: string }[];
+    /** 본사 배송 정책 안내 (API delivery.label) */
+    deliveryLabel?: string;
 };
 
 type SelectedLine = {
@@ -661,6 +663,13 @@ export default function GoodsDetailClient(props: { tenant: string; data: GoodsDe
                     <div className="mt-3 text-[16px] font-bold text-[color:var(--fg)]">
                         {formatDisplayPrice(data.price, data.masked)}
                     </div>
+
+                    {data.deliveryLabel ? (
+                        <div className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold text-[color:var(--muted)]">
+                            <Truck size={14} strokeWidth={2} />
+                            <span>{data.deliveryLabel}</span>
+                        </div>
+                    ) : null}
 
                     {data.meta?.timeLeft ? (
                         <div className="mt-4 flex flex-wrap gap-2">
