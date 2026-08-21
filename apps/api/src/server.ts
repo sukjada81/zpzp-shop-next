@@ -12,6 +12,8 @@ import { healthRoutes } from "./modules/health/health.routes.js";
 import { publicProductRoutes } from "./modules/public/products.routes.js";
 import { publicOrderRoutes } from "./modules/public/orders.routes.js";
 import { publicPaymentRoutes } from "./modules/public/payments.routes.js";
+import { publicDeliveryRoutes } from "./modules/public/delivery.routes.js";
+import { publicLinkerVisitRoutes } from "./modules/public/linker-visit.routes.js";
 import { publicTenantRoutes } from "./modules/public/tenants.routes.js";
 
 import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
@@ -76,6 +78,7 @@ await adminRoutes(app);
 await publicAuthRoutes(app);
 await publicMemberRoutes(app);
 await publicResolveRoutes(app);
+await publicLinkerVisitRoutes(app);
 
 await sellerAccessCheckRoutes(app);
 await sellerTenantsRoutes(app);
@@ -92,6 +95,7 @@ app.register(
     async (tenantScoped) => {
         await publicTenantRoutes(tenantScoped);
         await publicProductRoutes(tenantScoped);
+        await publicDeliveryRoutes(tenantScoped); // 배송비 quote (주문서용)
         await publicPaymentRoutes(tenantScoped); // Toss PG (prepare/confirm/client-key)
         await publicOrderRoutes(tenantScoped);
     },

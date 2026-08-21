@@ -1,6 +1,7 @@
 // apps/api/src/modules/public/orders.routes.ts
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { captureRefFromRequest } from "../attribution/capture.js";
+import { logOrderCreatedJourney } from "../attribution/journey-log.js";
 import { requireAdmin } from "../../common/guard.js";
 import {
     consumeCoupons,
@@ -18,10 +19,12 @@ import {
     resolveOrderGoodsAggregate,
 } from "../../lib/order/customer-order-display.js";
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
+import { cancelCustomerPaidOrderItem } from "../../lib/order/customer-paid-item-cancel.js";
 import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
+import { calcHqDeliveryBreakdown } from "../../lib/delivery/hq-delivery.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -147,6 +150,10 @@ type OrderGoodsRow = {
     qty: number;
     option: number;
     option_name: string;
+    /** 본사 마이페이지/관리 주문리스트와 동일 — 품목 배송비 */
+    delivery_price: number;
+    use_coupon: number;
+    discount: number;
     status: number;
     status2: number;
     signdate: number;
@@ -907,6 +914,9 @@ async function loadOrderGoods(
             qty: true,
             option: true,
             option_name: true,
+            delivery_price: true,
+            use_coupon: true,
+            discount: true,
             status: true,
             status2: true,
             signdate: true,
@@ -942,6 +952,9 @@ async function loadOrderGoods(
             price: toInt(row.price, 0),
             origPrice: toInt(row.orig_price, 0),
             qty: toInt(row.qty, 0),
+            deliveryPrice: toInt(row.delivery_price, 0),
+            useCoupon: toInt(row.use_coupon, 0),
+            discount: toInt(row.discount, 0),
             optionId: toInt(row.option, 0),
             optionName: toSafeString(row.option_name, ""),
             status,
@@ -979,11 +992,21 @@ async function serializeOrder(
     });
     const { goodsStatus, goodsStatus2, isPartiallyCanceled, activeCount, canceledCount, totalCount } =
         resolveOrderGoodsStatus(items, payStatus);
-    const goodsTotal = items.reduce(
-        (sum, item) => sum + toInt(item.price, 0) * toInt(item.qty, 0),
+    // 본사 managers/order/order_list.php goods_total 과 동일:
+    // (price + use_coupon + discount) * qty — 취소 품목도 합산에 포함
+    const goodsTotal = items.reduce((sum, item) => {
+        const unit =
+            toInt(item.price, 0) + toInt(item.useCoupon, 0) + toInt(item.discount, 0);
+        return sum + unit * toInt(item.qty, 0);
+    }, 0);
+    const lineDeliveryTotal = items.reduce(
+        (sum, item) => sum + Math.max(0, toInt(item.deliveryPrice, 0)),
         0
     );
-    const totalAmount = toInt(info.pay_total, goodsTotal);
+    const infoDeliveryTotal = toInt(info.delivery_total, 0);
+    // order_info.delivery_total 우선, 없으면 품목 delivery_price 합(본사 마이페이지 표시 근거)
+    const deliveryTotal = infoDeliveryTotal > 0 ? infoDeliveryTotal : lineDeliveryTotal;
+    const totalAmount = toInt(info.pay_total, goodsTotal + deliveryTotal);
 
     let display = resolveCustomerOrderDisplay({
         goodsStatus,
@@ -1053,9 +1076,10 @@ async function serializeOrder(
         message: toSafeString(info.message, ""),
         memo: toSafeString(info.memo, ""),
         totalAmount,
+        goodsTotal,
         cancelTotal: toInt(info.cancel_total, 0),
         refundTotal: toInt(info.refund_total, 0),
-        deliveryTotal: toInt(info.delivery_total, 0),
+        deliveryTotal,
         payType: display.payType,
         payStatus: display.payStatus,
         payTypeLabel: display.payTypeLabel,
@@ -1249,7 +1273,17 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             }
 
             const couponRows = selection.rows;
-            const payTotal = subtotal - selection.discountTotal;
+            const deliveryItems = products.map((row) => ({
+                productId: row.product.uid,
+                qty: toInt(row.item.qty, 0),
+                optionId: row.item.optionId,
+            }));
+            const delivery = await calcHqDeliveryBreakdown(prisma, deliveryItems, {
+                address1: toSafeString(body.address1, ""),
+                postcode: toSafeString(body.postcode, ""),
+            });
+            const deliveryTotal = delivery.total;
+            const payTotal = subtotal - selection.discountTotal + deliveryTotal;
 
             const couponOwnerId = couponRows.length
                 ? await resolveMemberLoginId(prisma, memberUid)
@@ -1294,7 +1328,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                 pay_total: payTotal,
                                 cancel_total: 0,
                                 refund_total: 0,
-                                delivery_total: 0,
+                                delivery_total: deliveryTotal,
                                 pay_info: "",
                                 pay_number: "",
                                 escrow: 0,
@@ -1320,7 +1354,9 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             },
                         });
 
-                        for (const row of products) {
+                        for (let i = 0; i < products.length; i += 1) {
+                            const row = products[i]!;
+                            const lineDelivery = delivery.lines[i];
                             await tx.mallRN_order_goods.create({
                                 data: {
                                     vendor: toSafeString(row.product.vendor, tenantSlug || String(tenantId)),
@@ -1341,10 +1377,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                     hotdeal_setting_id: 0,
                                     hotdeal_price: 0,
                                     option_name: toSafeString(row.item.optionName, ""),
-                                    delivery_type: 0,
-                                    delivery_type_qty: 1,
-                                    delivery_price: 0,
-                                    delivery_add_price: 0,
+                                    delivery_type: lineDelivery?.deliveryType ?? 1,
+                                    delivery_type_qty: lineDelivery?.deliveryTypeQty ?? 1,
+                                    delivery_price: lineDelivery?.deliveryPrice ?? 0,
+                                    delivery_add_price: lineDelivery?.deliveryAddPrice ?? 0,
                                     delivery_info: "",
                                     use_coupon: 0,
                                     coupon_uid: 0,
@@ -1392,6 +1428,12 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     message: "주문번호 생성 중 충돌이 발생했습니다. 다시 시도해 주세요.",
                 });
             }
+
+            await logOrderCreatedJourney(prisma, {
+                memberUid,
+                orderNum,
+                checkoutShopSlug,
+            });
 
             return reply.send({
                 ok: true,
@@ -2401,6 +2443,78 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             toInt(target.status2, 0)
                         ),
                     });
+                }
+
+                // 결제완료 부분취소: 본사 PHP 미호출.
+                // 무료→조건부 배송비 발생분을 환불에서 차감 (delivery2 개념).
+                if (bridgeAction === "cancel_item_paid") {
+                    const activeCount = items.filter(
+                        (item) => toInt(item.effectiveStatus, 0) !== STATUS_CANCELED
+                    ).length;
+                    if (activeCount > 1) {
+                        const memberLoginId =
+                            (await resolveMemberLoginId(prisma, memberUid)) ||
+                            toSafeString(rawOrder.id, "회원");
+                        const now = toUnixNow();
+                        const cancelResult = await cancelCustomerPaidOrderItem({
+                            prisma,
+                            tenantId,
+                            orderNum,
+                            orderGoodsUid,
+                            memberUid,
+                            memberLoginId,
+                            memberName: toSafeString(rawOrder.name, "회원"),
+                            now,
+                        });
+
+                        if (!cancelResult.ok) {
+                            if (cancelResult.code === "USE_FULL_CANCEL_PATH") {
+                                // fall through to PHP for last-item safety
+                            } else {
+                                return reply.code(400).send({
+                                    ok: false,
+                                    message: cancelResult.message,
+                                });
+                            }
+                        } else {
+                            await writeOrderAuditLog(fastify.prisma, {
+                                tenantId,
+                                eventType: "cancel_partial",
+                                orderNum,
+                                orderGoodsUid,
+                                actorRole: "member",
+                                actorMemberUid: memberUid,
+                                actorNickname: toSafeString(rawOrder.name, "회원"),
+                                beforeStatus: target.effectiveStatus,
+                                afterStatus: 9,
+                                beforeStatus2: target.status2,
+                                afterStatus2: 5,
+                                reason: "고객 상품 즉시 취소",
+                                metaJson: {
+                                    bridgeAction: "cancel_item_paid_next",
+                                    cancelType: "partial",
+                                    cancelAmount: cancelResult.cancelAmount,
+                                    lineAmount: cancelResult.lineAmount,
+                                    emergingDelivery: cancelResult.emergingDelivery,
+                                    deliveryTotal: cancelResult.deliveryTotal,
+                                    paymentStatus: cancelResult.paymentStatus ?? null,
+                                },
+                            });
+
+                            return reply.send({
+                                ok: true,
+                                orderNum,
+                                orderGoodsUid,
+                                status: 9,
+                                status2: 5,
+                                statusLabel: "취소완료",
+                                cancelType: "partial",
+                                cancelAmount: cancelResult.cancelAmount,
+                                emergingDelivery: cancelResult.emergingDelivery,
+                                message: "상품의 주문이 취소 되었습니다.",
+                            });
+                        }
+                    }
                 }
 
                 const bridge = await callPhpBridge<{

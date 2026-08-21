@@ -1,5 +1,6 @@
 // apps/api/src/modules/attribution/attribution.service.ts
 import type { PrismaClient } from "@prisma/client";
+import { logLinkerJourneyEvent } from "./journey-log.js";
 
 export type EnsureResult = "created" | "exists" | "organic";
 
@@ -38,6 +39,12 @@ export async function ensureAttribution(
         source: "subdomain",
         crew_status: "prospect",
       },
+    });
+    await logLinkerJourneyEvent(prisma, {
+      eventType: "attributed",
+      linkerId: linker.uid,
+      landingSlug: refSlug,
+      memberUid,
     });
     return "created";
   } catch (e: any) {

@@ -113,6 +113,13 @@ function selectTenantOrigin() {
     return process.env.SELECT_TENANT_ORIGIN || "https://select-tenant.zpzp.kr";
 }
 
+function sellerConsoleOrigin() {
+    return (
+        process.env.SELLER_ORIGIN ||
+        `https://seller.${process.env.TENANT_BASE_DOMAIN || "zpzp.kr"}`
+    ).replace(/\/+$/, "");
+}
+
 function buildTenantOrigin(req: NextRequest, tenant: string) {
     // 서브도메인으로 세울 수 없는 슬러그면 조립하지 않고 점포 선택으로 보낸다.
     if (isNonTenantSlug(tenant)) return selectTenantOrigin();
@@ -207,6 +214,12 @@ function resolveSignupReturnTo(req: NextRequest, returnTo: string): string {
 function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
     if (isAbsoluteUrl(returnTo)) return returnTo;
     const path = returnTo.startsWith("/") ? returnTo : "/home";
+
+    // /{tenant}… 상대경로는 셀러 콘솔이다. 스토어프론트(tenant.zpzp.kr)로 붙이면 안 된다.
+    const t = String(tenant || "").trim().toLowerCase();
+    if (t && (path === `/${t}` || path.startsWith(`/${t}/`))) {
+        return `${sellerConsoleOrigin()}${path}`;
+    }
 
     // 폴백 origin 이 점포 선택이면 스토어 경로(/home 등)를 붙여봐야 의미가 없다 — 루트로 보낸다.
     const origin = buildTenantOrigin(req, tenant);

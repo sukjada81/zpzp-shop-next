@@ -3431,6 +3431,32 @@ model zpzp_referral_attribution {
   @@map("zpzp_referral_attribution")
 }
 
+/// 링커 여정 이벤트(visit → attributed → order_created). append-only.
+enum zpzp_linker_journey_event_type {
+  visit
+  attributed
+  order_created
+}
+
+model zpzp_linker_journey_event {
+  uid                 BigInt                        @id @default(autoincrement()) @db.UnsignedBigInt
+  event_type          zpzp_linker_journey_event_type
+  linker_id           Int?
+  landing_slug        String?                       @db.VarChar(64)
+  member_uid          Int?                          @db.UnsignedInt
+  order_num           String?                       @db.VarChar(50)
+  checkout_shop_slug  String?                       @db.VarChar(64)
+  session_key         String?                       @db.VarChar(64)
+  meta_json           String?                       @db.VarChar(1000)
+  created_at          DateTime                      @default(now()) @db.DateTime(0)
+
+  @@index([linker_id, created_at], map: "ix_zpzp_lje_linker_created")
+  @@index([landing_slug, event_type, created_at], map: "ix_zpzp_lje_slug_type_created")
+  @@index([member_uid, created_at], map: "ix_zpzp_lje_member_created")
+  @@index([order_num], map: "ix_zpzp_lje_order")
+  @@map("zpzp_linker_journey_event")
+}
+
 enum zpzp_confirm_method {
   direct
   auto_d7

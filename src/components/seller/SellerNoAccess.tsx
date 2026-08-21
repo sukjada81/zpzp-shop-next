@@ -3,8 +3,19 @@
 
 export default function SellerNoAccess({ tenant }: { tenant: string }) {
     async function handleLogout() {
-        await fetch(`/auth/logout?tenant=${encodeURIComponent(tenant)}`, { method: "POST", credentials: "include" });
-        window.location.href = `/auth/kakao/login?tenant=${encodeURIComponent(tenant)}`;
+        await fetch(`/auth/logout?tenant=${encodeURIComponent(tenant)}`, {
+            method: "POST",
+            credentials: "include",
+        });
+        const sellerOrigin =
+            String(process.env.NEXT_PUBLIC_SELLER_ORIGIN || "").replace(/\/+$/, "") ||
+            (typeof window !== "undefined" && /\.?seller\./i.test(window.location.hostname)
+                ? window.location.origin
+                : "https://seller.zpzp.kr");
+        const returnTo = `${sellerOrigin}/${tenant}`;
+        window.location.href = `/auth/kakao/login?tenant=${encodeURIComponent(
+            tenant
+        )}&returnTo=${encodeURIComponent(returnTo)}`;
     }
 
     return (

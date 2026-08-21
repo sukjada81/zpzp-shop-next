@@ -184,18 +184,20 @@ export default function SideDrawer({
                     "fixed inset-0 z-40 transition-all",
                     open
                         ? "pointer-events-auto bg-black/40 opacity-100"
-                        : "pointer-events-none bg-black/0 opacity-0",
+                        : "pointer-events-none hidden bg-black/0 opacity-0",
                 ].join(" ")}
                 onClick={onCloseAction}
+                aria-hidden={!open}
             />
 
             <aside
                 className={[
-                    "fixed left-0 top-0 z-50 flex h-full w-[86%] max-w-[340px] flex-col bg-white shadow-2xl transition-transform duration-300",
-                    open ? "translate-x-0" : "-translate-x-full",
+                    "fixed left-0 top-0 z-[70] flex h-full w-[86%] max-w-[340px] flex-col bg-white shadow-2xl transition-transform duration-300",
+                    open ? "translate-x-0" : "-translate-x-full pointer-events-none",
                 ].join(" ")}
                 role="dialog"
                 aria-modal="true"
+                aria-hidden={!open}
             >
                 <div className="border-b border-[color:var(--border)] px-5 pb-4 pt-5">
                     <div className="flex items-start justify-between gap-3">
