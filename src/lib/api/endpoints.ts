@@ -30,6 +30,9 @@ export function tenantHeader(tenant: string): Record<string, string> {
 export const endpoints = {
     publicTenant: (tenant: string) => apiProxy(`${tenant}/v1/public/tenant`),
 
+    /** slug 종류 해석(tenant / linker / none) + 링커면 shop_name. 루트 등록 라우트라 tenant 세그먼트가 없다. */
+    resolveSlug: (slug: string) => apiProxy(`v1/resolve-slug?slug=${encodeURIComponent(slug)}`),
+
     publicProducts: (
         tenant: string,
         q?: {

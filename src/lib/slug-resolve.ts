@@ -1,6 +1,11 @@
 // src/lib/slug-resolve.ts
 export type SlugKind = "tenant" | "linker" | "none";
-export interface SlugResolution { kind: SlugKind; tenantSlug: string | null }
+export interface SlugResolution {
+    kind: SlugKind;
+    tenantSlug: string | null;
+    /** 링커일 때 그 링커의 샵 이름. API 가 함께 내려준다. */
+    linkerName?: string | null;
+}
 export interface CacheEntry { result: SlugResolution; expiresAt: number }
 
 const TTL_MS = 60_000;
