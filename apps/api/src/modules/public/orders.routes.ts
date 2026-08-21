@@ -25,6 +25,10 @@ import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
 import { calcHqDeliveryBreakdown } from "../../lib/delivery/hq-delivery.js";
+import {
+    loadDeliveryCarrierMap,
+    resolveDeliveryTracking,
+} from "../../lib/delivery/delivery-tracking.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -152,6 +156,8 @@ type OrderGoodsRow = {
     option_name: string;
     /** 본사 마이페이지/관리 주문리스트와 동일 — 품목 배송비 */
     delivery_price: number;
+    /** 본사: "택배사코드|송장번호" */
+    delivery_info: string | null;
     use_coupon: number;
     discount: number;
     status: number;
@@ -915,6 +921,7 @@ async function loadOrderGoods(
             option: true,
             option_name: true,
             delivery_price: true,
+            delivery_info: true,
             use_coupon: true,
             discount: true,
             status: true,
@@ -928,6 +935,7 @@ async function loadOrderGoods(
     const payType = orderMeta?.payType ?? "B";
     const payInfo = orderMeta?.payInfo ?? "";
     const statusDate = orderMeta?.statusDate ?? 0;
+    const carriers = await loadDeliveryCarrierMap(prisma);
 
     return goods.map((row: OrderGoodsRow) => {
         const status = toInt(row.status, 0);
@@ -943,6 +951,13 @@ async function loadOrderGoods(
                   orderStatusDate: statusDate,
               })
             : null;
+
+        const tracking = resolveDeliveryTracking(
+            row.delivery_info,
+            status,
+            status2,
+            carriers
+        );
 
         return {
             id: String(row.uid),
@@ -970,6 +985,10 @@ async function loadOrderGoods(
             canExchange: itemActions?.canExchange ?? false,
             canWithdrawClaimRequest: itemActions?.canWithdrawClaimRequest ?? false,
             cancelMode: itemActions?.cancelMode ?? "none",
+            canTrackDelivery: tracking.canTrack,
+            deliveryCarrierName: tracking.carrierName,
+            deliveryInvoiceNo: tracking.invoiceNo,
+            deliveryTrackUrl: tracking.trackUrl,
             createdAt: toIsoDate(row.signdate),
         };
     });

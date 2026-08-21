@@ -31,6 +31,10 @@ type OrderDetailItem = {
     canExchange?: boolean;
     canWithdrawClaimRequest?: boolean;
     cancelMode?: "immediate" | "request" | "none";
+    canTrackDelivery?: boolean;
+    deliveryCarrierName?: string;
+    deliveryInvoiceNo?: string;
+    deliveryTrackUrl?: string;
     createdAt?: string | null;
 };
 
@@ -751,6 +755,30 @@ export default function OrderDetailPage() {
                                     </span>
                                 ) : null}
                             </div>
+
+                            {item.canTrackDelivery &&
+                            item.deliveryTrackUrl &&
+                            item.deliveryInvoiceNo ? (
+                                <div className="mt-3 space-y-2">
+                                    {item.deliveryCarrierName || item.deliveryInvoiceNo ? (
+                                        <div className="text-[12px] font-semibold text-slate-500">
+                                            {[item.deliveryCarrierName, item.deliveryInvoiceNo]
+                                                .filter(Boolean)
+                                                .join(" · ")}
+                                        </div>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const url = `${item.deliveryTrackUrl}${item.deliveryInvoiceNo}`;
+                                            window.open(url, "_blank", "noopener,noreferrer");
+                                        }}
+                                        className="flex h-10 w-full items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-[13px] font-extrabold text-sky-700"
+                                    >
+                                        배송조회
+                                    </button>
+                                </div>
+                            ) : null}
 
                             {item.canCancelImmediate ? (
                                 <button
