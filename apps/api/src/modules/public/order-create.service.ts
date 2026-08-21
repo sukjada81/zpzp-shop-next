@@ -8,7 +8,10 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
-import { calcHqDeliveryTotal } from "../../lib/delivery/hq-delivery.js";
+import {
+    calcHqDeliveryBreakdown,
+    calcHqDeliveryTotal,
+} from "../../lib/delivery/hq-delivery.js";
 import {
     consumeCoupons,
     pickRepresentativeCoupon,
@@ -183,8 +186,17 @@ export async function createStoreOrder(
 
     const couponRows = selection.rows;
     const couponTotal = selection.discountTotal;
-    // 배송비: 쿠폰은 상품합 기준, 배송비는 쿠폰 후 가산 (shop-php 동일)
-    const deliveryTotal = await calcHqDeliveryTotal(prisma, input.items);
+    // 배송비: 본사 order_post_toss 와 동일 (type1~5 + 주소 도서산간)
+    const deliveryItems = products.map((row) => ({
+        productId: row.product.uid,
+        qty: toInt(row.item.qty, 0),
+        optionId: row.item.optionId,
+    }));
+    const delivery = await calcHqDeliveryBreakdown(prisma, deliveryItems, {
+        address1: input.address1,
+        postcode: input.postcode,
+    });
+    const deliveryTotal = delivery.total;
     const payTotal = subtotal - couponTotal + deliveryTotal;
 
     // 클라이언트·Toss 승인 금액과 서버 재계산 금액 일치 검증
@@ -268,7 +280,9 @@ export async function createStoreOrder(
                     },
                 });
 
-                for (const row of products) {
+                for (let i = 0; i < products.length; i += 1) {
+                    const row = products[i]!;
+                    const lineDelivery = delivery.lines[i];
                     await tx.mallRN_order_goods.create({
                         data: {
                             vendor: toSafeString(row.product.vendor, input.tenantSlug || String(input.tenantId)),
@@ -289,10 +303,10 @@ export async function createStoreOrder(
                             hotdeal_setting_id: 0,
                             hotdeal_price: 0,
                             option_name: toSafeString(row.item.optionName, ""),
-                            delivery_type: 0,
-                            delivery_type_qty: 1,
-                            delivery_price: 0,
-                            delivery_add_price: 0,
+                            delivery_type: lineDelivery?.deliveryType ?? 1,
+                            delivery_type_qty: lineDelivery?.deliveryTypeQty ?? 1,
+                            delivery_price: lineDelivery?.deliveryPrice ?? 0,
+                            delivery_add_price: lineDelivery?.deliveryAddPrice ?? 0,
                             delivery_info: "",
                             use_coupon: 0,
                             coupon_uid: 0,
@@ -349,7 +363,8 @@ export function computeOrderAmount(
 /** prepare 단계: 서버-side 금액 재계산 (클라이언트 amount 신뢰하지 않음) */
 export async function validateOrderItems(
     prisma: PrismaClient,
-    items: OrderItemInput[]
+    items: OrderItemInput[],
+    address: { address1?: string; postcode?: string } = {}
 ): Promise<
     | {
           ok: true;
@@ -362,7 +377,12 @@ export async function validateOrderItems(
     const loaded = await loadProducts(prisma, items);
     if (!loaded.ok) return loaded;
 
-    const deliveryTotal = await calcHqDeliveryTotal(prisma, items);
+    const deliveryItems = loaded.products.map((row) => ({
+        productId: row.product.uid,
+        qty: toInt(row.item.qty, 0),
+        optionId: row.item.optionId,
+    }));
+    const deliveryTotal = await calcHqDeliveryTotal(prisma, deliveryItems, address);
     return {
         ok: true,
         products: loaded.products,

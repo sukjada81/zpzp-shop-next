@@ -306,7 +306,10 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 return reply.code(400).send({ ok: false, msg: "주문 상품이 없습니다." });
             }
 
-            const validated = await validateOrderItems(prisma, body.items);
+            const validated = await validateOrderItems(prisma, body.items, {
+                address1: toSafeString(body.address1, ""),
+                postcode: toSafeString(body.postcode, ""),
+            });
             if (!validated.ok) {
                 return reply.code(400).send({ ok: false, msg: validated.message });
             }

@@ -420,20 +420,32 @@ export default function OrderClient(props: {
     // 결제액 = 상품합 - 쿠폰 + 배송비 (서버 prepare/order-create 와 동일)
     const payTotal = Math.max(0, subtotal - couponDiscount + deliveryTotal);
 
-    // 주문서 진입·수량 변경 시 배송비 미리보기 (장바구니/상품상세 UI는 건드리지 않음)
+    // 주문서 진입·수량·배송지 변경 시 배송비 미리보기 (장바구니/상품상세 UI는 건드리지 않음)
     useEffect(() => {
         let cancelled = false;
         const quoteItems = items
             .map((it) => ({
                 productId: Number(it.id),
                 qty: Number(it.qty ?? 0),
+                optionId:
+                    it.optionId != null && String(it.optionId).trim() !== ""
+                        ? Number(it.optionId)
+                        : undefined,
             }))
-            .filter((it) => it.productId > 0 && it.qty > 0);
+            .filter((it) => it.productId > 0 && it.qty > 0)
+            .map((it) =>
+                it.optionId != null && Number.isFinite(it.optionId) && it.optionId > 0
+                    ? { productId: it.productId, qty: it.qty, optionId: it.optionId }
+                    : { productId: it.productId, qty: it.qty }
+            );
 
         if (quoteItems.length === 0) {
             setDeliveryTotal(0);
             return;
         }
+
+        const quotePostcode = (receiverSame ? buyerPostcode : postcode).trim();
+        const quoteAddress1 = (receiverSame ? buyerAddress1 : address1).trim();
 
         (async () => {
             try {
@@ -446,7 +458,11 @@ export default function OrderClient(props: {
                     },
                     credentials: "include",
                     cache: "no-store",
-                    body: JSON.stringify({ items: quoteItems }),
+                    body: JSON.stringify({
+                        items: quoteItems,
+                        postcode: quotePostcode,
+                        address1: quoteAddress1,
+                    }),
                 });
                 const json = (await res.json().catch(() => ({}))) as {
                     ok?: boolean;
@@ -464,7 +480,15 @@ export default function OrderClient(props: {
         return () => {
             cancelled = true;
         };
-    }, [tenant, items]);
+    }, [
+        tenant,
+        items,
+        receiverSame,
+        buyerPostcode,
+        buyerAddress1,
+        postcode,
+        address1,
+    ]);
 
     const canSubmit = items.length > 0 && !submitting;
     const isDirectOrder = draftItems.length > 0 || initialItems.length > 0;

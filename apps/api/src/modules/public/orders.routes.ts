@@ -22,7 +22,7 @@ import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
-import { calcHqDeliveryTotal } from "../../lib/delivery/hq-delivery.js";
+import { calcHqDeliveryBreakdown } from "../../lib/delivery/hq-delivery.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -1271,13 +1271,16 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             }
 
             const couponRows = selection.rows;
-            const deliveryTotal = await calcHqDeliveryTotal(
-                prisma,
-                body.items.map((item) => ({
-                    productId: item.productId,
-                    qty: item.qty,
-                }))
-            );
+            const deliveryItems = products.map((row) => ({
+                productId: row.product.uid,
+                qty: toInt(row.item.qty, 0),
+                optionId: row.item.optionId,
+            }));
+            const delivery = await calcHqDeliveryBreakdown(prisma, deliveryItems, {
+                address1: toSafeString(body.address1, ""),
+                postcode: toSafeString(body.postcode, ""),
+            });
+            const deliveryTotal = delivery.total;
             const payTotal = subtotal - selection.discountTotal + deliveryTotal;
 
             const couponOwnerId = couponRows.length
@@ -1349,7 +1352,9 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             },
                         });
 
-                        for (const row of products) {
+                        for (let i = 0; i < products.length; i += 1) {
+                            const row = products[i]!;
+                            const lineDelivery = delivery.lines[i];
                             await tx.mallRN_order_goods.create({
                                 data: {
                                     vendor: toSafeString(row.product.vendor, tenantSlug || String(tenantId)),
@@ -1370,10 +1375,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                                     hotdeal_setting_id: 0,
                                     hotdeal_price: 0,
                                     option_name: toSafeString(row.item.optionName, ""),
-                                    delivery_type: 0,
-                                    delivery_type_qty: 1,
-                                    delivery_price: 0,
-                                    delivery_add_price: 0,
+                                    delivery_type: lineDelivery?.deliveryType ?? 1,
+                                    delivery_type_qty: lineDelivery?.deliveryTypeQty ?? 1,
+                                    delivery_price: lineDelivery?.deliveryPrice ?? 0,
+                                    delivery_add_price: lineDelivery?.deliveryAddPrice ?? 0,
                                     delivery_info: "",
                                     use_coupon: 0,
                                     coupon_uid: 0,

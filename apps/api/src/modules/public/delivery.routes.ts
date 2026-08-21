@@ -9,9 +9,12 @@ const bodySchema = z.object({
             z.object({
                 productId: z.number().int().positive(),
                 qty: z.number().int().positive(),
+                optionId: z.number().int().positive().optional(),
             })
         )
         .min(1),
+    address1: z.string().max(200).optional(),
+    postcode: z.string().max(20).optional(),
 });
 
 export async function publicDeliveryRoutes(app: FastifyInstance) {
@@ -21,7 +24,10 @@ export async function publicDeliveryRoutes(app: FastifyInstance) {
             if (!parsed.success) {
                 return reply.code(400).send({ ok: false, message: "주문 상품이 올바르지 않습니다." });
             }
-            const deliveryTotal = await calcHqDeliveryTotal(app.prisma, parsed.data.items);
+            const deliveryTotal = await calcHqDeliveryTotal(app.prisma, parsed.data.items, {
+                address1: parsed.data.address1,
+                postcode: parsed.data.postcode,
+            });
             return reply.send({ ok: true, deliveryTotal });
         } catch (error: unknown) {
             app.log.error(error, "DELIVERY_QUOTE_ERROR");
