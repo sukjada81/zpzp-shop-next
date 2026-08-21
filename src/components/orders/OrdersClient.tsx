@@ -44,6 +44,10 @@ type ApiOrderItem = {
         canCancelImmediate?: boolean;
         canCancelRequest?: boolean;
         canWithdrawCancelRequest?: boolean;
+        canTrackDelivery?: boolean;
+        deliveryCarrierName?: string;
+        deliveryInvoiceNo?: string;
+        deliveryTrackUrl?: string;
     }>;
 };
 
@@ -99,6 +103,10 @@ export type OrderSummary = {
         canCancelImmediate?: boolean;
         canCancelRequest?: boolean;
         canWithdrawCancelRequest?: boolean;
+        canTrackDelivery?: boolean;
+        deliveryCarrierName?: string;
+        deliveryInvoiceNo?: string;
+        deliveryTrackUrl?: string;
     }>;
 };
 
@@ -149,6 +157,10 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
             canCancelImmediate: item.canCancelImmediate,
             canCancelRequest: item.canCancelRequest,
             canWithdrawCancelRequest: item.canWithdrawCancelRequest,
+            canTrackDelivery: Boolean(item.canTrackDelivery),
+            deliveryCarrierName: item.deliveryCarrierName,
+            deliveryInvoiceNo: item.deliveryInvoiceNo,
+            deliveryTrackUrl: item.deliveryTrackUrl,
         };
     });
 
@@ -559,6 +571,37 @@ export default function OrdersClient(props: {
                                                     {line.statusLabel?.includes("취소") ? (
                                                         <div className="mt-1 text-[11px] font-bold text-rose-500">
                                                             {line.statusLabel}
+                                                        </div>
+                                                    ) : null}
+                                                    {line.canTrackDelivery &&
+                                                    line.deliveryTrackUrl &&
+                                                    line.deliveryInvoiceNo ? (
+                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                            {line.deliveryCarrierName ? (
+                                                                <span className="text-[11px] font-semibold text-slate-500">
+                                                                    {line.deliveryCarrierName}{" "}
+                                                                    {line.deliveryInvoiceNo}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[11px] font-semibold text-slate-500">
+                                                                    {line.deliveryInvoiceNo}
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    window.open(
+                                                                        `${line.deliveryTrackUrl}${line.deliveryInvoiceNo}`,
+                                                                        "_blank",
+                                                                        "noopener,noreferrer"
+                                                                    );
+                                                                }}
+                                                                className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700"
+                                                            >
+                                                                배송조회
+                                                            </button>
                                                         </div>
                                                     ) : null}
                                                 </div>
