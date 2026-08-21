@@ -226,6 +226,25 @@ function getRefCookieOptions(req: NextRequest) {
     };
 }
 
+/** zpzp_ref 신규 스탬프 시 API에 visit 이벤트 기록(실패 무시) */
+function reportLinkerVisit(req: NextRequest, slug: string) {
+    if (isOgCrawler(req)) return;
+    const apiBase =
+        process.env.API_BASE_URL ||
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        "http://127.0.0.1:4000";
+    const url = `${apiBase.replace(/\/+$/, "")}/v1/public/linker/visit`;
+    return fetch(url, {
+        method: "POST",
+        headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+        },
+        body: JSON.stringify({ slug }),
+        cache: "no-store",
+    }).catch(() => undefined);
+}
+
 function setSelectedTenantCookie(
     res: NextResponse,
     req: NextRequest,
@@ -246,6 +265,8 @@ function setSelectedTenantCookie(
         const refValue = resolveRefCookie(req.cookies.get("zpzp_ref")?.value, sub);
         if (refValue) {
             res.cookies.set("zpzp_ref", refValue, getRefCookieOptions(req));
+            // 링커 첫 유입 로그 — 본 요청을 막지 않도록 fire-and-forget
+            void reportLinkerVisit(req, refValue);
         }
     }
 

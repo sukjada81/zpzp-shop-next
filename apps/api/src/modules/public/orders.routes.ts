@@ -1,6 +1,7 @@
 // apps/api/src/modules/public/orders.routes.ts
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { captureRefFromRequest } from "../attribution/capture.js";
+import { logOrderCreatedJourney } from "../attribution/journey-log.js";
 import { requireAdmin } from "../../common/guard.js";
 import {
     consumeCoupons,
@@ -1427,6 +1428,12 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     message: "주문번호 생성 중 충돌이 발생했습니다. 다시 시도해 주세요.",
                 });
             }
+
+            await logOrderCreatedJourney(prisma, {
+                memberUid,
+                orderNum,
+                checkoutShopSlug,
+            });
 
             return reply.send({
                 ok: true,

@@ -13,6 +13,7 @@ import { publicProductRoutes } from "./modules/public/products.routes.js";
 import { publicOrderRoutes } from "./modules/public/orders.routes.js";
 import { publicPaymentRoutes } from "./modules/public/payments.routes.js";
 import { publicDeliveryRoutes } from "./modules/public/delivery.routes.js";
+import { publicLinkerVisitRoutes } from "./modules/public/linker-visit.routes.js";
 import { publicTenantRoutes } from "./modules/public/tenants.routes.js";
 
 import { adminAuthRoutes } from "./modules/admin/admin.auth.routes.js";
@@ -77,6 +78,7 @@ await adminRoutes(app);
 await publicAuthRoutes(app);
 await publicMemberRoutes(app);
 await publicResolveRoutes(app);
+await publicLinkerVisitRoutes(app);
 
 await sellerAccessCheckRoutes(app);
 await sellerTenantsRoutes(app);

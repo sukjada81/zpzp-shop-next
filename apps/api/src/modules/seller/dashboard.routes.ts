@@ -1,6 +1,7 @@
 // apps/api/src/modules/seller/dashboard.routes.ts
 import type { FastifyInstance } from "fastify";
 import { requireTenant } from "../../common/guard.js";
+import { countTodayLinkerVisits } from "../attribution/journey-log.js";
 
 const PLATFORM_TYPE = "DAD";
 const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
@@ -517,6 +518,8 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
             const todayOrders = validOrders.filter((o) => isSameDay(o.createdAt)).length;
             const pendingOrders = validOrders.filter((o) => isPendingOrder(o.status)).length;
 
+            const todayInflows = await countTodayLinkerVisits(app.prisma, tenantSlug);
+
             const last7Orders = validOrders.filter((o) => isOnOrAfter(o.createdAt, weekStart));
             const recentOrderCount = last7Orders.length;
             const completedOrderCount = last7Orders.filter((o) => isCompletedOrder(o.status)).length;
@@ -574,9 +577,9 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                         {
                             key: "todayInflows",
                             label: "오늘 유입수",
-                            value: 0,
-                            unit: "명",
-                            hint: "추후 연동 예정",
+                            value: todayInflows,
+                            unit: "건",
+                            hint: "오늘 링커 스토어 첫 유입",
                             tone: "orange" as Tone,
                         },
                         {

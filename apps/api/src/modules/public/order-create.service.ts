@@ -18,6 +18,7 @@ import {
     resolveCouponSelection,
     resolveMemberLoginId,
 } from "./coupon.service.js";
+import { logOrderCreatedJourney } from "../attribution/journey-log.js";
 
 /** shop-next 공개 주문은 DAD 플랫폼 타입 (레거시 mallRN_order_info.platform_type) */
 const PLATFORM_TYPE = "DAD";
@@ -355,6 +356,12 @@ export async function createStoreOrder(
             message: "주문번호 생성 중 충돌이 발생했습니다. 다시 시도해 주세요.",
         };
     }
+
+    await logOrderCreatedJourney(prisma, {
+        memberUid: input.memberUid,
+        orderNum,
+        checkoutShopSlug: input.checkoutShopSlug,
+    });
 
     return { ok: true, orderNum, payTotal };
 }
