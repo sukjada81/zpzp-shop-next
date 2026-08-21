@@ -198,8 +198,13 @@ export default function SellerShell({
         setTenantSwitcherOpen(false);
     }, [pathname]);
 
-    const sellerOrigin = String(process.env.SELLER_ORIGIN || "").replace(/\/+$/, "");
-    const returnTo = sellerOrigin ? `${sellerOrigin}/${tenant}` : `/${tenant}`;
+    const sellerOrigin =
+        String(process.env.NEXT_PUBLIC_SELLER_ORIGIN || "").replace(/\/+$/, "") ||
+        (typeof window !== "undefined" &&
+        /\.?seller\./i.test(window.location.hostname)
+            ? window.location.origin
+            : "https://seller.zpzp.kr");
+    const returnTo = `${sellerOrigin}/${tenant}`;
     const loginHref = `/auth/kakao/login?tenant=${encodeURIComponent(tenant)}&returnTo=${encodeURIComponent(returnTo)}`;
 
     async function handleLogout() {
@@ -211,9 +216,9 @@ export default function SellerShell({
             });
         } finally {
             const target =
-                typeof window !== "undefined"
+                typeof window !== "undefined" && /\.?seller\./i.test(window.location.hostname)
                     ? `${window.location.origin}/${tenant}`
-                    : `/${tenant}`;
+                    : `${sellerOrigin}/${tenant}`;
             window.location.href = target;
         }
     }

@@ -31,14 +31,33 @@ export default function LoginPage() {
     // tenant 폴백을 fail-closed 로 바꾼 뒤로는 "a" 가 그대로 400 TENANT_NOT_RESOLVED 가 됐다.
     // 비우면 /auth/kakao/login 이 selectedTenant 쿠키 → 점포선택 순으로 폴백한다.
     const tenant = params.get("tenant") || "";
-    const returnToParam = params.get("returnTo") || "/home";
+    const returnToParam = params.get("returnTo") || "";
+
+    const isSellerReturn = useMemo(() => {
+        const raw = returnToParam || "";
+        if (/^https?:\/\/[^/]*seller\./i.test(raw)) return true;
+        const t = tenant.trim().toLowerCase();
+        if (!t) return false;
+        const path = raw.startsWith("/") ? raw : "";
+        return path === `/${t}` || path.startsWith(`/${t}/`);
+    }, [returnToParam, tenant]);
 
     const returnTo = useMemo(() => {
-        if (/^https?:\/\//i.test(returnToParam)) {
-            return returnToParam;
+        const raw = returnToParam || (isSellerReturn ? `/${tenant}` : "/home");
+        if (/^https?:\/\//i.test(raw)) {
+            return raw;
         }
-        return returnToParam.startsWith("/") ? returnToParam : "/home";
-    }, [returnToParam]);
+        const path = raw.startsWith("/") ? raw : "/home";
+        const t = tenant.trim().toLowerCase();
+        // 상대경로 /{tenant}… 는 셀러 콘솔 — 스토어프론트로 해석하지 않는다
+        if (t && (path === `/${t}` || path.startsWith(`/${t}/`))) {
+            const sellerOrigin =
+                process.env.NEXT_PUBLIC_SELLER_ORIGIN?.replace(/\/+$/, "") ||
+                "https://seller.zpzp.kr";
+            return `${sellerOrigin}${path}`;
+        }
+        return path;
+    }, [returnToParam, tenant, isSellerReturn]);
 
     useEffect(() => {
         let ignore = false;
@@ -94,7 +113,9 @@ export default function LoginPage() {
         <main className="min-h-dvh flex items-center justify-center bg-slate-50 px-4">
             <div className="w-full max-w-[420px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="mb-6 text-center">
-                    <h1 className="text-xl font-bold text-slate-900">매장 로그인</h1>
+                    <h1 className="text-xl font-bold text-slate-900">
+                        {isSellerReturn ? "링커 관리 로그인" : "매장 로그인"}
+                    </h1>
                     <p className="mt-2 text-sm text-slate-500">
                         카카오 계정으로 간편하게 로그인하세요.
                     </p>
