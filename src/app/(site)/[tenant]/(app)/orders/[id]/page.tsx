@@ -850,7 +850,9 @@ export default function OrderDetailPage() {
                     const displayCancel = allCanceled
                         ? Math.max(canceledSum, goodsAmount + deliveryAmount)
                         : canceledSum;
-                    const displayPay = allCanceled ? 0 : Number(order.totalAmount ?? 0);
+                    const displayPay = allCanceled
+                        ? 0
+                        : Math.max(0, Number(order.totalAmount ?? 0) - displayCancel);
 
                     return (
                         <>

@@ -588,7 +588,10 @@ export default function OrdersClient(props: {
                                         : canceledSum;
                                     const displayOrder = allCanceled
                                         ? 0
-                                        : Number(order.totalPrice ?? 0);
+                                        : Math.max(
+                                              0,
+                                              Number(order.totalPrice ?? 0) - displayCancel
+                                          );
 
                                     return (
                                         <>

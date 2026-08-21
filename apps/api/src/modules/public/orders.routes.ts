@@ -18,6 +18,7 @@ import {
     resolveOrderGoodsAggregate,
 } from "../../lib/order/customer-order-display.js";
 import { cancelTossPaymentForOrder } from "../../lib/toss-order-cancel.js";
+import { cancelCustomerPaidOrderItem } from "../../lib/order/customer-paid-item-cancel.js";
 import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
@@ -2435,6 +2436,78 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             toInt(target.status2, 0)
                         ),
                     });
+                }
+
+                // 결제완료 부분취소: 본사 PHP 미호출.
+                // 무료→조건부 배송비 발생분을 환불에서 차감 (delivery2 개념).
+                if (bridgeAction === "cancel_item_paid") {
+                    const activeCount = items.filter(
+                        (item) => toInt(item.effectiveStatus, 0) !== STATUS_CANCELED
+                    ).length;
+                    if (activeCount > 1) {
+                        const memberLoginId =
+                            (await resolveMemberLoginId(prisma, memberUid)) ||
+                            toSafeString(rawOrder.id, "회원");
+                        const now = toUnixNow();
+                        const cancelResult = await cancelCustomerPaidOrderItem({
+                            prisma,
+                            tenantId,
+                            orderNum,
+                            orderGoodsUid,
+                            memberUid,
+                            memberLoginId,
+                            memberName: toSafeString(rawOrder.name, "회원"),
+                            now,
+                        });
+
+                        if (!cancelResult.ok) {
+                            if (cancelResult.code === "USE_FULL_CANCEL_PATH") {
+                                // fall through to PHP for last-item safety
+                            } else {
+                                return reply.code(400).send({
+                                    ok: false,
+                                    message: cancelResult.message,
+                                });
+                            }
+                        } else {
+                            await writeOrderAuditLog(fastify.prisma, {
+                                tenantId,
+                                eventType: "cancel_partial",
+                                orderNum,
+                                orderGoodsUid,
+                                actorRole: "member",
+                                actorMemberUid: memberUid,
+                                actorNickname: toSafeString(rawOrder.name, "회원"),
+                                beforeStatus: target.effectiveStatus,
+                                afterStatus: 9,
+                                beforeStatus2: target.status2,
+                                afterStatus2: 5,
+                                reason: "고객 상품 즉시 취소",
+                                metaJson: {
+                                    bridgeAction: "cancel_item_paid_next",
+                                    cancelType: "partial",
+                                    cancelAmount: cancelResult.cancelAmount,
+                                    lineAmount: cancelResult.lineAmount,
+                                    emergingDelivery: cancelResult.emergingDelivery,
+                                    deliveryTotal: cancelResult.deliveryTotal,
+                                    paymentStatus: cancelResult.paymentStatus ?? null,
+                                },
+                            });
+
+                            return reply.send({
+                                ok: true,
+                                orderNum,
+                                orderGoodsUid,
+                                status: 9,
+                                status2: 5,
+                                statusLabel: "취소완료",
+                                cancelType: "partial",
+                                cancelAmount: cancelResult.cancelAmount,
+                                emergingDelivery: cancelResult.emergingDelivery,
+                                message: "상품의 주문이 취소 되었습니다.",
+                            });
+                        }
+                    }
                 }
 
                 const bridge = await callPhpBridge<{
