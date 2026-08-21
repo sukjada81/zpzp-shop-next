@@ -51,6 +51,7 @@ type OrderDetailResponse = {
         message?: string;
         memo?: string;
         totalAmount: number;
+        goodsTotal?: number;
         cancelTotal: number;
         refundTotal: number;
         deliveryTotal: number;
@@ -832,37 +833,67 @@ export default function OrderDetailPage() {
                     })}
                 </div>
 
-                <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-sm">
-                    <span className="font-semibold text-slate-500">상품 금액</span>
-                    <span className="font-bold text-slate-900">
-                        {formatMoney(order.totalAmount)}
-                    </span>
-                </div>
+                {(() => {
+                    const goodsAmount = Number(
+                        order.goodsTotal ??
+                            Math.max(
+                                0,
+                                Number(order.totalAmount ?? 0) - Number(order.deliveryTotal ?? 0)
+                            )
+                    );
+                    const deliveryAmount = Number(order.deliveryTotal ?? 0);
+                    const canceledSum =
+                        Number(order.cancelTotal ?? 0) + Number(order.refundTotal ?? 0);
+                    const allCanceled =
+                        Number(order.totalItemCount ?? 0) > 0 &&
+                        Number(order.activeItemCount ?? 0) === 0;
+                    const displayCancel = allCanceled
+                        ? Math.max(canceledSum, goodsAmount + deliveryAmount)
+                        : canceledSum;
+                    const displayPay = allCanceled
+                        ? 0
+                        : Math.max(0, Number(order.totalAmount ?? 0) - displayCancel);
 
-                {Number(order.deliveryTotal ?? 0) > 0 ? (
-                    <div className="mt-2 flex justify-between text-sm">
-                        <span className="font-semibold text-slate-500">배송비</span>
-                        <span className="font-bold text-slate-900">
-                            {formatMoney(Number(order.deliveryTotal))}
-                        </span>
-                    </div>
-                ) : null}
+                    return (
+                        <>
+                            <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-sm">
+                                <span className="font-semibold text-slate-500">상품 금액</span>
+                                <span className="font-bold text-slate-900">
+                                    {formatMoney(goodsAmount)}
+                                </span>
+                            </div>
 
-                {Number(order.cancelTotal ?? 0) > 0 ? (
-                    <div className="mt-2 flex justify-between text-sm">
-                        <span className="font-semibold text-slate-500">취소 금액</span>
-                        <span className="font-bold text-rose-600">
-                            {formatMoney(Number(order.cancelTotal))}
-                        </span>
-                    </div>
-                ) : null}
+                            <div className="mt-2 flex justify-between text-sm">
+                                <span className="font-semibold text-slate-500">배송비</span>
+                                <span className="font-bold text-slate-900">
+                                    {deliveryAmount > 0
+                                        ? formatMoney(deliveryAmount)
+                                        : "무료"}
+                                </span>
+                            </div>
 
-                <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-base font-extrabold">
-                    <span className="text-slate-900">
-                        {order.isOnlinePrepaid ? "총 결제 금액" : "총 결제 예정 금액"}
-                    </span>
-                    <span className="text-slate-900">{formatMoney(order.totalAmount)}</span>
-                </div>
+                            {displayCancel > 0 ? (
+                                <div className="mt-2 flex justify-between text-sm">
+                                    <span className="font-semibold text-slate-500">취소 금액</span>
+                                    <span className="font-bold text-rose-600">
+                                        {formatMoney(displayCancel)}
+                                    </span>
+                                </div>
+                            ) : null}
+
+                            <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-base font-extrabold">
+                                <span className="text-slate-900">
+                                    {order.isOnlinePrepaid
+                                        ? "총 결제 금액"
+                                        : "총 결제 예정 금액"}
+                                </span>
+                                <span className="text-slate-900">
+                                    {formatMoney(displayPay)}
+                                </span>
+                            </div>
+                        </>
+                    );
+                })()}
             </div>
 
             {!order.isOnlinePrepaid ? (

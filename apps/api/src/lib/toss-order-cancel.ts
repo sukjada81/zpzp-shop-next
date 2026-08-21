@@ -215,3 +215,162 @@ export async function cancelTossPaymentForOrder(
 
     return { ok: true, canceled: true };
 }
+
+export type TossPartialAmountCancelResult =
+    | { ok: true; canceled: true; cancelAmount: number; paymentStatus: string }
+    | { ok: true; skipped: true; reason: "zero_amount" | "already_canceled"; cancelAmount: number }
+    | { ok: false; code: string; message: string };
+
+/**
+ * 지정 금액 부분취소. 고객 상품 즉시취소(배송비 발생분 차감 환불)용.
+ * prepare 는 PARTIAL_CANCELED 로 두고, 잔액 0이면 CANCELED.
+ */
+export async function cancelTossPaymentPartialAmount(
+    prisma: PrismaClient,
+    input: CancelTossOrderPaymentInput & { cancelAmount: number }
+): Promise<TossPartialAmountCancelResult> {
+    const orderNum = limitText(input.orderNum, 40);
+    const cancelReason = limitText(input.cancelReason || "고객 상품 취소", 200);
+    const requestKey = limitText(input.requestKey, 120);
+    const requestSource = limitText(input.requestSource || "customer", 32);
+    const requestedBy = limitText(input.requestedBy, 80);
+    const cancelAmount = Math.max(0, Math.trunc(Number(input.cancelAmount) || 0));
+
+    if (!orderNum || !requestKey) {
+        return {
+            ok: false,
+            code: "INVALID_CANCEL_REQUEST",
+            message: "결제 취소 요청 정보가 올바르지 않습니다.",
+        };
+    }
+
+    if (cancelAmount <= 0) {
+        return { ok: true, skipped: true, reason: "zero_amount", cancelAmount: 0 };
+    }
+
+    const secretKey = getTossSecretKey();
+    if (!secretKey) {
+        return {
+            ok: false,
+            code: "TOSS_SECRET_KEY_REQUIRED",
+            message: "결제 취소 설정을 확인할 수 없습니다.",
+        };
+    }
+
+    const prepare = await prisma.mallRN_toss_prepare.findFirst({
+        where: {
+            order_num: orderNum,
+            NOT: { payment_key: "" },
+        },
+        orderBy: { uid: "desc" },
+    });
+
+    if (!prepare) {
+        return {
+            ok: false,
+            code: "TOSS_PREPARE_NOT_FOUND",
+            message: "온라인 결제 정보를 찾을 수 없어 취소할 수 없습니다.",
+        };
+    }
+
+    const paymentKey = String(prepare.payment_key ?? "").trim();
+    const orderId = String(prepare.order_id ?? "").trim();
+    if (!paymentKey || !orderId) {
+        return {
+            ok: false,
+            code: "TOSS_PAYMENT_DATA_MISSING",
+            message: "온라인 결제 승인 정보가 누락되어 취소할 수 없습니다.",
+        };
+    }
+
+    const paymentStatus = String(prepare.payment_status ?? "").toUpperCase();
+    if (paymentStatus === "CANCELED" || prepare.status === 7) {
+        return { ok: true, skipped: true, reason: "already_canceled", cancelAmount: 0 };
+    }
+
+    const lookup = await tossGetPayment(secretKey, paymentKey);
+    if (lookup.httpCode >= 200 && lookup.httpCode < 300) {
+        if (tossPaymentFullyCanceled(lookup.data)) {
+            await markPrepareCanceled(prisma, prepare.uid, {
+                event: "CUSTOMER_ITEM_PARTIAL_CANCEL",
+                requestKey,
+                requestSource,
+                requestedBy,
+                cancelReason,
+                syncedFrom: "toss_get_already_canceled",
+            });
+            return { ok: true, skipped: true, reason: "already_canceled", cancelAmount: 0 };
+        }
+    }
+
+    const balance = Math.max(0, Number(lookup.data?.balanceAmount ?? 0));
+    if (lookup.httpCode >= 200 && lookup.httpCode < 300 && balance > 0 && cancelAmount > balance) {
+        return {
+            ok: false,
+            code: "TOSS_CANCEL_AMOUNT_EXCEEDS_BALANCE",
+            message: "취소 금액이 결제 잔액을 초과합니다.",
+        };
+    }
+
+    const idempotencySeed = `${orderId}|${requestKey}|partial|${cancelAmount}`;
+    const apiResult = await tossCancelPaymentPartial(
+        secretKey,
+        paymentKey,
+        orderId,
+        cancelReason,
+        cancelAmount,
+        idempotencySeed
+    );
+
+    let cancelOk = tossCancelSucceeded(apiResult, "partial");
+    if (!cancelOk) {
+        const again = await tossGetPayment(secretKey, paymentKey);
+        if (again.httpCode >= 200 && again.httpCode < 300) {
+            const nextBalance = Math.max(0, Number(again.data?.balanceAmount ?? 0));
+            // 요청액만큼 줄었거나 전액 취소면 성공으로 본다
+            if (tossPaymentFullyCanceled(again.data) || (balance > 0 && nextBalance <= balance - cancelAmount)) {
+                cancelOk = true;
+            }
+        }
+    }
+
+    if (!cancelOk) {
+        return {
+            ok: false,
+            code: "TOSS_CANCEL_FAILED",
+            message: tossFailMessage(apiResult),
+        };
+    }
+
+    const afterLookup = await tossGetPayment(secretKey, paymentKey);
+    const afterStatus = String(afterLookup.data?.status ?? "PARTIAL_CANCELED").toUpperCase();
+    const fullyDone = tossPaymentFullyCanceled(afterLookup.data);
+    const now = toUnixNow();
+
+    await prisma.mallRN_toss_prepare.update({
+        where: { uid: prepare.uid },
+        data: {
+            status: fullyDone ? 7 : 2,
+            payment_status: fullyDone ? "CANCELED" : "PARTIAL_CANCELED",
+            payload: tossJsonEncode({
+                event: "CUSTOMER_ITEM_PARTIAL_CANCEL",
+                requestKey,
+                requestSource,
+                requestedBy,
+                cancelReason,
+                cancelAmount,
+                httpCode: apiResult.httpCode,
+                paymentStatus: afterStatus,
+            }),
+            signdate: now,
+            updated_at: new Date(),
+        },
+    });
+
+    return {
+        ok: true,
+        canceled: true,
+        cancelAmount,
+        paymentStatus: fullyDone ? "CANCELED" : "PARTIAL_CANCELED",
+    };
+}

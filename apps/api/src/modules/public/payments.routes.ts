@@ -50,10 +50,12 @@ type PrepareBody = {
     couponUids?: number[];
     /**
      * 프론트가 화면에 표시한 배송비. amount 에 더해 보내지 말 것 — amount 계약은 그대로다.
-     * 서버가 상품별 delivery_price 로 재계산해 대조하며, 다르면 400 이다.
-     * 필드를 안 보내면 배송비 0 으로 처리한다(프론트 배포 전 하위호환).
+     * 서버가 본사 type1~5 산식으로 재계산해 대조하며, 다르면 400.
+     * 미전송이면 서버 계산값을 쓴다.
      */
     deliveryFee?: number;
+    /** deliveryFee 와 동일 의미(구 프론트/쿼트 API 호환) */
+    deliveryTotal?: number;
     cartId?: string;
     buyerName?: string;
     buyerPhone?: string;
@@ -229,6 +231,8 @@ function parsePrepareForm(raw: string | null | undefined): StoredPrepareForm | n
             direct: toInt(data.direct, 0),
             items: data.items,
             couponUids: toCouponUidList(data.couponUids),
+            deliveryFee:
+                data.deliveryFee === undefined ? undefined : toInt(data.deliveryFee, 0),
             memberUid: toSafeString(data.memberUid, ""),
             tenantSlug: toSafeString(data.tenantSlug, ""),
             checkoutShopSlug: toSafeString(data.checkoutShopSlug, ""),
@@ -314,7 +318,10 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 return reply.code(400).send({ ok: false, msg: "주문 상품이 없습니다." });
             }
 
-            const validated = await validateOrderItems(prisma, body.items);
+            const validated = await validateOrderItems(prisma, body.items, {
+                address1: toSafeString(body.address1, ""),
+                postcode: toSafeString(body.postcode, ""),
+            });
             if (!validated.ok) {
                 return reply.code(400).send({ ok: false, msg: validated.message });
             }
@@ -362,21 +369,21 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 });
             }
 
-            // 배송비 — 프론트 값을 신뢰하지 않고 서버 재계산값과 대조한다(금액 가드와 동일 원칙).
-            // 미전송(구 프론트)이면 0 → 기존 동작 유지.
+            // 배송비 — 본사 산식(서버). 프론트 값은 대조만 한다.
+            const deliveryFee = validated.deliveryTotal;
             const requestedDeliveryFee =
-                body.deliveryFee === undefined ? 0 : toInt(body.deliveryFee, 0);
-            if (requestedDeliveryFee !== 0 && requestedDeliveryFee !== validated.deliveryFee) {
+                body.deliveryFee === undefined && body.deliveryTotal === undefined
+                    ? deliveryFee
+                    : toInt(body.deliveryFee ?? body.deliveryTotal, 0);
+            if (requestedDeliveryFee !== deliveryFee) {
                 return reply.code(400).send({
                     ok: false,
                     msg: "배송비가 변경되었습니다. 주문 페이지를 새로고침해 주세요.",
                 });
             }
-            const deliveryFee = requestedDeliveryFee;
 
             // 최종 승인액 = 상품합계 − 할인 + 배송비
             const payableAmount = goodsAfterDiscount + deliveryFee;
-
             const cartId = toSafeString(body.cartId) || buildCartId(memberUid, body.items);
             const orderId = buildTossOrderId();
             const nowTs = toUnixNow();
@@ -430,6 +437,7 @@ export const publicPaymentRoutes = async (fastify: FastifyInstance) => {
                 // OrderClient 는 이 값을 그대로 requestPayment 청구액으로 쓴다(할인 후 금액).
                 amount: payableAmount,
                 subtotal: validated.amount,
+                deliveryTotal: validated.deliveryTotal,
                 discountTotal: selection.discountTotal,
                 deliveryFee,
                 /** 서버가 계산한 배송비. 프론트 표시값이 이와 다르면 프론트를 맞춰야 한다. */

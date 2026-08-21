@@ -13,6 +13,10 @@ type ApiOrderItem = {
     buyerName?: string;
     buyerPhone?: string;
     totalAmount: number;
+    goodsTotal?: number;
+    deliveryTotal?: number;
+    cancelTotal?: number;
+    refundTotal?: number;
     pickupAt?: string | null;
     status: number;
     statusLabel: string;
@@ -73,6 +77,12 @@ export type OrderSummary = {
     status: string;
     title: string;
     totalPrice: number;
+    goodsTotal: number;
+    deliveryTotal: number;
+    cancelTotal: number;
+    refundTotal: number;
+    activeItemCount: number;
+    totalItemCount: number;
     createdAt: string;
     pickupAt?: string | null;
     badgeText?: string | null;
@@ -154,6 +164,15 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
         status: order.displayStatus || order.statusLabel || "주문접수",
         title,
         totalPrice: Number(order.totalAmount ?? 0),
+        goodsTotal: Number(
+            order.goodsTotal ??
+                Math.max(0, Number(order.totalAmount ?? 0) - Number(order.deliveryTotal ?? 0))
+        ),
+        deliveryTotal: Number(order.deliveryTotal ?? 0),
+        cancelTotal: Number(order.cancelTotal ?? 0),
+        refundTotal: Number(order.refundTotal ?? 0),
+        activeItemCount: Number(order.activeItemCount ?? 0),
+        totalItemCount: Number(order.totalItemCount ?? 0),
         createdAt: order.createdAt,
         pickupAt: order.pickupAt ?? null,
         badgeText: order.badgeText ?? null,
@@ -553,14 +572,71 @@ export default function OrdersClient(props: {
 
                                 <div className="my-4 h-px bg-[#e8e8eb]" />
 
-                                <div className="flex items-end justify-between gap-3">
-                                    <div className="text-[15px] font-bold text-[#25324a]">
-                                        주문금액
-                                    </div>
-                                    <div className="text-[20px] font-extrabold tracking-[-0.02em] text-[#182032]">
-                                        {formatMoney(order.totalPrice)}
-                                    </div>
-                                </div>
+                                {(() => {
+                                    const canceledSum =
+                                        Number(order.cancelTotal ?? 0) +
+                                        Number(order.refundTotal ?? 0);
+                                    const allCanceled =
+                                        Number(order.totalItemCount ?? 0) > 0 &&
+                                        Number(order.activeItemCount ?? 0) === 0;
+                                    const gross =
+                                        Number(order.goodsTotal ?? 0) +
+                                        Number(order.deliveryTotal ?? 0);
+                                    // 전부 취소면 주문금액 0, 취소금액은 상품+배송(또는 DB 취소합) 중 큰 쪽
+                                    const displayCancel = allCanceled
+                                        ? Math.max(canceledSum, gross)
+                                        : canceledSum;
+                                    const displayOrder = allCanceled
+                                        ? 0
+                                        : Math.max(
+                                              0,
+                                              Number(order.totalPrice ?? 0) - displayCancel
+                                          );
+
+                                    return (
+                                        <>
+                                            <div className="space-y-1.5 text-[13px]">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="font-semibold text-[#7a8499]">
+                                                        상품금액
+                                                    </span>
+                                                    <span className="font-bold text-[#1f2940]">
+                                                        {formatMoney(order.goodsTotal)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="font-semibold text-[#7a8499]">
+                                                        배송비
+                                                    </span>
+                                                    <span className="font-bold text-[#1f2940]">
+                                                        {order.deliveryTotal > 0
+                                                            ? formatMoney(order.deliveryTotal)
+                                                            : "무료"}
+                                                    </span>
+                                                </div>
+                                                {displayCancel > 0 ? (
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span className="font-semibold text-[#7a8499]">
+                                                            취소금액
+                                                        </span>
+                                                        <span className="font-bold text-rose-500">
+                                                            -{formatMoney(displayCancel)}
+                                                        </span>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+
+                                            <div className="mt-3 flex items-end justify-between gap-3">
+                                                <div className="text-[15px] font-bold text-[#25324a]">
+                                                    주문금액
+                                                </div>
+                                                <div className="text-[20px] font-extrabold tracking-[-0.02em] text-[#182032]">
+                                                    {formatMoney(displayOrder)}
+                                                </div>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
 
                                 <div
                                     className={[
