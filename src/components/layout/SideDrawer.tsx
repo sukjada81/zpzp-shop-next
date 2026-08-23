@@ -170,6 +170,13 @@ export default function SideDrawer({
             url.searchParams.set("tenant", tenant);
         }
 
+        // 로그아웃 후 스토어 홈(비회원·회원가 마스킹). 로그인 화면으로 가면 안 된다.
+        const home =
+            typeof window !== "undefined"
+                ? new URL("/home", window.location.origin).toString()
+                : "";
+        if (home) url.searchParams.set("returnTo", home);
+
         window.location.href = url.toString();
     }
 

@@ -279,7 +279,16 @@ export default function SettingsPage() {
     }
 
     function logout() {
-        window.location.href = `/auth/logout?tenant=${encodeURIComponent(tenant)}`;
+        const home =
+            typeof window !== "undefined"
+                ? new URL("/home", window.location.origin).toString()
+                : "/home";
+        const authOrigin =
+            process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.zpzp.kr";
+        const url = new URL("/auth/logout", authOrigin);
+        url.searchParams.set("tenant", tenant);
+        url.searchParams.set("returnTo", home);
+        window.location.href = url.toString();
     }
 
     if (!tenant || checking) {
