@@ -215,9 +215,14 @@ function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
     if (isAbsoluteUrl(returnTo)) return returnTo;
     const path = returnTo.startsWith("/") ? returnTo : "/home";
 
-    // /{tenant}… 상대경로는 셀러 콘솔이다. 스토어프론트(tenant.zpzp.kr)로 붙이면 안 된다.
+    // /{tenant}… 상대경로는 셀러 콘솔이다. 단 hq 등 예약 슬러그는 스토어 경로이므로 제외.
+    // (tenant=hq + /hq/home 을 seller.zpzp.kr 로 보내면 안 된다)
     const t = String(tenant || "").trim().toLowerCase();
-    if (t && (path === `/${t}` || path.startsWith(`/${t}/`))) {
+    if (
+        t &&
+        !isNonTenantSlug(t) &&
+        (path === `/${t}` || path.startsWith(`/${t}/`))
+    ) {
         return `${sellerConsoleOrigin()}${path}`;
     }
 

@@ -15,6 +15,34 @@ type SessionResponse = {
     tenant?: string;
 };
 
+/** 셀러 콘솔 tenant 가 될 수 없는 예약 슬러그 — /hq/… 는 스토어 경로다. */
+const NON_TENANT_SLUGS = new Set([
+    "www",
+    "admin",
+    "auth",
+    "api",
+    "select-tenant",
+    "seller",
+    "hq",
+]);
+
+function isNonTenantSlug(tenant: string) {
+    const t = (tenant || "").trim().toLowerCase();
+    return !t || NON_TENANT_SLUGS.has(t);
+}
+
+function isCrossSubdomainReturn(returnTo: string) {
+    if (typeof window === "undefined") return false;
+    if (!/^https?:\/\//i.test(returnTo)) return false;
+    try {
+        const target = new URL(returnTo).hostname.toLowerCase();
+        const here = window.location.hostname.toLowerCase();
+        return Boolean(target && here && target !== here);
+    } catch {
+        return false;
+    }
+}
+
 export default function LoginPage() {
     const [loading, setLoading] = useState(true);
     const [loggedIn, setLoggedIn] = useState(false);
@@ -37,7 +65,7 @@ export default function LoginPage() {
         const raw = returnToParam || "";
         if (/^https?:\/\/[^/]*seller\./i.test(raw)) return true;
         const t = tenant.trim().toLowerCase();
-        if (!t) return false;
+        if (!t || isNonTenantSlug(t)) return false;
         const path = raw.startsWith("/") ? raw : "";
         return path === `/${t}` || path.startsWith(`/${t}/`);
     }, [returnToParam, tenant]);
@@ -49,8 +77,12 @@ export default function LoginPage() {
         }
         const path = raw.startsWith("/") ? raw : "/home";
         const t = tenant.trim().toLowerCase();
-        // 상대경로 /{tenant}… 는 셀러 콘솔 — 스토어프론트로 해석하지 않는다
-        if (t && (path === `/${t}` || path.startsWith(`/${t}/`))) {
+        // 상대경로 /{tenant}… 는 셀러 콘솔 — hq 등 예약 슬러그는 스토어 경로이므로 제외
+        if (
+            t &&
+            !isNonTenantSlug(t) &&
+            (path === `/${t}` || path.startsWith(`/${t}/`))
+        ) {
             const sellerOrigin =
                 process.env.NEXT_PUBLIC_SELLER_ORIGIN?.replace(/\/+$/, "") ||
                 "https://seller.zpzp.kr";
@@ -80,6 +112,15 @@ export default function LoginPage() {
                 setLoggedIn(isLoggedIn);
 
                 if (isLoggedIn) {
+                    // auth 에만 쿠키가 있는 경우를 대비해, 다른 서브도메인이면
+                    // Set-Cookie 재발급(/auth/continue) 후 이동한다.
+                    if (isCrossSubdomainReturn(returnTo)) {
+                        const qs = new URLSearchParams();
+                        qs.set("returnTo", returnTo);
+                        if (tenant) qs.set("tenant", tenant);
+                        window.location.replace(`/auth/continue?${qs.toString()}`);
+                        return;
+                    }
                     window.location.replace(returnTo);
                     return;
                 }
@@ -99,7 +140,7 @@ export default function LoginPage() {
         return () => {
             ignore = true;
         };
-    }, [returnTo]);
+    }, [returnTo, tenant]);
 
     function startKakaoLogin() {
         const qs = new URLSearchParams();
