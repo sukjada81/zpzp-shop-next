@@ -208,6 +208,7 @@ function redirectStorefrontToLogin(
     subdomain: string | null
 ) {
     const returnTo = buildRequestAbs(req);
+    const refSlug = subdomain ?? undefined;
 
     if (isFlightRequest(req) && tenant) {
         const bridge = new URL(`/${tenant}/login`, getExternalOrigin(req));
@@ -216,7 +217,7 @@ function redirectStorefrontToLogin(
             NextResponse.redirect(bridge),
             req,
             cookieTenant,
-            subdomain
+            refSlug
         );
     }
 
@@ -228,7 +229,7 @@ function redirectStorefrontToLogin(
         NextResponse.redirect(loginUrl),
         req,
         cookieTenant,
-        subdomain
+        refSlug
     );
 }
 
