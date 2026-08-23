@@ -181,10 +181,69 @@ function buildTenantHomeAbs(req: NextRequest, tenant: string) {
     return `${finalProto}://${tenant}.${baseDomain}${portPart}/home`;
 }
 
+/** 지금 열려던 페이지 절대 URL — 로그인 후 여기로 복귀 */
+function buildRequestAbs(req: NextRequest) {
+    const { pathname, search } = req.nextUrl;
+    return `${getExternalOrigin(req)}${pathname}${search || ""}`;
+}
+
+/** App Router soft-nav(RSC) — 크로스 오리진 302 하면 CORS 로 깨진다 */
+function isFlightRequest(req: NextRequest) {
+    if (req.headers.get("rsc") === "1") return true;
+    if (req.headers.get("RSC") === "1") return true;
+    if (req.headers.get("next-router-prefetch") === "1") return true;
+    if (req.headers.get("Next-Router-Prefetch") === "1") return true;
+    if (req.nextUrl.searchParams.has("_rsc")) return true;
+    return false;
+}
+
+/**
+ * 스토어: RSC 면 같은 호스트 /{tenant}/login 브릿지(클라이언트→auth).
+ * 문서 네비는 auth 로 직행. returnTo 는 요청 URL 유지.
+ */
+function redirectStorefrontToLogin(
+    req: NextRequest,
+    tenant: string,
+    cookieTenant: string,
+    subdomain: string | null
+) {
+    const returnTo = buildRequestAbs(req);
+
+    if (isFlightRequest(req) && tenant) {
+        const bridge = new URL(`/${tenant}/login`, getExternalOrigin(req));
+        bridge.searchParams.set("returnTo", returnTo);
+        return setSelectedTenantCookie(
+            NextResponse.redirect(bridge),
+            req,
+            cookieTenant,
+            subdomain
+        );
+    }
+
+    const loginUrl = new URL("/login", getEnvOrigin("AUTH"));
+    loginUrl.searchParams.set("tenant", tenant);
+    loginUrl.searchParams.set("returnTo", returnTo);
+    loginUrl.searchParams.set("auto", "0");
+    return setSelectedTenantCookie(
+        NextResponse.redirect(loginUrl),
+        req,
+        cookieTenant,
+        subdomain
+    );
+}
+
 function buildSellerReturnAbs(req: NextRequest, tenant: string, pathAfterTenant = "") {
     const sellerOrigin = getEnvOrigin("SELLER");
     const normalized = pathAfterTenant.startsWith("/") ? pathAfterTenant : `/${pathAfterTenant}`;
     return `${sellerOrigin}/${tenant}${pathAfterTenant ? normalized : ""}`;
+}
+
+function redirectSellerToLogin(req: NextRequest, tenant: string, returnTo: string) {
+    const loginUrl = new URL("/login", getEnvOrigin("AUTH"));
+    if (tenant) loginUrl.searchParams.set("tenant", tenant);
+    loginUrl.searchParams.set("returnTo", returnTo);
+    loginUrl.searchParams.set("auto", "0");
+    return setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, tenant);
 }
 
 function getTenantCookieOptions(req: NextRequest) {
@@ -478,16 +537,12 @@ export async function middleware(req: NextRequest) {
             );
         }
 
-        const authOrigin = getEnvOrigin("AUTH");
-        const loginUrl = new URL("/login", authOrigin);
-        loginUrl.searchParams.set("tenant", tenant);
-        loginUrl.searchParams.set(
-            "returnTo",
-            buildSellerReturnAbs(req, tenant, rest ? `/${rest}` : "")
-        );
-
         return addDebug(
-            setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, tenant),
+            redirectSellerToLogin(
+                req,
+                tenant,
+                buildSellerReturnAbs(req, tenant, rest ? `/${rest}` : "")
+            ),
             "seller-redirect(auth)"
         );
     }
@@ -545,6 +600,7 @@ export async function middleware(req: NextRequest) {
                 "returnTo",
                 buildSellerReturnAbs(req, tenant, rest ? `/${rest}` : "")
             );
+            loginUrl.searchParams.set("auto", "0");
         }
 
         return setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, tenant);
@@ -627,21 +683,10 @@ export async function middleware(req: NextRequest) {
         );
     }
 
-    const authOrigin = getEnvOrigin("AUTH");
-    const loginUrl = new URL("/login", authOrigin);
-    // tenant 와 복귀 주소는 역할이 다르다 — 섞으면 안 된다.
-    //  - tenant: 카탈로그 테넌트(effectiveTenant). 그대로 카카오 state 를 타고
-    //    API /v1/auth/kakao/complete 의 tenantSlug 가 된다. 여기에 링커 slug 를 넣으면
-    //    API 가 해석하지 못한다(링커 slug 는 tenant 가 아니다).
-    //    예전엔 API 가 조용히 첫 테넌트로 폴백해 "다른 매장으로 로그인되는" 혼선이 났고,
-    //    그 폴백을 제거했으므로 이제 올바른 값을 넘겨야 한다.
-    //  - returnTo: 원래 방문한 링커 서브도메인의 절대 URL. 로그인 후 자기 샵으로
-    //    돌아오는 건 이쪽이 책임진다(아래 buildTenantHomeAbs 는 subdomain 유지).
-    loginUrl.searchParams.set("tenant", effectiveTenant);
-    loginUrl.searchParams.set("returnTo", buildTenantHomeAbs(req, subdomain));
-
+    // tenant: 카탈로그(effectiveTenant). returnTo: 막으려던 페이지 절대 URL.
+    // RSC soft-nav 는 같은 호스트 /{tenant}/login 브릿지로 보내 CORS 를 피한다.
     return addDebug(
-        setSelectedTenantCookie(NextResponse.redirect(loginUrl), req, effectiveTenant, subdomain),
+        redirectStorefrontToLogin(req, effectiveTenant, effectiveTenant, subdomain),
         "redirect(tenant protected -> auth/login)"
     );
 }

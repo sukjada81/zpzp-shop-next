@@ -215,11 +215,17 @@ export default function SellerShell({
                 credentials: "include",
             });
         } finally {
-            const target =
-                typeof window !== "undefined" && /\.?seller\./i.test(window.location.hostname)
-                    ? `${window.location.origin}/${tenant}`
-                    : `${sellerOrigin}/${tenant}`;
-            window.location.href = target;
+            // 보호 경로(seller/{tenant})로 다시 가면 바로 로그인 리다이렉트되어
+            // "로그아웃이 안 된 것 같다"로 보인다 → auth 로그인 화면으로 명시 이동.
+            const authOrigin =
+                process.env.NEXT_PUBLIC_AUTH_ORIGIN || "https://auth.zpzp.kr";
+            const back = `${sellerOrigin}/${tenant}`;
+            const url = new URL("/login", authOrigin);
+            url.searchParams.set("tenant", tenant);
+            url.searchParams.set("returnTo", back);
+            url.searchParams.set("auto", "0");
+            url.searchParams.set("loggedOut", "1");
+            window.location.href = url.toString();
         }
     }
 
