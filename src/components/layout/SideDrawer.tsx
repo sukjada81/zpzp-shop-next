@@ -338,7 +338,7 @@ export default function SideDrawer({
                         ) : (
                             <button
                                 type="button"
-                                onClick={goLogin}
+                                onClick={() => goLogin()}
                                 className="w-full rounded-2xl py-3 text-[14px] font-extrabold text-[color:var(--fg)] active:scale-[0.99]"
                                 style={{ background: "var(--kakao)" }}
                             >
