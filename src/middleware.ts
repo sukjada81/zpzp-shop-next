@@ -202,8 +202,10 @@ function isFlightRequest(req: NextRequest) {
 }
 
 /**
- * 스토어: RSC 면 같은 호스트 /{tenant}/login 브릿지(클라이언트→auth).
- * 문서 네비는 auth 로 직행. returnTo 는 요청 URL 유지.
+ * 스토어 로그인 게이트.
+ * 항상 같은 호스트 /{tenant}/login 브릿지로 보낸다(클라이언트→auth).
+ * auth 로 바로 302 하면 App Router soft-nav 가 CORS 로 깨진다.
+ * returnTo 는 요청 URL(장바구니면 장바구니)을 유지한다.
  */
 function redirectStorefrontToLogin(
     req: NextRequest,
@@ -213,24 +215,12 @@ function redirectStorefrontToLogin(
 ) {
     const returnTo = buildRequestAbs(req);
     const refSlug = subdomain ?? undefined;
+    const t = String(tenant || "").trim() || "hq";
 
-    if (isFlightRequest(req) && tenant) {
-        const bridge = new URL(`/${tenant}/login`, getExternalOrigin(req));
-        bridge.searchParams.set("returnTo", returnTo);
-        return setSelectedTenantCookie(
-            NextResponse.redirect(bridge),
-            req,
-            cookieTenant,
-            refSlug
-        );
-    }
-
-    const loginUrl = new URL("/login", getEnvOrigin("AUTH"));
-    loginUrl.searchParams.set("tenant", tenant);
-    loginUrl.searchParams.set("returnTo", returnTo);
-    loginUrl.searchParams.set("auto", "0");
+    const bridge = new URL(`/${t}/login`, getExternalOrigin(req));
+    bridge.searchParams.set("returnTo", returnTo);
     return setSelectedTenantCookie(
-        NextResponse.redirect(loginUrl),
+        NextResponse.redirect(bridge),
         req,
         cookieTenant,
         refSlug
