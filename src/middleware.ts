@@ -189,11 +189,15 @@ function buildRequestAbs(req: NextRequest) {
 
 /** App Router soft-nav(RSC) — 크로스 오리진 302 하면 CORS 로 깨진다 */
 function isFlightRequest(req: NextRequest) {
-    if (req.headers.get("rsc") === "1") return true;
-    if (req.headers.get("RSC") === "1") return true;
-    if (req.headers.get("next-router-prefetch") === "1") return true;
-    if (req.headers.get("Next-Router-Prefetch") === "1") return true;
+    const h = req.headers;
+    if (h.get("rsc") === "1") return true;
+    if (h.get("next-router-prefetch") === "1") return true;
+    if (h.get("next-router-segment-prefetch") === "1") return true;
+    if (h.has("next-router-state-tree")) return true;
+    if (h.has("next-url")) return true;
     if (req.nextUrl.searchParams.has("_rsc")) return true;
+    const accept = (h.get("accept") || "").toLowerCase();
+    if (accept.includes("text/x-component")) return true;
     return false;
 }
 
