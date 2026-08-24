@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     AlertCircle,
     ChevronLeft,
@@ -65,6 +65,8 @@ type ResponseData = {
     available?: ProductList;
 };
 
+export type SellerProductsInitialData = ResponseData;
+
 type ToastMessage = {
     type: "register" | "delete" | "save" | "error";
     text: string;
@@ -111,10 +113,46 @@ function csvDownload(filename: string, rows: Array<Array<string | number | boole
 function ProductImage({ item, size = "normal" }: { item: ProductItem; size?: "normal" | "large" }) {
     const sizeClass = size === "large" ? "h-16 w-16" : "h-12 w-12";
     return item.image ? (
-        <img src={item.image} alt="" className={`${sizeClass} shrink-0 rounded-xl object-cover`} />
+        <img
+            src={item.image}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className={`${sizeClass} shrink-0 rounded-xl object-cover`}
+        />
     ) : (
         <div className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-xl bg-slate-100`}>
             <Package className="h-5 w-5 text-slate-400" />
+        </div>
+    );
+}
+
+function ProductsSkeleton() {
+    return (
+        <div className="space-y-5">
+            <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5">
+                <div className="h-7 w-48 animate-pulse rounded-lg bg-slate-100" />
+                <div className="mt-2 h-4 w-72 animate-pulse rounded bg-slate-100" />
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                        <div key={idx} className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+                    ))}
+                </div>
+            </section>
+            {Array.from({ length: 2 }).map((_, sectionIdx) => (
+                <section
+                    key={sectionIdx}
+                    className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5"
+                >
+                    <div className="h-6 w-40 animate-pulse rounded-lg bg-slate-100" />
+                    <div className="mt-4 h-12 animate-pulse rounded-xl bg-slate-100" />
+                    <div className="mt-4 grid gap-3">
+                        {Array.from({ length: 5 }).map((_, idx) => (
+                            <div key={idx} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+                        ))}
+                    </div>
+                </section>
+            ))}
         </div>
     );
 }
@@ -161,27 +199,59 @@ function Pager({
     );
 }
 
-export default function SellerProductsClient({ tenant }: { tenant: string }) {
-    const [data, setData] = useState<ResponseData | null>(null);
-    const [loading, setLoading] = useState(true);
+export default function SellerProductsClient({
+    tenant,
+    initialData = null,
+}: {
+    tenant: string;
+    initialData?: ResponseData | null;
+}) {
+    const [data, setData] = useState<ResponseData | null>(initialData);
+    const [loading, setLoading] = useState(!initialData);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<ToastMessage | null>(null);
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null);
     const [selectedQ, setSelectedQ] = useState("");
     const [availableQ, setAvailableQ] = useState("");
+    const [debouncedSelectedQ, setDebouncedSelectedQ] = useState("");
+    const [debouncedAvailableQ, setDebouncedAvailableQ] = useState("");
     const [selectedPage, setSelectedPage] = useState(1);
     const [availablePage, setAvailablePage] = useState(1);
     const [checkedSelected, setCheckedSelected] = useState<Set<string>>(new Set());
     const [checkedAvailable, setCheckedAvailable] = useState<Set<string>>(new Set());
-    const [orderDraft, setOrderDraft] = useState<Record<string, number>>({});
-    const [visibilityDraft, setVisibilityDraft] = useState<Record<string, "visible" | "hidden">>({});
+    const [orderDraft, setOrderDraft] = useState<Record<string, number>>(
+        Object.fromEntries((initialData?.selected?.items || []).map((item) => [item.id, item.displayOrder]))
+    );
+    const [visibilityDraft, setVisibilityDraft] = useState<Record<string, "visible" | "hidden">>(
+        Object.fromEntries((initialData?.selected?.items || []).map((item) => [item.id, item.displayStatus]))
+    );
+    const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+    const skipNextFetch = useRef(Boolean(initialData));
+
+    useEffect(() => {
+        const media = window.matchMedia("(min-width: 768px)");
+        const sync = () => setIsDesktop(media.matches);
+        sync();
+        media.addEventListener("change", sync);
+        return () => media.removeEventListener("change", sync);
+    }, []);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedSelectedQ(selectedQ.trim()), 300);
+        return () => window.clearTimeout(timer);
+    }, [selectedQ]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedAvailableQ(availableQ.trim()), 300);
+        return () => window.clearTimeout(timer);
+    }, [availableQ]);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
             const params = new URLSearchParams({
-                selectedQ,
-                availableQ,
+                selectedQ: debouncedSelectedQ,
+                availableQ: debouncedAvailableQ,
                 selectedPage: String(selectedPage),
                 availablePage: String(availablePage),
                 pageSize: String(PAGE_SIZE),
@@ -211,11 +281,14 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
         } finally {
             setLoading(false);
         }
-    }, [tenant, selectedQ, availableQ, selectedPage, availablePage]);
+    }, [tenant, debouncedSelectedQ, debouncedAvailableQ, selectedPage, availablePage]);
 
     useEffect(() => {
-        const timer = window.setTimeout(load, 300);
-        return () => window.clearTimeout(timer);
+        if (skipNextFetch.current) {
+            skipNextFetch.current = false;
+            return;
+        }
+        void load();
     }, [load]);
 
     useEffect(() => {
@@ -411,6 +484,9 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                 </div>
             ) : null}
 
+            {loading && !data ? <ProductsSkeleton /> : null}
+
+            <div className={loading && !data ? "hidden" : loading ? "space-y-5 opacity-60 transition-opacity" : "space-y-5"}>
             <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -483,7 +559,8 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                     </button>
                 </div>
 
-                <div className="mt-4 hidden overflow-x-auto md:block">
+                {isDesktop !== false ? (
+                <div className="mt-4 overflow-x-auto">
                     <table className="w-full min-w-[980px] text-left text-sm">
                         <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">번호</th><th className="p-3"><input type="checkbox" checked={allSelectedOnPage} onChange={() => setCheckedSelected(allSelectedOnPage ? new Set() : new Set(selected.items.map((item) => item.id)))} /></th><th className="p-3">상품</th><th className="p-3">상태</th><th className="p-3">판매가</th><th className="p-3">판매 이력</th><th className="p-3">진열</th><th className="p-3">순서</th><th className="p-3">등록일</th><th className="p-3">관리</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
@@ -504,8 +581,8 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                         </tbody>
                     </table>
                 </div>
-
-                <div className="mt-4 space-y-3 md:hidden">
+                ) : (
+                <div className="mt-4 space-y-3">
                     {selected.items.map((item, index) => (
                         <article key={item.id} className="rounded-2xl border border-slate-200 p-4">
                             <div className="flex gap-3">
@@ -522,6 +599,7 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                         </article>
                     ))}
                 </div>
+                )}
                 {!loading && selected.items.length === 0 ? <div className="py-12 text-center text-sm text-slate-500">등록된 상품이 없습니다.</div> : null}
                 <Pager page={selected.page} total={selected.total} pageSize={selected.pageSize} onChange={setSelectedPage} />
             </section>
@@ -549,7 +627,8 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                 ) : null}
                 <input value={availableQ} onChange={(event) => { setAvailableQ(event.target.value); setAvailablePage(1); }} placeholder="전체 상품에서 상품명 또는 상품번호 검색" className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500" />
 
-                <div className="mt-4 hidden overflow-x-auto md:block">
+                {isDesktop !== false ? (
+                <div className="mt-4 overflow-x-auto">
                     <table className="w-full min-w-[760px] text-left text-sm">
                         <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">번호</th><th className="p-3"><input type="checkbox" disabled={registrationBlocked} checked={!registrationBlocked && allAvailableOnPage} onChange={() => setCheckedAvailable(allAvailableOnPage ? new Set() : new Set(available.items.map((item) => item.id)))} className="disabled:cursor-not-allowed disabled:opacity-40" /></th><th className="p-3">상품</th><th className="p-3">상태</th><th className="p-3">판매가</th><th className="p-3">재고</th><th className="p-3">관리</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
@@ -567,8 +646,8 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                         </tbody>
                     </table>
                 </div>
-
-                <div className="mt-4 space-y-3 md:hidden">
+                ) : (
+                <div className="mt-4 space-y-3">
                     {available.items.map((item, index) => (
                         <article key={item.id} className="rounded-2xl border border-slate-200 p-4">
                             <div className="flex gap-3">
@@ -581,9 +660,11 @@ export default function SellerProductsClient({ tenant }: { tenant: string }) {
                         </article>
                     ))}
                 </div>
+                )}
                 {!loading && available.items.length === 0 ? <div className="py-12 text-center text-sm text-slate-500">등록 가능한 상품이 없습니다.</div> : null}
                 <Pager page={available.page} total={available.total} pageSize={available.pageSize} onChange={setAvailablePage} />
             </section>
+            </div>
         </div>
     );
 }

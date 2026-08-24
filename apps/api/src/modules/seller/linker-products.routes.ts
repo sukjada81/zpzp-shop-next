@@ -140,6 +140,20 @@ export async function getLinkerSlotPolicy(
     };
 }
 
+const GOODS_LIST_SELECT = {
+    uid: true,
+    name: true,
+    cate: true,
+    price: true,
+    qty: true,
+    qty_type: true,
+    image1: true,
+    status: true,
+    sale_use: true,
+    deleted_at: true,
+    sale_end_at: true,
+} as const;
+
 async function getSelectedState(app: FastifyInstance, linkerUid: number) {
     const selections = await app.prisma.mallRN_linker_products.findMany({
         where: { linker_uid: linkerUid, selection_status: "selected" },
@@ -148,6 +162,7 @@ async function getSelectedState(app: FastifyInstance, linkerUid: number) {
     const products = selections.length
         ? await app.prisma.mallRN_goods.findMany({
             where: { uid: { in: selections.map((row) => row.product_uid) } },
+            select: GOODS_LIST_SELECT,
         })
         : [];
     const productMap = new Map(products.map((row) => [row.uid, row]));
@@ -195,27 +210,42 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
         }).parse(req.query);
         const pageSize = 5;
 
-        const policy = await getLinkerSlotPolicy(app, linker);
-        const state = await getSelectedState(app, linker.uid);
-        const selectedIds = new Set(state.selections.map((row) => row.product_uid));
-        const salesRows = state.selections.length
-            ? await app.prisma.$queryRaw<Array<{ g_uid: number; order_count: bigint; sale_qty: bigint }>>(Prisma.sql`
-                SELECT og.g_uid,
-                       COUNT(DISTINCT og.order_num) AS order_count,
-                       COALESCE(SUM(og.qty), 0) AS sale_qty
-                  FROM mallRN_order_goods og
-                  JOIN mallRN_order_info oi ON oi.order_num = og.order_num
-                  JOIN zpzp_referral_attribution ra ON ra.member_uid = oi.member_uid
-                 WHERE ra.linker_id = ${linker.uid}
-                   AND oi.pay_status <> 'A'
-                   AND og.g_uid IN (${Prisma.join(state.selections.map((row) => row.product_uid))})
-                 GROUP BY og.g_uid
-            `)
-            : [];
-        const salesMap = new Map(salesRows.map((row) => [row.g_uid, row]));
-
+        const [policy, state] = await Promise.all([
+            getLinkerSlotPolicy(app, linker),
+            getSelectedState(app, linker.uid),
+        ]);
+        const selectedIds = state.selections.map((row) => row.product_uid);
         const selectedKeyword = query.selectedQ.trim().toLowerCase();
         const availableKeyword = query.availableQ.trim();
+        const availableWhere = availableGoodsWhere(selectedIds, availableKeyword);
+        const availableSkip = (query.availablePage - 1) * pageSize;
+
+        const [salesRows, availableTotal, availableProducts] = await Promise.all([
+            selectedIds.length
+                ? app.prisma.$queryRaw<Array<{ g_uid: number; order_count: bigint; sale_qty: bigint }>>(Prisma.sql`
+                    SELECT og.g_uid,
+                           COUNT(DISTINCT og.order_num) AS order_count,
+                           COALESCE(SUM(og.qty), 0) AS sale_qty
+                      FROM mallRN_order_goods og
+                      JOIN mallRN_order_info oi ON oi.order_num = og.order_num
+                      JOIN zpzp_referral_attribution ra ON ra.member_uid = oi.member_uid
+                     WHERE ra.linker_id = ${linker.uid}
+                       AND oi.pay_status <> 'A'
+                       AND og.g_uid IN (${Prisma.join(selectedIds)})
+                     GROUP BY og.g_uid
+                `)
+                : Promise.resolve([] as Array<{ g_uid: number; order_count: bigint; sale_qty: bigint }>),
+            app.prisma.mallRN_goods.count({ where: availableWhere }),
+            app.prisma.mallRN_goods.findMany({
+                where: availableWhere,
+                orderBy: [{ sort_order: "desc" }, { uid: "desc" }],
+                skip: availableSkip,
+                take: pageSize,
+                select: GOODS_LIST_SELECT,
+            }),
+        ]);
+        const salesMap = new Map(salesRows.map((row) => [row.g_uid, row]));
+
         const selectedItems = state.selections
             .map((selection) => {
                 const product = state.productMap.get(selection.product_uid);
@@ -224,17 +254,6 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
             .filter((item): item is NonNullable<typeof item> => Boolean(item))
             .filter((item) => item.slotCounted || item.salesCount > 0)
             .filter((item) => !selectedKeyword || item.name.toLowerCase().includes(selectedKeyword) || item.id.includes(selectedKeyword));
-        const availableWhere = availableGoodsWhere([...selectedIds], availableKeyword);
-        const availableSkip = (query.availablePage - 1) * pageSize;
-        const [availableTotal, availableProducts] = await Promise.all([
-            app.prisma.mallRN_goods.count({ where: availableWhere }),
-            app.prisma.mallRN_goods.findMany({
-                where: availableWhere,
-                orderBy: [{ sort_order: "desc" }, { uid: "desc" }],
-                skip: availableSkip,
-                take: pageSize,
-            }),
-        ]);
         const availableItems = availableProducts.map((product) => productDto(product));
 
         const selectedStopped = selectedItems.filter((item) => !item.slotCounted).length;
