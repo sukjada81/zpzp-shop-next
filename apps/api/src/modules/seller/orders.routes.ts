@@ -71,10 +71,16 @@ function statusLabel(status: number) {
             return "현장결제완료";
         case 2:
             return "발송준비완료";
+        case 3:
+            return "배송중";
         case 4:
             return "배송완료";
+        case 5:
+            return "구매확정";
+        case 7:
+            return "교환";
         case 8:
-            return "미수령";
+            return "반품";
         case 9:
             return "주문취소";
         default:
@@ -292,6 +298,8 @@ function buildOrderListItem(info: any, goods: any[], goodsMeta: GoodsMetaRow[]) 
             qty: Number(row.qty ?? 0),
             price: Number(row.price ?? 0),
             status: Number(row.status ?? 0),
+            status2: Number(row.status2 ?? 0),
+            statusLabel: statusLabel(Number(row.status ?? 0)),
         })),
     };
 }
@@ -336,6 +344,7 @@ function buildOrderDetailItem(info: any, goods: any[], goodsMeta: GoodsMetaRow[]
             optionName: row.option_name ?? "",
             status: Number(row.status ?? 0),
             status2: Number(row.status2 ?? 0),
+            statusLabel: statusLabel(Number(row.status ?? 0)),
             createdAt: unixToIso(row.signdate),
         })),
     };
