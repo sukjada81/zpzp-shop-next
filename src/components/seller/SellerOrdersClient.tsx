@@ -492,6 +492,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                                 상세보기
                                             </Link>
 
+                                            {/* 확인/취소는 현재 동작 숨김 요청으로 렌더링만 막아 둔다.
                                             <button
                                                 type="button"
                                                 onClick={() => handleConfirm(item.id)}
@@ -514,6 +515,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                             >
                                                 {isCanceled ? "취소됨" : "취소"}
                                             </button>
+                                            */}
                                         </div>
                                     </div>
                                 </div>

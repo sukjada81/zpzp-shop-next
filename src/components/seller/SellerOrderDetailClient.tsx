@@ -356,6 +356,7 @@ export default function SellerOrderDetailClient({
                         <ArrowLeft className="h-4 w-4" />
                         목록
                     </Link>
+                    {/* 확인/취소는 현재 동작 숨김 요청으로 렌더링만 막아 둔다.
                     <button
                         type="button"
                         onClick={handleConfirm}
@@ -378,6 +379,7 @@ export default function SellerOrderDetailClient({
                     >
                         {isCanceled ? "취소됨" : "주문 취소"}
                     </button>
+                    */}
                 </div>
             </div>
 
