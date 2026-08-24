@@ -13,6 +13,7 @@ import {
     applyPartialCancelDisplay,
     buildCancelBlockedMessage,
     buildGoodsStatusLabel,
+    canCustomerFullImmediateCancel,
     isOnlinePrepaidOrder,
     resolveCustomerOrderDisplay,
     resolveCustomerOrderItemActions,
@@ -532,6 +533,25 @@ async function executeCustomerImmediateCancel(input: {
     const payInfo = toSafeString(input.orderRow.pay_info, "");
     const isOnlinePrepaid = isOnlinePrepaidOrder(payType, payStatus, payInfo);
 
+    // 본사 전체취소와 같이: 배송중 등이 하나라도 있으면 전체 즉시취소 거부
+    const openGoods = await input.prisma.mallRN_order_goods.findMany({
+        where: {
+            tenant_id: input.tenantId,
+            platform_type: PLATFORM_TYPE,
+            order_num: input.orderNum,
+            status: { not: STATUS_CANCELED },
+        },
+        select: { status: true, status2: true },
+    });
+    if (!canCustomerFullImmediateCancel(openGoods, payStatus)) {
+        const blocked = resolveOrderGoodsAggregate(openGoods, payStatus);
+        return {
+            ok: false,
+            code: "cannot_cancel",
+            message: buildCancelBlockedMessage(blocked.goodsStatus, blocked.goodsStatus2),
+        };
+    }
+
     if (isOnlinePrepaid) {
         const pgResult = await cancelTossPaymentForOrder(input.prisma, {
             orderNum: input.orderNum,
@@ -1049,9 +1069,15 @@ async function serializeOrder(
         (item) =>
             item.canCancelImmediate || item.canCancelRequest || item.canWithdrawCancelRequest
     );
+    // 본사와 동일: 활성 상품이 모두 즉시취소 가능할 때만 주문 전체취소
+    const activeItems = items.filter(
+        (item) => toInt(item.effectiveStatus, 0) !== STATUS_CANCELED
+    );
     const orderCanCancel =
-        display.canCancel ||
-        items.some((item) => item.canCancelImmediate && item.cancelMode === "immediate");
+        activeItems.length > 0 &&
+        activeItems.every(
+            (item) => item.canCancelImmediate && item.cancelMode === "immediate"
+        );
 
     const addressLine = [
         toSafeString(info.postcode, ""),
@@ -1891,7 +1917,8 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 });
 
                 if (!cancelResult.ok) {
-                    return reply.code(502).send({
+                    const status = cancelResult.code === "cannot_cancel" ? 400 : 502;
+                    return reply.code(status).send({
                         ok: false,
                         error: cancelResult.code,
                         message: cancelResult.message,
@@ -2022,7 +2049,8 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 });
 
                 if (!cancelResult.ok) {
-                    return reply.code(502).send({
+                    const status = cancelResult.code === "cannot_cancel" ? 400 : 502;
+                    return reply.code(status).send({
                         ok: false,
                         error: cancelResult.code,
                         message: cancelResult.message,

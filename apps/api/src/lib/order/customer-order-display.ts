@@ -426,7 +426,17 @@ export function resolveOrderGoodsAggregate(
     const canceledCount = normalized.filter((row) => row.status === 9).length;
     const active = normalized.filter((row) => row.status !== 9);
     const activeCount = active.length;
-    const rep = active[0] ?? normalized[0];
+
+    // 본사 전체취소와 같이: 활성 상품 중 가장 앞선 상태를 대표로 쓴다.
+    // 결제완료(1)+배송중(3) 이면 3 → 전체 즉시취소 불가.
+    let rep = active[0] ?? normalized[0];
+    for (const row of active) {
+        if (row.status > rep.status) {
+            rep = row;
+        } else if (row.status === rep.status && row.status2 > rep.status2) {
+            rep = row;
+        }
+    }
 
     return {
         goodsStatus: rep.status,
@@ -436,6 +446,25 @@ export function resolveOrderGoodsAggregate(
         canceledCount,
         totalCount: items.length,
     };
+}
+
+/**
+ * 고객 주문 전체 즉시취소 가능 여부.
+ * 본사(order_list): 전 상품 상태가 동일하고 결제완료/배송준비중일 때만 전체취소.
+ * 고객 즉시취소는 배송준비(2) 전(0·1)만 허용 — 활성 상품이 모두 그 범위여야 한다.
+ */
+export function canCustomerFullImmediateCancel(
+    items: Array<{ status: number; status2?: number }>,
+    payStatus = "A"
+): boolean {
+    if (!items.length) return false;
+    const active = items
+        .map((item) => ({
+            status: resolveEffectiveGoodsStatus(toIntStatus(item.status), payStatus),
+        }))
+        .filter((row) => row.status !== 9);
+    if (!active.length) return false;
+    return active.every((row) => canCustomerCancelOrder(row.status));
 }
 
 function toIntStatus(value: unknown): number {
