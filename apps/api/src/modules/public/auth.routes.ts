@@ -394,6 +394,27 @@ export async function publicAuthRoutes(app: FastifyInstance) {
         });
     });
 
+    /**
+     * auth 호스트에서만 세션이 보이는(호스트 전용 쿠키 등) 경우,
+     * 링커 서브도메인으로 넘기기 전에 Set-Cookie 를 공유 도메인으로 다시 내린다.
+     */
+    app.post("/v1/auth/session/refresh", async (req: any, reply) => {
+        const member = req.session?.member;
+        if (!member?.uid) {
+            return reply.code(401).send({ ok: false, loggedIn: false, member: null });
+        }
+
+        // dirty + save → 응답에 dad_admin_sid Set-Cookie 재발급
+        req.session.member = { ...member };
+        await req.session.save();
+
+        return reply.send({
+            ok: true,
+            loggedIn: true,
+            member,
+        });
+    });
+
     app.post("/v1/auth/logout", async (req: any, reply) => {
         await req.session.destroy();
         return reply.send({ ok: true });

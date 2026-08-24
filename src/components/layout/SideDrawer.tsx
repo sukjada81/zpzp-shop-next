@@ -1,7 +1,6 @@
 // src/components/layout/SideDrawer.tsx
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -24,6 +23,7 @@ type DrawerItemDef = {
     Icon: ComponentType<{ className?: string }>;
     disabled?: boolean;
     badgeCount?: number;
+    requiresAuth?: boolean;
 };
 
 type AuthSession = {
@@ -111,15 +111,22 @@ export default function SideDrawer({
         const base: DrawerItemDef[] = [
             { href: `/${tenant}/home`, label: "홈", Icon: Home },
             // { href: `/${tenant}/groupbuys`, label: "진행 중인 공구", Icon: Flame },
-            { href: `/${tenant}/orders`, label: "주문내역", Icon: Receipt },
+            { href: `/${tenant}/orders`, label: "주문내역", Icon: Receipt, requiresAuth: true },
             {
                 href: `/${tenant}/cart`,
                 label: "장바구니",
                 Icon: ShoppingCart,
                 disabled: false,
                 badgeCount: cartCount,
+                requiresAuth: true,
             },
-            { href: `/${tenant}/settings`, label: "내 정보 설정", Icon: Settings, disabled: false },
+            {
+                href: `/${tenant}/settings`,
+                label: "내 정보 설정",
+                Icon: Settings,
+                disabled: false,
+                requiresAuth: true,
+            },
         ];
 
         if (!HIDE_POINTS_MENU) {
@@ -128,6 +135,7 @@ export default function SideDrawer({
                 label: "내 포인트",
                 Icon: Coins,
                 disabled: false,
+                requiresAuth: true,
             });
         }
 
@@ -143,14 +151,15 @@ export default function SideDrawer({
         return base;
     }, [tenant, cartCount]);
 
-    function goLogin() {
+    function goLogin(returnToOverride?: string) {
         onCloseAction();
 
         const authOrigin = resolveAuthOrigin();
         const returnTo =
-            typeof window !== "undefined"
+            returnToOverride ||
+            (typeof window !== "undefined"
                 ? window.location.href
-                : `http://${tenant}.zpzp.kr:3000/home`;
+                : `http://${tenant}.zpzp.kr:3000/home`);
 
         const url = new URL("/login", authOrigin);
         if (tenant) url.searchParams.set("tenant", tenant);
@@ -158,6 +167,22 @@ export default function SideDrawer({
         url.searchParams.set("auto", "0");
 
         window.location.href = url.toString();
+    }
+
+    function goMenuItem(it: DrawerItemDef) {
+        if (it.disabled) return;
+        onCloseAction();
+
+        // 비로그인 + 보호 메뉴: soft-nav 대신 풀 이동 → CORS 방지 + returnTo 유지
+        if (it.requiresAuth && !isLoggedIn && typeof window !== "undefined") {
+            const abs = new URL(it.href, window.location.origin).toString();
+            goLogin(abs);
+            return;
+        }
+
+        if (typeof window !== "undefined") {
+            window.location.href = it.href;
+        }
     }
 
     function doLogout() {
@@ -169,6 +194,13 @@ export default function SideDrawer({
         if (tenant && tenant !== "undefined") {
             url.searchParams.set("tenant", tenant);
         }
+
+        // 로그아웃 후 스토어 홈(비회원·회원가 마스킹). 로그인 화면으로 가면 안 된다.
+        const home =
+            typeof window !== "undefined"
+                ? new URL("/home", window.location.origin).toString()
+                : "";
+        if (home) url.searchParams.set("returnTo", home);
 
         window.location.href = url.toString();
     }
@@ -279,7 +311,7 @@ export default function SideDrawer({
                                         active={active}
                                         disabled={!!it.disabled}
                                         badgeCount={it.badgeCount}
-                                        onClickAction={onCloseAction}
+                                        onClickAction={() => goMenuItem(it)}
                                     />
                                     {needDivider ? (
                                         <div className="my-2 h-px bg-[color:var(--border)]" />
@@ -306,7 +338,7 @@ export default function SideDrawer({
                         ) : (
                             <button
                                 type="button"
-                                onClick={goLogin}
+                                onClick={() => goLogin()}
                                 className="w-full rounded-2xl py-3 text-[14px] font-extrabold text-[color:var(--fg)] active:scale-[0.99]"
                                 style={{ background: "var(--kakao)" }}
                             >
@@ -361,11 +393,12 @@ function DrawerItem({
     }
 
     return (
-        <Link
-            href={href}
+        <button
+            type="button"
             onClick={onClickAction}
             className={[
                 base,
+                "w-full text-left",
                 active
                     ? "bg-[color:var(--brand-soft)] text-[color:var(--brand)]"
                     : "text-[color:var(--fg)] hover:bg-[color:var(--accent-soft)]",
@@ -386,6 +419,6 @@ function DrawerItem({
                     {badgeCount > 99 ? "99+" : badgeCount}
                 </span>
             ) : null}
-        </Link>
+        </button>
     );
 }

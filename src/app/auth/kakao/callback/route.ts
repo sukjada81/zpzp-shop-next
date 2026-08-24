@@ -1,6 +1,7 @@
 // src/app/auth/kakao/callback/route.ts
 import { NextRequest } from "next/server";
 import crypto from "crypto";
+import { appendApiSetCookies } from "@/lib/auth/session-cookie";
 
 export const runtime = "nodejs";
 
@@ -215,9 +216,14 @@ function safeNextUrl(req: NextRequest, returnTo: string, tenant: string) {
     if (isAbsoluteUrl(returnTo)) return returnTo;
     const path = returnTo.startsWith("/") ? returnTo : "/home";
 
-    // /{tenant}… 상대경로는 셀러 콘솔이다. 스토어프론트(tenant.zpzp.kr)로 붙이면 안 된다.
+    // /{tenant}… 상대경로는 셀러 콘솔이다. 단 hq 등 예약 슬러그는 스토어 경로이므로 제외.
+    // (tenant=hq + /hq/home 을 seller.zpzp.kr 로 보내면 안 된다)
     const t = String(tenant || "").trim().toLowerCase();
-    if (t && (path === `/${t}` || path.startsWith(`/${t}/`))) {
+    if (
+        t &&
+        !isNonTenantSlug(t) &&
+        (path === `/${t}` || path.startsWith(`/${t}/`))
+    ) {
         return `${sellerConsoleOrigin()}${path}`;
     }
 
@@ -322,47 +328,8 @@ async function parseResponseBody(res: Response) {
     }
 }
 
-function splitSetCookieString(raw: string) {
-    return raw
-        .split(/,(?=\s*[^;=]+=[^;]+)/g)
-        .map((v) => v.trim())
-        .filter(Boolean);
-}
-
-function normalizeSetCookieForEnv(cookie: string, req: NextRequest) {
-    // 운영은 그대로 유지
-    if (!isDevHttp(req)) return cookie;
-
-    let out = cookie;
-
-    // 로컬/http 에서는 Secure 쿠키 저장이 안 될 수 있음
-    out = out.replace(/;\s*Secure/gi, "");
-
-    // SameSite=None 은 Secure와 같이 가야 하므로 dev에서는 Lax로 보정
-    if (/;\s*SameSite=None/i.test(out)) {
-        out = out.replace(/;\s*SameSite=None/gi, "; SameSite=Lax");
-    }
-
-    return out;
-}
-
 function appendSetCookies(headers: Headers, res: Response, req: NextRequest) {
-    const anyHeaders: any = res.headers as any;
-
-    if (typeof anyHeaders.getSetCookie === "function") {
-        const all = anyHeaders.getSetCookie();
-        for (const cookie of all) {
-            headers.append("Set-Cookie", normalizeSetCookieForEnv(cookie, req));
-        }
-        return;
-    }
-
-    const raw = res.headers.get("set-cookie");
-    if (!raw) return;
-
-    for (const cookie of splitSetCookieString(raw)) {
-        headers.append("Set-Cookie", normalizeSetCookieForEnv(cookie, req));
-    }
+    appendApiSetCookies(headers, res, req);
 }
 
 export async function GET(req: NextRequest) {
