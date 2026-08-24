@@ -34,6 +34,9 @@ type SellerOrderLine = {
     pickup_only?: boolean;
     tab?: string;
     groupType?: string;
+    status?: number;
+    status2?: number;
+    statusLabel?: string;
 };
 
 type SellerOrderItem = {
@@ -63,8 +66,16 @@ function getStatusLabel(status?: number) {
             return "현장결제완료";
         case 2:
             return "발송준비완료";
+        case 3:
+            return "배송중";
         case 4:
             return "배송완료";
+        case 5:
+            return "구매확정";
+        case 7:
+            return "교환";
+        case 8:
+            return "반품";
         case 9:
             return "주문취소";
         default:
@@ -76,8 +87,17 @@ function statusBadge(status?: number) {
     if ([0, 1, 2].includes(Number(status))) {
         return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
     }
+    if (Number(status) === 3) {
+        return "bg-blue-50 text-blue-700 ring-1 ring-blue-200";
+    }
     if (Number(status) === 4) {
         return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
+    }
+    if (Number(status) === 5) {
+        return "bg-violet-50 text-violet-700 ring-1 ring-violet-200";
+    }
+    if ([7, 8].includes(Number(status))) {
+        return "bg-orange-50 text-orange-700 ring-1 ring-orange-200";
     }
     if (Number(status) === 9) {
         return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
@@ -402,6 +422,20 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                             <div className="mt-2 flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
                                                 <Package2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                                                 <span className="line-clamp-2">{summary}</span>
+                                            </div>
+                                        ) : null}
+
+                                        {item.items?.length ? (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {item.items.map((line, idx) => (
+                                                    <span
+                                                        key={`${line.goodsName || line.productName || "line"}-${idx}`}
+                                                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(line.status)}`}
+                                                    >
+                                                        {(getLineLabel(line) || `상품 ${idx + 1}`)} ·{" "}
+                                                        {line.statusLabel || getStatusLabel(line.status)}
+                                                    </span>
+                                                ))}
                                             </div>
                                         ) : null}
 
