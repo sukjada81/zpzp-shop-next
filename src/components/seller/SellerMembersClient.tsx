@@ -23,6 +23,8 @@ export type SellerMemberItem = {
     status: string;
     primaryRole: string;
     referrer?: string;
+    isAttributed?: boolean;
+    attributionStatus?: string;
     joinedAt: string;
     lastLoginAt: string;
 };
@@ -35,6 +37,19 @@ function memberStatusBadge(status: string) {
         return { label: "비활성", cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200" };
     }
     return { label: status || "-", cls: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" };
+}
+
+function attributionBadge(attributed?: boolean, crewStatus?: string) {
+    if (!attributed) {
+        return { label: "미귀속", cls: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" };
+    }
+    if (crewStatus === "confirmed") {
+        return { label: "귀속", cls: "bg-blue-50 text-blue-700 ring-1 ring-blue-200" };
+    }
+    if (crewStatus === "revoked") {
+        return { label: "귀속해제", cls: "bg-orange-50 text-orange-700 ring-1 ring-orange-200" };
+    }
+    return { label: "귀속", cls: "bg-blue-50 text-blue-700 ring-1 ring-blue-200" };
 }
 
 function formatDateTime(value: string) {
@@ -56,9 +71,9 @@ function summaryCards(summary?: SellerMembersSummary) {
     return [
         {
             key: "totalMembers",
-            label: "전체 귀속 회원",
+            label: "전체 회원",
             value: Number(summary?.totalMembers ?? 0),
-            hint: "링커 귀속 회원",
+            hint: "지점 가입 회원",
             icon: Users,
         },
         {
@@ -104,7 +119,7 @@ export default function SellerMembersClient({
                 <div>
                     <div className="text-2xl font-extrabold tracking-[-0.04em] text-slate-900">회원 관리</div>
                     <div className="text-sm text-slate-500">
-                        링커에 귀속된 회원 현황과 상세 정보를 확인합니다.
+                        지점 가입 회원과 귀속 여부를 확인합니다.
                     </div>
                 </div>
 
@@ -150,7 +165,7 @@ export default function SellerMembersClient({
                 <input
                     name="q"
                     defaultValue={keyword}
-                    placeholder="귀속 회원명 / 아이디 / 전화번호 / 이메일 검색"
+                    placeholder="회원명 / 아이디 / 전화번호 / 이메일 검색"
                     className="flex-1 text-sm outline-none"
                 />
                 <button
@@ -163,7 +178,7 @@ export default function SellerMembersClient({
 
             {items.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-slate-400">
-                    귀속된 회원이 없습니다.
+                    등록된 회원이 없습니다.
                 </div>
             ) : (
                 <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -175,6 +190,7 @@ export default function SellerMembersClient({
                             <th className="px-4 py-3 text-left">전화번호</th>
                             <th className="px-4 py-3 text-left">이메일</th>
                             <th className="px-4 py-3 text-left">추천인</th>
+                            <th className="px-4 py-3 text-left">귀속</th>
                             <th className="px-4 py-3 text-left">가입일</th>
                             <th className="px-4 py-3 text-left">최근 로그인</th>
                             <th className="px-4 py-3 text-left">상태</th>
@@ -197,6 +213,16 @@ export default function SellerMembersClient({
                                 <td className="px-4 py-3 text-slate-700">{m.phone || "-"}</td>
                                 <td className="px-4 py-3 text-slate-700">{m.email || "-"}</td>
                                 <td className="px-4 py-3 text-slate-700">{m.referrer || "-"}</td>
+                                <td className="px-4 py-3">
+                                    {(() => {
+                                        const b = attributionBadge(m.isAttributed, m.attributionStatus);
+                                        return (
+                                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${b.cls}`}>
+                                                {b.label}
+                                            </span>
+                                        );
+                                    })()}
+                                </td>
                                 <td className="px-4 py-3 text-slate-700">{formatDateTime(m.joinedAt)}</td>
                                 <td className="px-4 py-3 text-slate-700">{formatDateTime(m.lastLoginAt)}</td>
                                 <td className="px-4 py-3">
