@@ -56,9 +56,9 @@ function summaryCards(summary?: SellerMembersSummary) {
     return [
         {
             key: "totalMembers",
-            label: "전체 회원",
+            label: "전체 귀속 회원",
             value: Number(summary?.totalMembers ?? 0),
-            hint: "지점 가입 회원",
+            hint: "링커 귀속 회원",
             icon: Users,
         },
         {
@@ -104,7 +104,7 @@ export default function SellerMembersClient({
                 <div>
                     <div className="text-2xl font-extrabold tracking-[-0.04em] text-slate-900">회원 관리</div>
                     <div className="text-sm text-slate-500">
-                        지점 가입 회원 현황과 상세 정보를 확인합니다.
+                        링커에 귀속된 회원 현황과 상세 정보를 확인합니다.
                     </div>
                 </div>
 
@@ -150,7 +150,7 @@ export default function SellerMembersClient({
                 <input
                     name="q"
                     defaultValue={keyword}
-                    placeholder="회원명 / 아이디 / 전화번호 / 이메일 검색"
+                    placeholder="귀속 회원명 / 아이디 / 전화번호 / 이메일 검색"
                     className="flex-1 text-sm outline-none"
                 />
                 <button
@@ -163,7 +163,7 @@ export default function SellerMembersClient({
 
             {items.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-slate-400">
-                    등록된 회원이 없습니다.
+                    귀속된 회원이 없습니다.
                 </div>
             ) : (
                 <div className="overflow-hidden rounded-2xl border border-slate-200">

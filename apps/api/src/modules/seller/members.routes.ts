@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
+import { getLinker } from "./linker.js";
 
 const TENANT_CONSUMER_ROLE = "consumer";
 const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
@@ -155,27 +156,43 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             const keyword = String(query.q ?? "").trim();
             const summaryOnly = Number(query.summaryOnly ?? 0) === 1;
 
-            const membershipWhere: any = {
-                role_code: TENANT_CONSUMER_ROLE,
-                scope_type: "tenant",
-                scope_id: tenantId,
-                status: "active",
-            };
+            const linker = await getLinker(app, req);
 
-            const memberships = await app.prisma.mallRN_member_membership.findMany({
-                where: membershipWhere,
-                orderBy: [{ joined_at: "desc" }, { uid: "desc" }],
-                select: {
-                    uid: true,
-                    member_uid: true,
-                    role_code: true,
-                    status: true,
-                    joined_at: true,
-                },
-            });
+            const memberships = linker
+                ? []
+                : await app.prisma.mallRN_member_membership.findMany({
+                      where: {
+                          role_code: TENANT_CONSUMER_ROLE,
+                          scope_type: "tenant",
+                          scope_id: tenantId,
+                          status: "active",
+                      },
+                      orderBy: [{ joined_at: "desc" }, { uid: "desc" }],
+                      select: {
+                          uid: true,
+                          member_uid: true,
+                          role_code: true,
+                          status: true,
+                          joined_at: true,
+                      },
+                  });
 
-            const memberUids = memberships
-                .map((x) => Number(x.member_uid))
+            const attributions = linker
+                ? await app.prisma.zpzp_referral_attribution.findMany({
+                      where: { linker_id: linker.uid },
+                      orderBy: [{ attributed_at: "desc" }, { uid: "desc" }],
+                      select: {
+                          uid: true,
+                          member_uid: true,
+                          landing_slug: true,
+                          crew_status: true,
+                          attributed_at: true,
+                      },
+                  })
+                : [];
+
+            const memberUids = (linker ? attributions : memberships)
+                .map((x: any) => Number(x.member_uid))
                 .filter((x) => Number.isFinite(x) && x > 0);
 
             const members = memberUids.length
@@ -211,26 +228,36 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 : [];
 
             const memberMap = new Map(members.map((m) => [Number(m.uid), m]));
+            const owner = linker
+                ? await app.prisma.mallRN_member.findUnique({
+                      where: { uid: linker.member_uid },
+                      select: { id: true, name: true },
+                  })
+                : null;
+            const ownerLabel = owner
+                ? String(owner.name || owner.id || linker?.shop_name || "")
+                : "";
 
-            const items = memberships
-                .map((ms) => {
-                    const m = memberMap.get(Number(ms.member_uid));
+            const rows = linker ? attributions : memberships;
+            const items = rows
+                .map((row: any) => {
+                    const m = memberMap.get(Number(row.member_uid));
                     if (!m) return null;
 
                     return {
-                        id: String(ms.uid),
+                        id: String(row.uid),
                         memberUid: String(m.uid),
                         loginId: String(m.id ?? ""),
                         name: String(m.name ?? ""),
                         phone: String(m.cell ?? ""),
                         email: String(m.email ?? ""),
-                        status: String(m.status ?? ms.status ?? "active"),
+                        status: String(m.status ?? row.status ?? "active"),
                         primaryRole: String(
-                            m.primary_role ?? ms.role_code ?? TENANT_CONSUMER_ROLE
+                            m.primary_role ?? row.role_code ?? TENANT_CONSUMER_ROLE
                         ),
-                        referrer: String(m.reference ?? ""),
+                        referrer: linker ? ownerLabel : String(m.reference ?? ""),
                         joinedAt:
-                            dateToIso(ms.joined_at) ||
+                            dateToIso(row.joined_at ?? row.attributed_at ?? null) ||
                             dateToIso(m.created_at_dt ?? null) ||
                             unixToIso(m.signdate),
                         lastLoginAt:
@@ -243,12 +270,14 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             const todayStart = toStartOfToday();
             const weekStart = toStartOfDaysAgo(6);
 
-            const todaySignups = memberships.filter((x) => {
-                return x.joined_at ? new Date(x.joined_at) >= todayStart : false;
+            const todaySignups = rows.filter((x: any) => {
+                const joinedAt = x.joined_at ?? x.attributed_at ?? null;
+                return joinedAt ? new Date(joinedAt) >= todayStart : false;
             }).length;
 
-            const weekSignups = memberships.filter((x) => {
-                return x.joined_at ? new Date(x.joined_at) >= weekStart : false;
+            const weekSignups = rows.filter((x: any) => {
+                const joinedAt = x.joined_at ?? x.attributed_at ?? null;
+                return joinedAt ? new Date(joinedAt) >= weekStart : false;
             }).length;
 
             const todayLogins = members.filter((m) => {
@@ -296,24 +325,41 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 memberUid: z.coerce.number().int().positive(),
             }).parse(req.params ?? {});
 
-            const membership = await app.prisma.mallRN_member_membership.findFirst({
-                where: {
-                    member_uid: params.memberUid,
-                    role_code: TENANT_CONSUMER_ROLE,
-                    scope_type: "tenant",
-                    scope_id: tenantId,
-                    status: "active",
-                },
-                select: {
-                    uid: true,
-                    member_uid: true,
-                    role_code: true,
-                    status: true,
-                    joined_at: true,
-                },
-            });
+            const linker = await getLinker(app, req);
+            const attribution = linker
+                ? await app.prisma.zpzp_referral_attribution.findFirst({
+                      where: {
+                          member_uid: params.memberUid,
+                          linker_id: linker.uid,
+                      },
+                      select: {
+                          uid: true,
+                          member_uid: true,
+                          crew_status: true,
+                          attributed_at: true,
+                      },
+                  })
+                : null;
+            const membership = linker
+                ? null
+                : await app.prisma.mallRN_member_membership.findFirst({
+                      where: {
+                          member_uid: params.memberUid,
+                          role_code: TENANT_CONSUMER_ROLE,
+                          scope_type: "tenant",
+                          scope_id: tenantId,
+                          status: "active",
+                      },
+                      select: {
+                          uid: true,
+                          member_uid: true,
+                          role_code: true,
+                          status: true,
+                          joined_at: true,
+                      },
+                  });
 
-            if (!membership) {
+            if (!attribution && !membership) {
                 return reply.code(404).send({ ok: false, message: "member not found" });
             }
 
@@ -348,7 +394,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 ok: true,
                 tenant: tenantSlug,
                 item: {
-                    id: String(membership.uid),
+                    id: String(attribution?.uid ?? membership?.uid ?? ""),
                     memberUid: String(member.uid),
                     loginId: String(member.id ?? ""),
                     name: String(member.name ?? ""),
@@ -360,12 +406,12 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                     address2: String(member.address2 ?? ""),
                     memo: String(member.memo ?? ""),
                     referrer: String(member.reference ?? ""),
-                    status: String(member.status ?? membership.status ?? "active"),
+                    status: String(member.status ?? membership?.status ?? "active"),
                     primaryRole: String(
-                        member.primary_role ?? membership.role_code ?? TENANT_CONSUMER_ROLE
+                        member.primary_role ?? membership?.role_code ?? TENANT_CONSUMER_ROLE
                     ),
                     joinedAt:
-                        dateToIso(membership.joined_at) ||
+                        dateToIso(attribution?.attributed_at ?? membership?.joined_at ?? null) ||
                         dateToIso(member.created_at_dt ?? null) ||
                         unixToIso(member.signdate),
                     lastLoginAt:
