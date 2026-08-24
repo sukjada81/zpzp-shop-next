@@ -13,9 +13,11 @@ import {
     Settings,
     Store,
     Flame,
+    Ticket,
     X,
 } from "lucide-react";
 import { useCart } from "@/lib/cart/CartProvider";
+import { getStorefrontHref } from "@/lib/storefront/storefrontHref";
 
 type DrawerItemDef = {
     href: string;
@@ -66,12 +68,14 @@ export default function SideDrawer({
                                        open,
                                        onCloseAction,
                                        tenant,
+                                       requestHost = "",
                                        brandLabel = "",
                                        subLabel = "",
                                    }: {
     open: boolean;
     onCloseAction: () => void;
     tenant: string;
+    requestHost?: string;
     brandLabel?: string;
     subLabel?: string;
 }) {
@@ -89,7 +93,10 @@ export default function SideDrawer({
 
         async function run() {
             try {
-                const res = await fetch("/auth/session", { cache: "no-store" });
+                const res = await fetch("/auth/session", {
+                    cache: "no-store",
+                    credentials: "include",
+                });
                 const data = (await res.json()) as AuthSession;
                 if (cancelled) return;
                 setSession(data);
@@ -108,12 +115,19 @@ export default function SideDrawer({
     const isLoggedIn = !!session?.loggedIn;
 
     const itemsMenu: DrawerItemDef[] = useMemo(() => {
+        const host =
+            requestHost ||
+            (typeof window !== "undefined" ? window.location.hostname : "");
+        const href = (subPath: string) =>
+            getStorefrontHref(tenant, subPath, pathname, host);
+
         const base: DrawerItemDef[] = [
-            { href: `/${tenant}/home`, label: "홈", Icon: Home },
-            // { href: `/${tenant}/groupbuys`, label: "진행 중인 공구", Icon: Flame },
-            { href: `/${tenant}/orders`, label: "주문내역", Icon: Receipt, requiresAuth: true },
+            { href: href("home"), label: "홈", Icon: Home },
+            // { href: href("groupbuys"), label: "진행 중인 공구", Icon: Flame },
+            { href: href("orders"), label: "주문내역", Icon: Receipt, requiresAuth: true },
+            { href: href("coupons"), label: "내 쿠폰", Icon: Ticket, requiresAuth: true },
             {
-                href: `/${tenant}/cart`,
+                href: href("cart"),
                 label: "장바구니",
                 Icon: ShoppingCart,
                 disabled: false,
@@ -121,7 +135,7 @@ export default function SideDrawer({
                 requiresAuth: true,
             },
             {
-                href: `/${tenant}/settings`,
+                href: href("settings"),
                 label: "내 정보 설정",
                 Icon: Settings,
                 disabled: false,
@@ -149,17 +163,23 @@ export default function SideDrawer({
         }
 
         return base;
-    }, [tenant, cartCount]);
+    }, [tenant, cartCount, pathname, requestHost]);
 
     function goLogin(returnToOverride?: string) {
         onCloseAction();
 
         const authOrigin = resolveAuthOrigin();
+        const homePath = getStorefrontHref(
+            tenant,
+            "home",
+            pathname,
+            requestHost || (typeof window !== "undefined" ? window.location.hostname : "")
+        );
         const returnTo =
             returnToOverride ||
             (typeof window !== "undefined"
                 ? window.location.href
-                : `http://${tenant}.zpzp.kr:3000/home`);
+                : `https://${requestHost || `${tenant}.zpzp.kr`}${homePath}`);
 
         const url = new URL("/login", authOrigin);
         if (tenant) url.searchParams.set("tenant", tenant);

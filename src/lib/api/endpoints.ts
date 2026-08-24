@@ -93,6 +93,12 @@ export const endpoints = {
         return url.pathname + (url.search ? url.search : "");
     },
 
+    myCoupons: (tenant: string, q?: { status?: "all" | "available" | "used" | "expired" }) => {
+        const url = new URL(apiProxy(`${tenant}/v1/coupons/me`), "http://local");
+        if (q?.status && q.status !== "all") url.searchParams.set("status", q.status);
+        return url.pathname + (url.search ? url.search : "");
+    },
+
     myOrderDetail: (tenant: string, orderNum: string) =>
         apiProxy(`${tenant}/v1/orders/${encodeURIComponent(orderNum)}`),
 

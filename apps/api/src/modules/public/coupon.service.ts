@@ -413,3 +413,199 @@ export function pickRepresentativeCoupon(rows: CouponRow[]): number {
     const normal = rows.find((r) => r.kind === "normal");
     return normal ? normal.couponUid : rows[0].couponUid;
 }
+
+export type MemberCouponStatus = "available" | "used" | "expired";
+export type MemberCouponFilter = MemberCouponStatus | "all";
+
+export type MemberCouponItem = {
+    couponUid: number;
+    name: string;
+    kind: CouponKind;
+    couponTypeLabel: string;
+    discountLabel: string;
+    minOrder: number;
+    minOrderLabel: string;
+    issuedAt: string | null;
+    endDate: string | null;
+    status: MemberCouponStatus;
+    statusLabel: string;
+    usedAt: string | null;
+    goodsUid: number | null;
+    goodsName: string | null;
+};
+
+function isValidCouponEndDate(value: Date | null | undefined): value is Date {
+    if (!value) return false;
+    return value.getFullYear() > 2000;
+}
+
+function formatCouponDate(value: Date | null | undefined): string | null {
+    if (!isValidCouponEndDate(value)) return null;
+    return value.toISOString().slice(0, 10);
+}
+
+function formatIssuedDate(signdate: number): string | null {
+    if (!signdate || signdate <= 0) return null;
+    return new Date(signdate * 1000).toISOString().slice(0, 10);
+}
+
+function formatUsedDate(usedate: number): string | null {
+    if (!usedate || usedate <= 0) return null;
+    return new Date(usedate * 1000).toISOString().slice(0, 10);
+}
+
+export function formatCouponDiscountLabel(def: CouponManagerRow): string {
+    if (String(def.discount_type) === "P") {
+        let label = `${def.discount}%`;
+        if (def.discount_limit > 0) {
+            label += ` (최대 ${def.discount_limit.toLocaleString("ko-KR")}원)`;
+        }
+        return label;
+    }
+    return `${def.discount.toLocaleString("ko-KR")}원`;
+}
+
+export function formatCouponMinOrderLabel(useLimit: number): string {
+    if (useLimit > 0) {
+        return `${useLimit.toLocaleString("ko-KR")}원 이상 구매 시`;
+    }
+    return "";
+}
+
+export function deriveMemberCouponStatus(
+    status: number,
+    eDate: Date | null | undefined,
+    now: Date = new Date()
+): MemberCouponStatus {
+    if (status === 1) return "used";
+    if (status === 2) return "expired";
+    if (isValidCouponEndDate(eDate) && eDate <= now) return "expired";
+    if (status === 0) return "available";
+    return "expired";
+}
+
+export function memberCouponStatusLabel(status: MemberCouponStatus): string {
+    if (status === "available") return "사용가능";
+    if (status === "used") return "사용완료";
+    return "기간만료";
+}
+
+/** 마이페이지 — 보유 쿠폰 전체(사용가능/사용완료/기간만료). shop-php my_coupon.php 상태 규칙 미러. */
+export async function listMemberCoupons(
+    prisma: PrismaLike,
+    memberUid: bigint | number,
+    filter: MemberCouponFilter = "all"
+): Promise<{
+    items: MemberCouponItem[];
+    counts: Record<MemberCouponStatus, number>;
+}> {
+    const emptyCounts: Record<MemberCouponStatus, number> = {
+        available: 0,
+        used: 0,
+        expired: 0,
+    };
+
+    const loginId = await resolveMemberLoginId(prisma, memberUid);
+    if (!loginId) return { items: [], counts: emptyCounts };
+
+    const welcomeDefUid = await getWelcomeCouponDefUid(prisma);
+    const now = new Date();
+
+    const coupons = await prisma.mallRN_coupon.findMany({
+        where: { id: loginId },
+        orderBy: { uid: "desc" },
+        select: {
+            uid: true,
+            c_uid: true,
+            g_uid: true,
+            status: true,
+            e_date: true,
+            usedate: true,
+            signdate: true,
+        },
+    });
+
+    if (!coupons.length) return { items: [], counts: emptyCounts };
+
+    const cUids = [...new Set(coupons.map((c) => c.c_uid))];
+    const gUids = [...new Set(coupons.map((c) => c.g_uid).filter((g) => g > 0))];
+
+    const defs = await prisma.mallRN_coupon_manager.findMany({
+        where: { uid: { in: cUids } },
+        select: {
+            uid: true,
+            name: true,
+            type: true,
+            discount: true,
+            discount_type: true,
+            discount_limit: true,
+            use_type: true,
+            use_s_date: true,
+            use_e_date: true,
+            use_limit: true,
+        },
+    });
+
+    const defMap = new Map<number, CouponManagerRow>();
+    for (const d of defs) {
+        defMap.set(d.uid, {
+            uid: d.uid,
+            name: String(d.name ?? ""),
+            type: toInt(d.type, 0),
+            discount: toInt(d.discount, 0),
+            discount_type: String(d.discount_type ?? "P"),
+            discount_limit: toInt(d.discount_limit, 0),
+            use_type: toInt(d.use_type, 0),
+            use_s_date: d.use_s_date ?? null,
+            use_e_date: d.use_e_date ?? null,
+            use_limit: toInt(d.use_limit, 0),
+        });
+    }
+
+    const goodsMap = new Map<number, string>();
+    if (gUids.length) {
+        const goods = await prisma.mallRN_goods.findMany({
+            where: { uid: { in: gUids } },
+            select: { uid: true, name: true },
+        });
+        for (const g of goods) {
+            goodsMap.set(g.uid, String(g.name ?? ""));
+        }
+    }
+
+    const items: MemberCouponItem[] = [];
+    const counts = { ...emptyCounts };
+
+    for (const c of coupons) {
+        const def = defMap.get(c.c_uid);
+        if (!def) continue;
+
+        const status = deriveMemberCouponStatus(c.status, c.e_date, now);
+        counts[status] += 1;
+        if (filter !== "all" && filter !== status) continue;
+
+        const kind: CouponKind =
+            welcomeDefUid > 0 && c.c_uid === welcomeDefUid ? "welcome" : "normal";
+        const isGoodsCoupon = def.type === 4;
+        const goodsUid = isGoodsCoupon && c.g_uid > 0 ? c.g_uid : null;
+
+        items.push({
+            couponUid: c.uid,
+            name: def.name,
+            kind,
+            couponTypeLabel: isGoodsCoupon ? "상품할인 쿠폰" : "장바구니 쿠폰",
+            discountLabel: formatCouponDiscountLabel(def),
+            minOrder: def.use_limit,
+            minOrderLabel: formatCouponMinOrderLabel(def.use_limit),
+            issuedAt: formatIssuedDate(c.signdate),
+            endDate: formatCouponDate(c.e_date),
+            status,
+            statusLabel: memberCouponStatusLabel(status),
+            usedAt: status === "used" ? formatUsedDate(c.usedate) : null,
+            goodsUid,
+            goodsName: goodsUid ? goodsMap.get(goodsUid) ?? null : null,
+        });
+    }
+
+    return { items, counts };
+}
