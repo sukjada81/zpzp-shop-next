@@ -164,14 +164,10 @@ function getOrderSummary(item: SellerOrderItem) {
     return "";
 }
 
-function getOrderStatusSummary(item: SellerOrderItem) {
-    const lines = item.items ?? [];
-    if (lines.length === 0) return "";
-
-    const first = lines[0];
-    const firstLabel = first?.statusLabel || getStatusLabel(first?.status);
-    if (lines.length === 1) return `상품 상태: ${firstLabel}`;
-    return `상품 상태: ${firstLabel} · 외 ${lines.length - 1}건 상태는 상세 확인`;
+function getOrderItemCount(item: SellerOrderItem) {
+    const count = item.items?.length ?? 0;
+    if (count === 0) return "";
+    return `상품 ${count.toLocaleString("ko-KR")}건 · 상세에서 확인`;
 }
 
 function getCategoryLabel(item: SellerOrderItem) {
@@ -344,7 +340,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                     주문 관리
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    최근 주문을 확인하고 확인 처리 후 배송완료로 변경할 수 있습니다.
+                    최근 주문 목록을 확인합니다.
                 </p>
                 {hasQuery ? (
                     <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
@@ -437,7 +433,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
 
                                         {item.items?.length ? (
                                             <div className="mt-2 text-xs font-medium text-slate-500">
-                                                {getOrderStatusSummary(item)}
+                                                {getOrderItemCount(item)}
                                             </div>
                                         ) : null}
 

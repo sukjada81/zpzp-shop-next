@@ -154,6 +154,26 @@ const GOODS_LIST_SELECT = {
     sale_end_at: true,
 } as const;
 
+type GoodsListRow = Prisma.mallRN_goodsGetPayload<{ select: typeof GOODS_LIST_SELECT }>;
+
+type LinkerSelectionRow = Pick<
+    Prisma.mallRN_linker_productsGetPayload<{
+        select: {
+            uid: true;
+            product_uid: true;
+            display_order: true;
+            display_status: true;
+            selected_at: true;
+        };
+    }>,
+    "uid" | "product_uid" | "display_order" | "display_status" | "selected_at"
+>;
+
+type ProductSalesRow = {
+    order_count: bigint;
+    sale_qty: bigint;
+};
+
 async function getSelectedState(app: FastifyInstance, linkerUid: number) {
     const selections = await app.prisma.mallRN_linker_products.findMany({
         where: { linker_uid: linkerUid, selection_status: "selected" },
@@ -173,7 +193,7 @@ async function getSelectedState(app: FastifyInstance, linkerUid: number) {
     return { selections, productMap, slotUsed };
 }
 
-function productDto(product: any, selection?: any, sales?: { order_count: bigint; sale_qty: bigint }) {
+function productDto(product: GoodsListRow, selection?: LinkerSelectionRow, sales?: ProductSalesRow) {
     const selling = isSelling(product);
     return {
         id: String(product.uid),

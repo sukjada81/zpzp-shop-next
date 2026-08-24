@@ -344,7 +344,7 @@ export default function SellerOrderDetailClient({
                         주문 상세
                     </div>
                     <div className="mt-1 text-sm text-slate-500">
-                        주문 상태를 확인하고 확인 버튼으로 배송완료 처리할 수 있습니다.
+                        주문 정보와 상품 내역을 확인합니다.
                     </div>
                 </div>
 
@@ -573,11 +573,6 @@ export default function SellerOrderDetailClient({
                         <div className="text-lg font-bold tracking-[-0.03em] text-slate-900">
                             처리 안내
                         </div>
-                        <div className="mt-3 text-sm leading-6 text-slate-600">
-                            주문 상품을 고객에게 전달 완료했다면 확인 버튼을 눌러
-                            배송완료 상태로 변경하세요.
-                        </div>
-
                         <div className="mt-4 space-y-2">
                             <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
                                 현재 상태:{" "}

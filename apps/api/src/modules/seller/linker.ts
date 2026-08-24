@@ -13,7 +13,8 @@ export type SellerLinker = {
 };
 
 export function memberUidFromSession(req: FastifyRequest) {
-    const uid = (req as any).session?.member?.uid;
+    const uid = (req as FastifyRequest & { session?: { member?: { uid?: string | number } } }).session
+        ?.member?.uid;
     const n = Number(uid);
     return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
 }
@@ -22,17 +23,36 @@ export async function getLinker(app: FastifyInstance, req: FastifyRequest): Prom
     const uid = memberUidFromSession(req);
     if (!uid) return null;
 
-    const tenantId = (req as any).tenantId as bigint | undefined;
-    const tenantSlug = String((req as any).tenantSlug ?? "").trim();
+    const tenantId = (req as FastifyRequest & { tenantId?: bigint }).tenantId;
+    const tenantSlug = String((req as FastifyRequest & { tenantSlug?: string }).tenantSlug ?? "").trim();
+    return findActiveLinkerForTenant(app, tenantId, tenantSlug, uid);
+}
+
+/** 점포(tenant)에 연결된 활성 링커 — staff/HQ도 동일 점포 귀속 기준을 쓴다. */
+export async function getTenantLinker(
+    app: FastifyInstance,
+    tenantId: bigint | undefined,
+    tenantSlug: string
+): Promise<SellerLinker | null> {
+    return findActiveLinkerForTenant(app, tenantId, tenantSlug);
+}
+
+async function findActiveLinkerForTenant(
+    app: FastifyInstance,
+    tenantId: bigint | undefined,
+    tenantSlug: string,
+    memberUid?: number
+): Promise<SellerLinker | null> {
     const tenantScope: Array<{ tenant_id: bigint } | { shop_slug: string }> = [];
     if (tenantId != null) tenantScope.push({ tenant_id: tenantId });
-    if (tenantSlug) tenantScope.push({ shop_slug: tenantSlug });
+    const slug = tenantSlug.trim();
+    if (slug) tenantScope.push({ shop_slug: slug });
     if (tenantScope.length === 0) return null;
 
     const row = await app.prisma.zpzp_linker.findFirst({
         where: {
-            member_uid: uid,
             status: "active",
+            ...(memberUid ? { member_uid: memberUid } : {}),
             OR: tenantScope,
         },
     });

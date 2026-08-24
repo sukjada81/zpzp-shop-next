@@ -144,7 +144,7 @@ function statusLabel(status: number) {
         case 4:
             return "배송완료";
         case 8:
-            return "미수령";
+            return "반품";
         case 9:
             return "주문취소";
         default:
