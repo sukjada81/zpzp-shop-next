@@ -1,7 +1,11 @@
 // src/app/auth/kakao/callback/route.ts
 import { NextRequest } from "next/server";
 import crypto from "crypto";
-import { appendApiSetCookies } from "@/lib/auth/session-cookie";
+import {
+    appendApiSetCookies,
+    attachSharedSessionCookie,
+    extractSessionIdFromSetCookies,
+} from "@/lib/auth/session-cookie";
 
 export const runtime = "nodejs";
 
@@ -486,6 +490,12 @@ export async function GET(req: NextRequest) {
 
         // appendSetCookies(headers, completeRes);
         appendSetCookies(headers, completeRes, req);
+        // API Set-Cookie 가 비거나 Domain 이 빠져도 공유 쿠키를 강제한다
+        attachSharedSessionCookie(
+            headers,
+            req,
+            extractSessionIdFromSetCookies(completeRes)
+        );
 
         headers.append(
             "Set-Cookie",

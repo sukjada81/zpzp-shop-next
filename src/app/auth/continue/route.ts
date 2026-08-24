@@ -1,7 +1,12 @@
 // src/app/auth/continue/route.ts
-// auth.zpzp.kr 에만 붙은 세션 쿠키를 공유 도메인으로 재발급 후 returnTo 로 보낸다.
+// auth 에만 보이는 세션을 목적지 호스트 /auth/claim 으로 넘겨 Domain=.zpzp.kr 쿠키를 심는다.
 import { NextRequest } from "next/server";
-import { appendApiSetCookies } from "@/lib/auth/session-cookie";
+import {
+    attachSharedSessionCookie,
+    extractSessionIdFromSetCookies,
+    parseCookieValue,
+} from "@/lib/auth/session-cookie";
+import { signSessionClaim } from "@/lib/auth/session-claim";
 
 export const runtime = "nodejs";
 
@@ -11,18 +16,6 @@ function getApiBase() {
         process.env.NEXT_PUBLIC_API_BASE_URL ||
         "http://127.0.0.1:4000"
     ).replace(/\/+$/, "");
-}
-
-function getHeaderFirst(req: NextRequest, key: string) {
-    return (req.headers.get(key) || "").split(",")[0].trim();
-}
-
-function getForwardedHost(req: NextRequest) {
-    return getHeaderFirst(req, "x-forwarded-host") || getHeaderFirst(req, "host");
-}
-
-function getForwardedProto(req: NextRequest) {
-    return getHeaderFirst(req, "x-forwarded-proto").toLowerCase();
 }
 
 function allowedReturnTo(raw: string): string | null {
@@ -53,6 +46,14 @@ function loginFallback(req: NextRequest, returnTo: string) {
     return u.toString();
 }
 
+function sameHost(a: string, b: string) {
+    try {
+        return new URL(a).host.toLowerCase() === new URL(b).host.toLowerCase();
+    } catch {
+        return false;
+    }
+}
+
 export async function GET(req: NextRequest) {
     const returnToRaw = req.nextUrl.searchParams.get("returnTo") || "";
     const returnTo = allowedReturnTo(returnToRaw);
@@ -78,16 +79,43 @@ export async function GET(req: NextRequest) {
             return new Response(null, { status: 302, headers });
         }
 
+        // 쿠키 값은 @fastify/session 서명값이어야 함 — raw sessionId 를 심으면 세션 조회 실패
+        await refreshRes.json().catch(() => null);
+        const sessionId =
+            extractSessionIdFromSetCookies(refreshRes) ||
+            parseCookieValue(req.headers.get("cookie") || "", "dad_admin_sid");
+
+        if (!sessionId) {
+            const headers = new Headers();
+            headers.set("Location", loginFallback(req, returnTo));
+            return new Response(null, { status: 302, headers });
+        }
+
         const target = /^https?:\/\//i.test(returnTo)
             ? returnTo
             : new URL(returnTo, req.nextUrl.origin).toString();
 
         const headers = new Headers();
-        headers.set("Location", target);
-        appendApiSetCookies(headers, refreshRes, req);
 
-        console.log("AUTH_CONTINUE_REDIRECT", target);
+        // 같은 호스트면 여기서 바로 쿠키를 심고 이동
+        if (sameHost(target, req.nextUrl.origin)) {
+            headers.set("Location", target);
+            attachSharedSessionCookie(headers, req, sessionId);
+            console.log("AUTH_CONTINUE_SAME_HOST", target);
+            return new Response(null, { status: 302, headers });
+        }
 
+        // 다른 서브도메인: 목적지에서 Set-Cookie (브라우저가 가장 안정적으로 받음)
+        const ticket = signSessionClaim({ sid: sessionId, next: target });
+        const claim = new URL("/auth/claim", target);
+        claim.searchParams.set("ticket", ticket);
+        claim.searchParams.set("returnTo", target);
+
+        headers.set("Location", claim.toString());
+        // auth 쪽에도 Domain 쿠키를 같이 내려 이후 auth 세션 확인이 깨지지 않게 한다
+        attachSharedSessionCookie(headers, req, sessionId);
+
+        console.log("AUTH_CONTINUE_CLAIM", claim.origin + claim.pathname);
         return new Response(null, { status: 302, headers });
     } catch (e: any) {
         console.error("AUTH_CONTINUE_FAILED", e?.message || e);
