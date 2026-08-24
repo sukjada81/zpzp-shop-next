@@ -60,6 +60,9 @@ export default function LoginPage() {
     // 비우면 /auth/kakao/login 이 selectedTenant 쿠키 → 점포선택 순으로 폴백한다.
     const tenant = params.get("tenant") || "";
     const returnToParam = params.get("returnTo") || "";
+    const syncFailed = params.get("syncFailed") === "1";
+
+    const CONTINUE_ATTEMPT_KEY = "zpzp_auth_continue_attempts";
 
     const isSellerReturn = useMemo(() => {
         const raw = returnToParam || "";
@@ -112,17 +115,62 @@ export default function LoginPage() {
                 setLoggedIn(isLoggedIn);
 
                 if (isLoggedIn) {
+                    if (syncFailed) {
+                        try {
+                            sessionStorage.removeItem(CONTINUE_ATTEMPT_KEY);
+                        } catch {
+                            /* ignore */
+                        }
+                        setError(
+                            "로그인은 되었지만 관리 화면으로 이동하지 못했습니다. 로그아웃 후 다시 시도해 주세요."
+                        );
+                        return;
+                    }
+
                     // auth 에만 쿠키가 있는 경우를 대비해, 다른 서브도메인이면
                     // Set-Cookie 재발급(/auth/continue) 후 이동한다.
                     if (isCrossSubdomainReturn(returnTo)) {
+                        let attempts = 0;
+                        try {
+                            attempts = Number(
+                                sessionStorage.getItem(CONTINUE_ATTEMPT_KEY) || "0"
+                            );
+                        } catch {
+                            attempts = 0;
+                        }
+                        if (attempts >= 2) {
+                            setError(
+                                "로그인은 되었지만 이동이 반복되고 있습니다. 아래 로그아웃 후 다시 시도해 주세요."
+                            );
+                            return;
+                        }
+                        try {
+                            sessionStorage.setItem(
+                                CONTINUE_ATTEMPT_KEY,
+                                String(attempts + 1)
+                            );
+                        } catch {
+                            /* ignore */
+                        }
                         const qs = new URLSearchParams();
                         qs.set("returnTo", returnTo);
                         if (tenant) qs.set("tenant", tenant);
                         window.location.replace(`/auth/continue?${qs.toString()}`);
                         return;
                     }
+                    try {
+                        sessionStorage.removeItem(CONTINUE_ATTEMPT_KEY);
+                    } catch {
+                        /* ignore */
+                    }
                     window.location.replace(returnTo);
                     return;
+                }
+
+                try {
+                    sessionStorage.removeItem(CONTINUE_ATTEMPT_KEY);
+                } catch {
+                    /* ignore */
                 }
             } catch {
                 if (!ignore) {
@@ -140,7 +188,7 @@ export default function LoginPage() {
         return () => {
             ignore = true;
         };
-    }, [returnTo, tenant]);
+    }, [returnTo, tenant, syncFailed]);
 
     function startKakaoLogin() {
         const qs = new URLSearchParams();
@@ -171,8 +219,24 @@ export default function LoginPage() {
                 </div>
 
                 {error ? (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                        {error}
+                    <div className="mt-4 space-y-3">
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                            {error}
+                        </div>
+                        {loggedIn ? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const url = new URL("/auth/logout", window.location.origin);
+                                    if (tenant) url.searchParams.set("tenant", tenant);
+                                    url.searchParams.set("returnTo", returnTo);
+                                    window.location.href = url.toString();
+                                }}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                            >
+                                로그아웃 후 다시 시도
+                            </button>
+                        ) : null}
                     </div>
                 ) : null}
 
