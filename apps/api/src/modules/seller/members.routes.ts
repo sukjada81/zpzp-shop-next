@@ -265,21 +265,9 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 .map((row) => Number(row.member_uid))
                 .filter((uid) => Number.isFinite(uid) && uid > 0);
 
-            const members: MemberListRow[] = memberUids.length
+            const allMembers: MemberListRow[] = memberUids.length
                 ? await app.prisma.mallRN_member.findMany({
-                      where: {
-                          uid: { in: memberUids },
-                          ...(keyword
-                              ? {
-                                    OR: [
-                                        { id: { contains: keyword } },
-                                        { name: { contains: keyword } },
-                                        { cell: { contains: keyword } },
-                                        { email: { contains: keyword } },
-                                    ],
-                                }
-                              : {}),
-                      },
+                      where: { uid: { in: memberUids } },
                       select: {
                           uid: true,
                           id: true,
@@ -297,34 +285,49 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                   })
                 : [];
 
-            const memberMap = new Map(members.map((m) => [Number(m.uid), m]));
-            const visibleMemberUids = new Set(members.map((m) => Number(m.uid)));
-            const visibleMemberships = memberships.filter((row) =>
-                visibleMemberUids.has(Number(row.member_uid))
+            const keywordLower = keyword.toLowerCase();
+            const listMembers = keyword
+                ? allMembers.filter((m) => {
+                      const id = String(m.id ?? "").toLowerCase();
+                      const name = String(m.name ?? "").toLowerCase();
+                      const cell = String(m.cell ?? "");
+                      const email = String(m.email ?? "").toLowerCase();
+                      return (
+                          id.includes(keywordLower) ||
+                          name.includes(keywordLower) ||
+                          cell.includes(keyword) ||
+                          email.includes(keywordLower)
+                      );
+                  })
+                : allMembers;
+
+            const listMemberMap = new Map(listMembers.map((m) => [Number(m.uid), m]));
+            const listMemberships = memberships.filter((row) =>
+                listMemberMap.has(Number(row.member_uid))
             );
 
-            const items = buildMemberItems(visibleMemberships, memberMap, attributedMap);
+            const items = buildMemberItems(listMemberships, listMemberMap, attributedMap);
 
             const todayStart = toStartOfToday();
             const weekStart = toStartOfDaysAgo(6);
 
-            const todaySignups = visibleMemberships.filter((row) => {
+            const todaySignups = memberships.filter((row) => {
                 const joinedAt = row.joined_at ?? null;
                 return joinedAt ? new Date(joinedAt) >= todayStart : false;
             }).length;
 
-            const weekSignups = visibleMemberships.filter((row) => {
+            const weekSignups = memberships.filter((row) => {
                 const joinedAt = row.joined_at ?? null;
                 return joinedAt ? new Date(joinedAt) >= weekStart : false;
             }).length;
 
-            const todayLogins = members.filter((m) => {
+            const todayLogins = allMembers.filter((m) => {
                 if (m.last_login_at_dt) return new Date(m.last_login_at_dt) >= todayStart;
                 const n = Number(m.login_time ?? 0);
                 return Number.isFinite(n) && n > 0 ? new Date(n * 1000) >= todayStart : false;
             }).length;
 
-            const attributedMembers = visibleMemberships.filter((row) => {
+            const attributedMembers = memberships.filter((row) => {
                 const status = attributedMap.get(Number(row.member_uid)) || "";
                 return isActiveAttributionStatus(status);
             }).length;
@@ -333,7 +336,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 ok: true,
                 tenant: tenantSlug,
                 summary: {
-                    totalMembers: items.length,
+                    totalMembers: memberships.length,
                     attributedMembers,
                     todaySignups,
                     weekSignups,
