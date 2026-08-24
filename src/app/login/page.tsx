@@ -98,6 +98,9 @@ export default function LoginPage() {
         let ignore = false;
 
         async function checkSession() {
+            // 이동이 시작되면 loading 을 풀지 않는다 — 초록 "이동 중" 플래시 방지
+            let settleUi = true;
+
             try {
                 setLoading(true);
                 setError("");
@@ -155,6 +158,7 @@ export default function LoginPage() {
                         const qs = new URLSearchParams();
                         qs.set("returnTo", returnTo);
                         if (tenant) qs.set("tenant", tenant);
+                        settleUi = false;
                         window.location.replace(`/auth/continue?${qs.toString()}`);
                         return;
                     }
@@ -163,6 +167,7 @@ export default function LoginPage() {
                     } catch {
                         /* ignore */
                     }
+                    settleUi = false;
                     window.location.replace(returnTo);
                     return;
                 }
@@ -177,7 +182,7 @@ export default function LoginPage() {
                     setError("세션 확인 중 오류가 발생했습니다.");
                 }
             } finally {
-                if (!ignore) {
+                if (!ignore && settleUi) {
                     setLoading(false);
                 }
             }
@@ -243,13 +248,9 @@ export default function LoginPage() {
                 <div className="mt-6">
                     {loading ? (
                         <div className="rounded-xl border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
-                            로그인 상태를 확인하는 중입니다...
+                            잠시만 기다려 주세요...
                         </div>
-                    ) : loggedIn && !error ? (
-                        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-center text-sm text-green-700">
-                            로그인 상태입니다. 이동 중입니다...
-                        </div>
-                    ) : !loggedIn ? (
+                    ) : !loggedIn && !error ? (
                         <button
                             type="button"
                             onClick={startKakaoLogin}
