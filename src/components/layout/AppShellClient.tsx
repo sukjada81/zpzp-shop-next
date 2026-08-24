@@ -8,7 +8,6 @@ import Footer from "./Footer";
 
 import { BRAND_NAME } from "@/lib/brand";
 import { safeBack } from "@/lib/nav/safeBack";
-import { getStorefrontHref } from "@/lib/storefront/storefrontHref";
 
 function normalizeTenant(raw: string) {
     const t = (raw || "").trim().toLowerCase();
@@ -29,12 +28,10 @@ function extractTenantFromPath(pathname?: string | null) {
 export default function AppShellClient({
                                            tenant: rawTenant,
                                            tenantName = "",
-                                           requestHost = "",
                                            children,
                                        }: {
     tenant: string;
     tenantName?: string;
-    requestHost?: string;
     children: React.ReactNode;
 }) {
     const pathname = usePathname();
@@ -82,8 +79,6 @@ export default function AppShellClient({
         if (p.startsWith("/groupbuys")) return "진행 중인 공구";
         if (p.startsWith("/goods")) return "상품";
         if (p.startsWith("/orders")) return "주문내역";
-        if (p.startsWith("/coupons")) return "내 쿠폰";
-        if (p.startsWith("/settings")) return "내 정보 설정";
         if (p.startsWith("/order")) return "주문/결제";
         if (p.startsWith("/cart")) return "장바구니";
         return BRAND_NAME;
@@ -120,10 +115,7 @@ export default function AppShellClient({
                     }}
                     onCartAction={() => {
                         if (!tenant) router.push("/select-tenant?change=1");
-                        else
-                            router.push(
-                                getStorefrontHref(tenant, "cart", pathname, requestHost)
-                            );
+                        else router.push(`/${tenant}/cart`);
                     }}
                 />
             )}
@@ -131,7 +123,6 @@ export default function AppShellClient({
             {!isOrderPage && (
                 <SideDrawer
                     tenant={tenant}
-                    requestHost={requestHost}
                     open={drawerOpen}
                     onCloseAction={() => setDrawerOpen(false)}
                     brandLabel={brandLabel}
