@@ -164,6 +164,16 @@ function getOrderSummary(item: SellerOrderItem) {
     return "";
 }
 
+function getOrderStatusSummary(item: SellerOrderItem) {
+    const lines = item.items ?? [];
+    if (lines.length === 0) return "";
+
+    const first = lines[0];
+    const firstLabel = first?.statusLabel || getStatusLabel(first?.status);
+    if (lines.length === 1) return `상품 상태: ${firstLabel}`;
+    return `상품 상태: ${firstLabel} · 외 ${lines.length - 1}건 상태는 상세 확인`;
+}
+
 function getCategoryLabel(item: SellerOrderItem) {
     const first = item.items?.[0];
     return (
@@ -426,16 +436,8 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                                         ) : null}
 
                                         {item.items?.length ? (
-                                            <div className="mt-2 flex flex-wrap gap-2">
-                                                {item.items.map((line, idx) => (
-                                                    <span
-                                                        key={`${line.goodsName || line.productName || "line"}-${idx}`}
-                                                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(line.status)}`}
-                                                    >
-                                                        {(getLineLabel(line) || `상품 ${idx + 1}`)} ·{" "}
-                                                        {line.statusLabel || getStatusLabel(line.status)}
-                                                    </span>
-                                                ))}
+                                            <div className="mt-2 text-xs font-medium text-slate-500">
+                                                {getOrderStatusSummary(item)}
                                             </div>
                                         ) : null}
 
