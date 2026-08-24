@@ -75,6 +75,7 @@ export default async function SellerMembersPage({
 
     const summary: SellerMembersSummary = result.summary ?? {
         totalMembers: 0,
+        attributedMembers: 0,
         todaySignups: 0,
         weekSignups: 0,
         todayInflows: 0,

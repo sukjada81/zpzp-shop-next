@@ -274,11 +274,17 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 return Number.isFinite(n) && n > 0 ? new Date(n * 1000) >= todayStart : false;
             }).length;
 
+            const attributedMembers = memberships.filter((x: any) => {
+                const status = attributedMap.get(Number(x.member_uid));
+                return Boolean(status) && status !== "revoked";
+            }).length;
+
             return reply.send({
                 ok: true,
                 tenant: tenantSlug,
                 summary: {
                     totalMembers: items.length,
+                    attributedMembers,
                     todaySignups,
                     weekSignups,
                     todayInflows: 0,

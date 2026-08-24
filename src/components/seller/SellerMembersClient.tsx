@@ -2,10 +2,11 @@
 "use client";
 
 import Link from "next/link";
-import { Users, Search, UserPlus, LogIn, CalendarDays, UserCircle2 } from "lucide-react";
+import { Users, Search, UserPlus, LogIn, CalendarDays, UserCircle2, Link2 } from "lucide-react";
 
 export type SellerMembersSummary = {
     totalMembers: number;
+    attributedMembers?: number;
     todaySignups: number;
     weekSignups: number;
     todayInflows: number;
@@ -75,6 +76,13 @@ function summaryCards(summary?: SellerMembersSummary) {
             value: Number(summary?.totalMembers ?? 0),
             hint: "지점 가입 회원",
             icon: Users,
+        },
+        {
+            key: "attributedMembers",
+            label: "귀속 회원",
+            value: Number(summary?.attributedMembers ?? 0),
+            hint: "현재 링커 귀속",
+            icon: Link2,
         },
         {
             key: "todaySignups",
