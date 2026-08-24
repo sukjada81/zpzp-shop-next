@@ -245,11 +245,11 @@ export default function LoginPage() {
                         <div className="rounded-xl border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
                             로그인 상태를 확인하는 중입니다...
                         </div>
-                    ) : loggedIn ? (
+                    ) : loggedIn && !error ? (
                         <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-center text-sm text-green-700">
                             로그인 상태입니다. 이동 중입니다...
                         </div>
-                    ) : (
+                    ) : !loggedIn ? (
                         <button
                             type="button"
                             onClick={startKakaoLogin}
@@ -257,7 +257,7 @@ export default function LoginPage() {
                         >
                             카카오로 로그인
                         </button>
-                    )}
+                    ) : null}
                 </div>
             </div>
         </main>
