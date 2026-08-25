@@ -37,32 +37,52 @@ export async function getTenantLinker(
     return findActiveLinkerForTenant(app, tenantId, tenantSlug);
 }
 
-async function findActiveLinkerForTenant(
-    app: FastifyInstance,
-    tenantId: bigint | undefined,
-    tenantSlug: string,
-    memberUid?: number
-): Promise<SellerLinker | null> {
-    const tenantScope: Array<{ tenant_id: bigint } | { shop_slug: string }> = [];
-    if (tenantId != null) tenantScope.push({ tenant_id: tenantId });
-    const slug = tenantSlug.trim();
-    if (slug) tenantScope.push({ shop_slug: slug });
-    if (tenantScope.length === 0) return null;
-
-    const row = await app.prisma.zpzp_linker.findFirst({
-        where: {
-            status: "active",
-            ...(memberUid ? { member_uid: memberUid } : {}),
-            OR: tenantScope,
-        },
-    });
-
-    if (!row) return null;
-
+function toSellerLinker(row: {
+    uid: number;
+    member_uid: number;
+    shop_slug: string | null;
+    shop_name: string | null;
+}): SellerLinker {
     return {
         uid: Number(row.uid),
         member_uid: Number(row.member_uid),
         shop_slug: String(row.shop_slug ?? ""),
         shop_name: String(row.shop_name ?? ""),
     };
+}
+
+async function findActiveLinkerForTenant(
+    app: FastifyInstance,
+    tenantId: bigint | undefined,
+    tenantSlug: string,
+    memberUid?: number
+): Promise<SellerLinker | null> {
+    const slug = tenantSlug.trim();
+    const memberFilter = memberUid ? { member_uid: memberUid } : {};
+
+    // 링커 slug 로 들어온 경우 shop_slug 를 우선한다.
+    // tenant_id OR 매칭을 먼저 쓰면 같은 카탈로그의 다른 링커가 잡힐 수 있다.
+    if (slug) {
+        const bySlug = await app.prisma.zpzp_linker.findFirst({
+            where: {
+                status: "active",
+                shop_slug: slug,
+                ...memberFilter,
+            },
+        });
+        if (bySlug) return toSellerLinker(bySlug);
+    }
+
+    if (tenantId != null) {
+        const byTenant = await app.prisma.zpzp_linker.findFirst({
+            where: {
+                status: "active",
+                tenant_id: tenantId,
+                ...memberFilter,
+            },
+        });
+        if (byTenant) return toSellerLinker(byTenant);
+    }
+
+    return null;
 }

@@ -1,7 +1,7 @@
 // src/app/(seller)/seller/[tenant]/orders/[id]/page.tsx
 import { notFound } from "next/navigation";
 import SellerOrderDetailClient from "@/components/seller/SellerOrderDetailClient";
-import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerForbiddenMenu from "@/components/seller/SellerForbiddenMenu";
 import {
     fetchSellerApi,
     getCookieHeader,
@@ -29,7 +29,7 @@ export default async function SellerOrderDetailPage({
     const result = await fetchSellerApi<OrderDetailResponse>(url, cookie, tenant);
 
     if (!result.ok) {
-        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="주문관리" />;
         notFound();
     }
 

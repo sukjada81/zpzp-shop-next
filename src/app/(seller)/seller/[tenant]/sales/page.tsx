@@ -2,7 +2,7 @@
 import { notFound } from "next/navigation";
 import SellerSalesStatsClient from "@/components/seller/SellerSalesStatsClient";
 import type { SellerSalesResponse } from "@/lib/types/seller";
-import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerForbiddenMenu from "@/components/seller/SellerForbiddenMenu";
 import SellerGlobalNotSupported from "@/components/seller/SellerGlobalNotSupported";
 import {
     fetchSellerApi,
@@ -40,7 +40,7 @@ export default async function SellerSalesPage({
     const result = await fetchSellerApi<SellerSalesResponse>(url, cookie, tenant);
 
     if (!result.ok) {
-        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="매출통계" />;
         notFound();
     }
 

@@ -211,6 +211,7 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
 
     const [items, setItems] = useState<SellerOrderItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [forbidden, setForbidden] = useState(false);
     const [query, setQuery] = useState(initialQuery);
     const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -224,6 +225,12 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
             credentials: "include",
         });
 
+        if (res.status === 401 || res.status === 403) {
+            setForbidden(true);
+            setItems([]);
+            return;
+        }
+        setForbidden(false);
         const json = await res.json().catch(() => null);
         setItems(Array.isArray(json?.items) ? json.items : []);
     }
@@ -237,9 +244,14 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
                     cache: "no-store",
                     credentials: "include",
                 });
-                const json = await res.json().catch(() => null);
-
                 if (!active) return;
+                if (res.status === 401 || res.status === 403) {
+                    setForbidden(true);
+                    setItems([]);
+                    return;
+                }
+                setForbidden(false);
+                const json = await res.json().catch(() => null);
                 setItems(Array.isArray(json?.items) ? json.items : []);
             } finally {
                 if (active) setLoading(false);
@@ -332,6 +344,22 @@ export default function SellerOrdersClient({ tenant }: { tenant: string }) {
     }, [items, query]);
 
     const hasQuery = query.trim().length > 0;
+
+    if (forbidden) {
+        return (
+            <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-[28px] border border-slate-200 bg-white px-6 py-10 text-center shadow-sm">
+                <div className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Access
+                </div>
+                <h1 className="mt-3 text-xl font-extrabold text-slate-900">권한이 없는 메뉴입니다</h1>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                    「주문관리」 메뉴에 대한 접근 권한이 없습니다.
+                    <br />
+                    왼쪽에서 사용 가능한 메뉴를 선택해 주세요.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">

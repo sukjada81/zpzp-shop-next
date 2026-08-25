@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { captureRefFromRequest } from "../attribution/capture.js";
+import { ensureAttribution } from "../attribution/attribution.service.js";
 import { resolveStoreSlug } from "../../lib/tenant/resolveStoreSlug.js";
 
 console.log("AUTH_ROUTES_LOADED_20260316_DEBUG");
@@ -68,6 +69,8 @@ async function resolveTenantIdBySlug(app: FastifyInstance, tenantSlug: string) {
         id: resolved.tenantId,
         slug: resolved.tenantSlug,
         name: resolved.tenantName,
+        kind: resolved.kind,
+        linkerSlug: resolved.linkerSlug ?? null,
     };
 }
 
@@ -286,11 +289,16 @@ export async function publicAuthRoutes(app: FastifyInstance) {
             });
 
             await captureRefFromRequest(app.prisma, memberUid, (req as any).cookies ?? {});
+            // 링커 사이트(slug)에서 가입/로그인이면 사이트 자체를 first-touch 로 귀속
+            if (tenant.kind === "linker" && tenant.linkerSlug) {
+                await ensureAttribution(app.prisma, memberUid, tenant.linkerSlug);
+            }
 
             console.log("KAKAO_MEMBERSHIP_UPSERT_DONE", {
                 memberUid,
                 tenantId: String(tenant.id),
                 tenantSlug: tenant.slug,
+                linkerSlug: tenant.linkerSlug ?? null,
             });
 
             const member = await app.prisma.mallRN_member.findUnique({

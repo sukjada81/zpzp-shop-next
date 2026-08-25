@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import SellerDashboardClient, {
     type SellerDashboardData,
 } from "@/components/seller/SellerDashboardClient";
-import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerForbiddenMenu from "@/components/seller/SellerForbiddenMenu";
 import {
     fetchSellerApi,
     getCookieHeader,
@@ -36,7 +36,7 @@ export default async function SellerDashboardPage({
         const result = await fetchSellerApi<SellerDashboardData>(url, cookie, "__all__");
 
         if (!result.ok) {
-            if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+            if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="대시보드" />;
             notFound();
         }
 
@@ -47,7 +47,7 @@ export default async function SellerDashboardPage({
     const result = await fetchSellerApi<SellerDashboardData>(url, cookie, tenant);
 
     if (!result.ok) {
-        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="대시보드" />;
         notFound();
     }
 

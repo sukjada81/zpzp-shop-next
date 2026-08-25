@@ -5,7 +5,7 @@ import SellerMembersClient, {
     type SellerMemberItem,
     type SellerMembersSummary,
 } from "@/components/seller/SellerMembersClient";
-import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerForbiddenMenu from "@/components/seller/SellerForbiddenMenu";
 import SellerGlobalNotSupported from "@/components/seller/SellerGlobalNotSupported";
 import { isAuthError, getInternalOrigin } from "@/lib/seller/fetchSeller";
 
@@ -69,7 +69,7 @@ export default async function SellerMembersPage({
     const result = await fetchSellerMembers(tenant, keyword);
 
     if (!result.ok) {
-        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="회원관리" />;
         notFound();
     }
 

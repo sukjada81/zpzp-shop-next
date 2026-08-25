@@ -127,7 +127,7 @@ export default function SellerMembersClient({
                 <div>
                     <div className="text-2xl font-extrabold tracking-[-0.04em] text-slate-900">회원 관리</div>
                     <div className="text-sm text-slate-500">
-                        지점 가입 회원과 귀속 여부를 확인합니다.
+                        링커 사이트 가입 회원과 귀속 여부를 확인합니다.
                     </div>
                 </div>
 
