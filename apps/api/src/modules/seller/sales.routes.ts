@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
+import { orderInfoWhereForScope, resolveLinkerSlugScope } from "./linker.js";
 
 const PLATFORM_TYPE = "DAD";
 const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
@@ -414,43 +415,56 @@ export async function sellerSalesRoutes(app: FastifyInstance) {
                 })
                 .parse(req.query ?? {});
 
-            const [orderInfos, orderGoods] = await Promise.all([
-                app.prisma.mallRN_order_info.findMany({
-                    where: {
-                        tenant_id: tenantId,
-                        platform_type: PLATFORM_TYPE,
-                    },
-                    select: {
-                        uid: true,
-                        order_num: true,
-                        name: true,
-                        signdate: true,
-                        pay_total: true,
-                        cancel_total: true,
-                        refund_total: true,
-                    },
-                    orderBy: [{ uid: "desc" }],
-                }),
-                app.prisma.mallRN_order_goods.findMany({
-                    where: {
-                        tenant_id: tenantId,
-                        platform_type: PLATFORM_TYPE,
-                    },
-                    select: {
-                        uid: true,
-                        order_num: true,
-                        status: true,
-                        signdate: true,
-                        g_uid: true,
-                        g_name: true,
-                        option_name: true,
-                        qty: true,
-                        price: true,
-                        orig_price: true,
-                    },
-                    orderBy: [{ uid: "asc" }],
-                }),
-            ]);
+            const linkerScope = await resolveLinkerSlugScope(app, tenantId, tenantSlug);
+            const orderInfoWhere = orderInfoWhereForScope(
+                {
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                },
+                linkerScope
+            );
+
+            const orderInfos = await app.prisma.mallRN_order_info.findMany({
+                where: orderInfoWhere,
+                select: {
+                    uid: true,
+                    order_num: true,
+                    name: true,
+                    signdate: true,
+                    pay_total: true,
+                    cancel_total: true,
+                    refund_total: true,
+                },
+                orderBy: [{ uid: "desc" }],
+            });
+
+            const scopedOrderNums = orderInfos
+                .map((row: { order_num: string | null }) => String(row.order_num ?? ""))
+                .filter(Boolean);
+
+            const orderGoods =
+                scopedOrderNums.length > 0
+                    ? await app.prisma.mallRN_order_goods.findMany({
+                          where: {
+                              tenant_id: tenantId,
+                              platform_type: PLATFORM_TYPE,
+                              order_num: { in: scopedOrderNums },
+                          },
+                          select: {
+                              uid: true,
+                              order_num: true,
+                              status: true,
+                              signdate: true,
+                              g_uid: true,
+                              g_name: true,
+                              option_name: true,
+                              qty: true,
+                              price: true,
+                              orig_price: true,
+                          },
+                          orderBy: [{ uid: "asc" }],
+                      })
+                    : [];
 
             const orderGoodsMap = new Map<string, any[]>();
             for (const row of orderGoods) {

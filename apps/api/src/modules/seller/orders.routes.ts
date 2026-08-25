@@ -2,6 +2,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
+import {
+    isOrderInLinkerScope,
+    orderInfoWhereForScope,
+    resolveLinkerSlugScope,
+} from "./linker.js";
 
 const PLATFORM_TYPE = "DAD";
 const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
@@ -424,10 +429,14 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
 
         const skip = (q.page - 1) * q.limit;
 
-        const where: any = {
-            tenant_id: tenantId,
-            platform_type: PLATFORM_TYPE,
-        };
+        const linkerScope = await resolveLinkerSlugScope(app, tenantId, String(tenantSlug ?? ""));
+        const where = orderInfoWhereForScope(
+            {
+                tenant_id: tenantId,
+                platform_type: PLATFORM_TYPE,
+            },
+            linkerScope
+        );
 
         const [total, rows] = await Promise.all([
             app.prisma.mallRN_order_info.count({ where }),
@@ -557,12 +566,16 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             return reply.code(400).send({ ok: false, message: "invalid order id" });
         }
 
+        const linkerScope = await resolveLinkerSlugScope(app, tenantId, String(tenantSlug ?? ""));
         const info = await app.prisma.mallRN_order_info.findFirst({
-            where: {
-                uid,
-                tenant_id: tenantId,
-                platform_type: PLATFORM_TYPE,
-            },
+            where: orderInfoWhereForScope(
+                {
+                    uid,
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                },
+                linkerScope
+            ),
             select: {
                 uid: true,
                 order_num: true,
@@ -577,10 +590,12 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
                 pay_total: true,
                 signdate: true,
                 status_date: true,
+                member_uid: true,
+                checkout_shop_slug: true,
             },
         });
 
-        if (!info) {
+        if (!info || (linkerScope && !isOrderInLinkerScope(info, linkerScope))) {
             return reply.code(404).send({ ok: false, message: "order not found" });
         }
 
@@ -659,19 +674,25 @@ export async function sellerOrderRoutes(app: FastifyInstance) {
             return reply.code(400).send({ ok: false, message: "invalid status" });
         }
 
+        const linkerScope = await resolveLinkerSlugScope(app, tenantId, String(tenantSlug ?? ""));
         const info = await app.prisma.mallRN_order_info.findFirst({
-            where: {
-                uid,
-                tenant_id: tenantId,
-                platform_type: PLATFORM_TYPE,
-            },
+            where: orderInfoWhereForScope(
+                {
+                    uid,
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                },
+                linkerScope
+            ),
             select: {
                 uid: true,
                 order_num: true,
+                member_uid: true,
+                checkout_shop_slug: true,
             },
         });
 
-        if (!info) {
+        if (!info || (linkerScope && !isOrderInLinkerScope(info, linkerScope))) {
             return reply.code(404).send({ ok: false, message: "order not found" });
         }
 
