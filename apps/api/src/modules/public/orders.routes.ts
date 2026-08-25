@@ -1107,6 +1107,14 @@ async function serializeOrder(
         }
     }
 
+    const cancelTotal = toInt(info.cancel_total, 0);
+    const refundTotal = toInt(info.refund_total, 0);
+    const remainingAmount = Math.max(0, totalAmount - cancelTotal - refundTotal);
+    const allReturnCompleted =
+        items.length > 0 && items.every((item) => item.status === 8 && item.status2 === 5);
+    const shippingOnlyRemaining =
+        allReturnCompleted && deliveryTotal > 0 && remainingAmount === deliveryTotal;
+
     return {
         id: orderNum,
         orderNum,
@@ -1122,9 +1130,12 @@ async function serializeOrder(
         memo: toSafeString(info.memo, ""),
         totalAmount,
         goodsTotal,
-        cancelTotal: toInt(info.cancel_total, 0),
-        refundTotal: toInt(info.refund_total, 0),
+        cancelTotal,
+        refundTotal,
         deliveryTotal,
+        remainingAmount,
+        allReturnCompleted,
+        shippingOnlyRemaining,
         payType: display.payType,
         payStatus: display.payStatus,
         payTypeLabel: display.payTypeLabel,
