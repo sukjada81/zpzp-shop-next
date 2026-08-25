@@ -2,7 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
-import { resolveLinkerSlugScope } from "./linker.js";
+import { activeLinkerMemberUidSet, resolveLinkerSlugScope } from "./linker.js";
 
 const TENANT_CONSUMER_ROLE = "consumer";
 const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
@@ -282,7 +282,17 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                       },
                   });
 
-            const memberships = membershipsAll;
+            // 링커 콘솔: 활성 링커 본인은 회원 목록·회원가입 집계에서 제외
+            const linkerOwnerUids = linkerScope
+                ? await activeLinkerMemberUidSet(
+                      app,
+                      membershipsAll.map((row) => Number(row.member_uid))
+                  )
+                : new Set<number>();
+
+            const memberships = linkerScope
+                ? membershipsAll.filter((row) => !linkerOwnerUids.has(Number(row.member_uid)))
+                : membershipsAll;
 
             const memberUids = memberships
                 .map((row) => Number(row.member_uid))

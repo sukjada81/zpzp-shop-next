@@ -92,6 +92,39 @@ export async function resolveLinkerSlugScope(
     };
 }
 
+/**
+ * 활성 링커 본인 계정 uid 집합.
+ * 링커 콘솔의 「회원가입/회원」 집계에서 링커를 빼기 위해 쓴다.
+ * (주문·매출 스코프에는 적용하지 않는다 — 링커가 크루로서 산 주문은 남겨야 함)
+ */
+export async function activeLinkerMemberUidSet(
+    app: FastifyInstance,
+    memberUids: number[]
+): Promise<Set<number>> {
+    const uids = Array.from(
+        new Set(
+            memberUids
+                .map((uid) => Number(uid))
+                .filter((uid) => Number.isFinite(uid) && uid > 0)
+        )
+    );
+    if (!uids.length) return new Set();
+
+    const rows = await app.prisma.zpzp_linker.findMany({
+        where: {
+            status: "active",
+            member_uid: { in: uids },
+        },
+        select: { member_uid: true },
+    });
+
+    return new Set(
+        rows
+            .map((row) => Number(row.member_uid))
+            .filter((uid) => Number.isFinite(uid) && uid > 0)
+    );
+}
+
 /** 링커 스코프 주문: 결제 스토어 slug 또는 귀속 회원 주문 */
 export function orderInfoWhereForScope(
     base: Prisma.mallRN_order_infoWhereInput,
