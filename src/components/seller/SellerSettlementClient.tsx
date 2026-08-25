@@ -163,8 +163,12 @@ export default function SellerSettlementClient({ tenant }: { tenant: string }) {
                 | { ok?: boolean; message?: string; data?: Summary }
                 | null;
             if (!res.ok || !payload?.ok || !payload.data) {
-                // 403(링커 아님) 등은 화면 전체를 안내로 대체한다.
-                setBlocked(payload?.message || "정산 정보를 불러오지 못했습니다.");
+                // 403 등은 좌측 메뉴 유지 + 우측만 권한 안내
+                setBlocked(
+                    res.status === 401 || res.status === 403
+                        ? "권한이 없는 메뉴입니다. 왼쪽에서 다른 메뉴를 선택해 주세요."
+                        : payload?.message || "정산 정보를 불러오지 못했습니다."
+                );
                 setData(null);
                 return;
             }

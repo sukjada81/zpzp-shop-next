@@ -229,7 +229,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             const keyword = String(query.q ?? "").trim();
             const summaryOnly = Number(query.summaryOnly ?? 0) === 1;
 
-            const memberships: ConsumerMembershipRow[] =
+            const membershipsAll: ConsumerMembershipRow[] =
                 await app.prisma.mallRN_member_membership.findMany({
                     where: {
                         role_code: TENANT_CONSUMER_ROLE,
@@ -248,6 +248,11 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 });
 
             const tenantLinker = await getTenantLinker(app, tenantId, tenantSlug);
+            // 링커 slug 로 연 회원관리 → 해당 링커 사이트 가입(귀속) 회원만
+            const linkerSlugContext = Boolean(
+                tenantLinker && tenantLinker.shop_slug === tenantSlug.trim()
+            );
+
             const attributions = tenantLinker
                 ? await app.prisma.zpzp_referral_attribution.findMany({
                       where: { linker_id: tenantLinker.uid },
@@ -260,6 +265,10 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             const attributedMap = new Map(
                 attributions.map((row) => [Number(row.member_uid), String(row.crew_status ?? "")])
             );
+
+            const memberships = linkerSlugContext
+                ? membershipsAll.filter((row) => attributedMap.has(Number(row.member_uid)))
+                : membershipsAll;
 
             const memberUids = memberships
                 .map((row) => Number(row.member_uid))
@@ -335,6 +344,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             return reply.send({
                 ok: true,
                 tenant: tenantSlug,
+                scope: linkerSlugContext ? "linker_site" : "tenant",
                 summary: {
                     totalMembers: memberships.length,
                     attributedMembers,
@@ -393,6 +403,9 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             });
 
             const tenantLinker = await getTenantLinker(app, tenantId, tenantSlug);
+            const linkerSlugContext = Boolean(
+                tenantLinker && tenantLinker.shop_slug === tenantSlug.trim()
+            );
             const attribution = tenantLinker
                 ? await app.prisma.zpzp_referral_attribution.findFirst({
                       where: {
@@ -406,7 +419,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                   })
                 : null;
 
-            if (!membership) {
+            if (!membership || (linkerSlugContext && !attribution)) {
                 return reply.code(404).send({ ok: false, message: "member not found" });
             }
 

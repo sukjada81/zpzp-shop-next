@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import SellerProductsClient, {
     type SellerProductsInitialData,
 } from "@/components/seller/SellerProductsClient";
-import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerForbiddenMenu from "@/components/seller/SellerForbiddenMenu";
 import { isAuthError, getInternalOrigin } from "@/lib/seller/fetchSeller";
 
 async function fetchSellerProducts(tenant: string): Promise<{
@@ -54,7 +54,7 @@ export default async function SellerProductsPage({
 
     const result = await fetchSellerProducts(tenant);
     if (!result.ok) {
-        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="상품관리" />;
         return <SellerProductsClient tenant={tenant} initialData={null} />;
     }
 

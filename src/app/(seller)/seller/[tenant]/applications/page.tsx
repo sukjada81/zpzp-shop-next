@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import SellerApplicationsClient, {
     type ApplicationItem,
 } from "@/components/seller/SellerApplicationsClient";
-import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerForbiddenMenu from "@/components/seller/SellerForbiddenMenu";
 import {
     fetchSellerApi,
     getCookieHeader,
@@ -40,7 +40,7 @@ export default async function SellerApplicationsPage({
     const result = await fetchSellerApi<ApplicationsResponse>(url, cookie, tenant);
 
     if (!result.ok) {
-        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="셀러 승인 관리" />;
         notFound();
     }
 

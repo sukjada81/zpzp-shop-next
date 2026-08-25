@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import SellerMemberDetailClient, {
     type SellerMemberDetail,
 } from "@/components/seller/SellerMemberDetailClient";
-import SellerNoAccess from "@/components/seller/SellerNoAccess";
+import SellerForbiddenMenu from "@/components/seller/SellerForbiddenMenu";
 import {
     fetchSellerApi,
     getCookieHeader,
@@ -31,7 +31,7 @@ export default async function SellerMemberDetailPage({
     const result = await fetchSellerApi<MemberDetailResponse>(url, cookie, tenant);
 
     if (!result.ok) {
-        if (isAuthError(result.status)) return <SellerNoAccess tenant={tenant} />;
+        if (isAuthError(result.status)) return <SellerForbiddenMenu menuLabel="회원관리" />;
         notFound();
     }
 
