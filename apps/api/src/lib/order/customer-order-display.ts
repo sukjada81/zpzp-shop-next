@@ -126,6 +126,12 @@ function resolvePayStatusLabel(payStatus: string, payType: string): string {
     }
 }
 
+function isClaimInProgress(status: number, status2: number): boolean {
+    if (status !== 7 && status !== 8) return false;
+    if (status2 <= 0 || status2 >= 5) return false;
+    return true;
+}
+
 function buildFooterText(input: {
     effectiveStatus: number;
     status2: number;
@@ -136,8 +142,14 @@ function buildFooterText(input: {
     const { effectiveStatus, status2, payStatus, isOnlinePrepaid, hasPickupAt } = input;
 
     if (effectiveStatus === 9) return "주문이 취소되었습니다.";
-    if (status2 > 0 && (effectiveStatus === 7 || effectiveStatus === 8)) {
+    if (isClaimInProgress(effectiveStatus, status2)) {
         return "교환·반품 처리가 진행 중입니다.";
+    }
+    if (effectiveStatus === 8 && status2 === 5) {
+        return "반품 처리가 완료되었습니다.";
+    }
+    if (effectiveStatus === 7 && status2 === 5) {
+        return "교환 처리가 완료되었습니다.";
     }
 
     if (hasPickupAt && !isOnlinePrepaid) {
@@ -160,7 +172,7 @@ function buildFooterText(input: {
         case 7:
             return "교환 처리 중입니다.";
         case 8:
-            return "반품 처리 중입니다.";
+            return status2 > 0 ? null : "반품 처리 중입니다.";
         default:
             return isOnlinePrepaid ? "결제가 완료되었습니다." : "주문이 접수되었습니다.";
     }

@@ -59,6 +59,9 @@ type OrderDetailResponse = {
         cancelTotal: number;
         refundTotal: number;
         deliveryTotal: number;
+        remainingAmount?: number;
+        allReturnCompleted?: boolean;
+        shippingOnlyRemaining?: boolean;
         payType: string;
         payStatus: string;
         payTypeLabel?: string;
@@ -919,6 +922,14 @@ export default function OrderDetailPage() {
                                     {formatMoney(displayPay)}
                                 </span>
                             </div>
+
+                            {order.shippingOnlyRemaining ? (
+                                <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-[13px] font-bold leading-5 text-amber-950">
+                                    전체 반품이 완료되었으나 배송비{" "}
+                                    {formatMoney(deliveryAmount)}은 환불 처리되지 않았습니다.
+                                    환불이 필요하면 고객센터에 문의해 주세요.
+                                </div>
+                            ) : null}
                         </>
                     );
                 })()}

@@ -17,6 +17,9 @@ type ApiOrderItem = {
     deliveryTotal?: number;
     cancelTotal?: number;
     refundTotal?: number;
+    remainingAmount?: number;
+    allReturnCompleted?: boolean;
+    shippingOnlyRemaining?: boolean;
     pickupAt?: string | null;
     status: number;
     statusLabel: string;
@@ -85,6 +88,8 @@ export type OrderSummary = {
     deliveryTotal: number;
     cancelTotal: number;
     refundTotal: number;
+    remainingAmount?: number;
+    shippingOnlyRemaining?: boolean;
     activeItemCount: number;
     totalItemCount: number;
     createdAt: string;
@@ -183,6 +188,8 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
         deliveryTotal: Number(order.deliveryTotal ?? 0),
         cancelTotal: Number(order.cancelTotal ?? 0),
         refundTotal: Number(order.refundTotal ?? 0),
+        remainingAmount: Number(order.remainingAmount ?? 0),
+        shippingOnlyRemaining: Boolean(order.shippingOnlyRemaining),
         activeItemCount: Number(order.activeItemCount ?? 0),
         totalItemCount: Number(order.totalItemCount ?? 0),
         createdAt: order.createdAt,
@@ -677,6 +684,15 @@ export default function OrdersClient(props: {
                                                     {formatMoney(displayOrder)}
                                                 </div>
                                             </div>
+
+                                            {order.shippingOnlyRemaining ? (
+                                                <div className="mt-3 rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-3 text-center text-[12px] font-bold leading-5 text-amber-950">
+                                                    전체 반품이 완료되었으나 배송비{" "}
+                                                    {formatMoney(order.deliveryTotal)}은 환불 처리되지
+                                                    않았습니다. 환불이 필요하면 고객센터에 문의해
+                                                    주세요.
+                                                </div>
+                                            ) : null}
                                         </>
                                     );
                                 })()}
