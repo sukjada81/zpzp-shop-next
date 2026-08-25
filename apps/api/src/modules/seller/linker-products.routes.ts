@@ -33,6 +33,7 @@ function isSelling(row: {
 }
 
 function availableGoodsWhere(selectedIds: number[], keywordRaw: string): Prisma.mallRN_goodsWhereInput {
+    // 등록 가능 목록은 linker_id 스코프 예외: 본사 전체 카탈로그 − 이미 선택한 상품.
     const keyword = keywordRaw.trim();
     const search: Prisma.mallRN_goodsWhereInput[] = keyword
         ? [

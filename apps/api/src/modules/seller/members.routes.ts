@@ -2,7 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
-import { getTenantLinker } from "./linker.js";
+import { resolveLinkerSlugScope } from "./linker.js";
 
 const TENANT_CONSUMER_ROLE = "consumer";
 const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
@@ -229,33 +229,12 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             const keyword = String(query.q ?? "").trim();
             const summaryOnly = Number(query.summaryOnly ?? 0) === 1;
 
-            const membershipsAll: ConsumerMembershipRow[] =
-                await app.prisma.mallRN_member_membership.findMany({
-                    where: {
-                        role_code: TENANT_CONSUMER_ROLE,
-                        scope_type: "tenant",
-                        scope_id: tenantId,
-                        status: "active",
-                    },
-                    orderBy: [{ joined_at: "desc" }, { uid: "desc" }],
-                    select: {
-                        uid: true,
-                        member_uid: true,
-                        role_code: true,
-                        status: true,
-                        joined_at: true,
-                    },
-                });
+            // 링커 slug → 귀속(linker_id) 회원만. 본사몰 tenant 전체 가입자를 쓰지 않는다.
+            const linkerScope = await resolveLinkerSlugScope(app, tenantId, tenantSlug);
 
-            const tenantLinker = await getTenantLinker(app, tenantId, tenantSlug);
-            // 링커 slug 로 연 회원관리 → 해당 링커 사이트 가입(귀속) 회원만
-            const linkerSlugContext = Boolean(
-                tenantLinker && tenantLinker.shop_slug === tenantSlug.trim()
-            );
-
-            const attributions = tenantLinker
+            const attributions = linkerScope
                 ? await app.prisma.zpzp_referral_attribution.findMany({
-                      where: { linker_id: tenantLinker.uid },
+                      where: { linker_id: linkerScope.linkerId },
                       select: {
                           member_uid: true,
                           crew_status: true,
@@ -266,9 +245,44 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 attributions.map((row) => [Number(row.member_uid), String(row.crew_status ?? "")])
             );
 
-            const memberships = linkerSlugContext
-                ? membershipsAll.filter((row) => attributedMap.has(Number(row.member_uid)))
-                : membershipsAll;
+            const membershipsAll: ConsumerMembershipRow[] = linkerScope
+                ? linkerScope.memberUids.length > 0
+                    ? await app.prisma.mallRN_member_membership.findMany({
+                          where: {
+                              role_code: TENANT_CONSUMER_ROLE,
+                              scope_type: "tenant",
+                              scope_id: tenantId,
+                              status: "active",
+                              member_uid: { in: linkerScope.memberUids },
+                          },
+                          orderBy: [{ joined_at: "desc" }, { uid: "desc" }],
+                          select: {
+                              uid: true,
+                              member_uid: true,
+                              role_code: true,
+                              status: true,
+                              joined_at: true,
+                          },
+                      })
+                    : []
+                : await app.prisma.mallRN_member_membership.findMany({
+                      where: {
+                          role_code: TENANT_CONSUMER_ROLE,
+                          scope_type: "tenant",
+                          scope_id: tenantId,
+                          status: "active",
+                      },
+                      orderBy: [{ joined_at: "desc" }, { uid: "desc" }],
+                      select: {
+                          uid: true,
+                          member_uid: true,
+                          role_code: true,
+                          status: true,
+                          joined_at: true,
+                      },
+                  });
+
+            const memberships = membershipsAll;
 
             const memberUids = memberships
                 .map((row) => Number(row.member_uid))
@@ -344,7 +358,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
             return reply.send({
                 ok: true,
                 tenant: tenantSlug,
-                scope: linkerSlugContext ? "linker_site" : "tenant",
+                scope: linkerScope ? "linker_site" : "tenant",
                 summary: {
                     totalMembers: memberships.length,
                     attributedMembers,
@@ -402,15 +416,12 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                 },
             });
 
-            const tenantLinker = await getTenantLinker(app, tenantId, tenantSlug);
-            const linkerSlugContext = Boolean(
-                tenantLinker && tenantLinker.shop_slug === tenantSlug.trim()
-            );
-            const attribution = tenantLinker
+            const linkerScope = await resolveLinkerSlugScope(app, tenantId, tenantSlug);
+            const attribution = linkerScope
                 ? await app.prisma.zpzp_referral_attribution.findFirst({
                       where: {
                           member_uid: params.memberUid,
-                          linker_id: tenantLinker.uid,
+                          linker_id: linkerScope.linkerId,
                       },
                       select: {
                           uid: true,
@@ -419,7 +430,7 @@ export async function sellerMembersRoutes(app: FastifyInstance) {
                   })
                 : null;
 
-            if (!membership || (linkerSlugContext && !attribution)) {
+            if (!membership || (linkerScope && !attribution)) {
                 return reply.code(404).send({ ok: false, message: "member not found" });
             }
 

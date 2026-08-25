@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireTenant } from "../../common/guard.js";
 import { countTodayLinkerVisits } from "../attribution/journey-log.js";
+import { orderInfoWhereForScope, resolveLinkerSlugScope } from "./linker.js";
 
 const PLATFORM_TYPE = "DAD";
 const GLOBAL_ALLOWED_ROLES = ["hq_admin", "hq_staff", "hq_super"] as const;
@@ -380,7 +381,16 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                 });
             }
 
-            const [memberships, members, products, orderInfos, orderGoods] = await Promise.all([
+            const linkerScope = await resolveLinkerSlugScope(app, tenantId, tenantSlug);
+            const orderInfoWhere = orderInfoWhereForScope(
+                {
+                    tenant_id: tenantId,
+                    platform_type: PLATFORM_TYPE,
+                },
+                linkerScope
+            );
+
+            const [membershipsAll, members, products, orderInfos] = await Promise.all([
                 app.prisma.mallRN_member_membership.findMany({
                     where: {
                         scope_type: "tenant",
@@ -407,21 +417,28 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                         signdate: true,
                     },
                 }),
-                app.prisma.mallRN_goods.findMany({
-                    where: {
-                        tenant_id: tenantId,
-                        deleted_at: null,
-                    },
-                    select: {
-                        uid: true,
-                        status: true,
-                    },
-                }),
+                linkerScope
+                    ? app.prisma.mallRN_linker_products.findMany({
+                          where: {
+                              linker_uid: linkerScope.linkerId,
+                              selection_status: "selected",
+                          },
+                          select: {
+                              product_uid: true,
+                          },
+                      })
+                    : app.prisma.mallRN_goods.findMany({
+                          where: {
+                              tenant_id: tenantId,
+                              deleted_at: null,
+                          },
+                          select: {
+                              uid: true,
+                              status: true,
+                          },
+                      }),
                 app.prisma.mallRN_order_info.findMany({
-                    where: {
-                        tenant_id: tenantId,
-                        platform_type: PLATFORM_TYPE,
-                    },
+                    where: orderInfoWhere,
                     select: {
                         uid: true,
                         order_num: true,
@@ -433,22 +450,37 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                     },
                     orderBy: [{ uid: "desc" }],
                 }),
-                app.prisma.mallRN_order_goods.findMany({
-                    where: {
-                        tenant_id: tenantId,
-                        platform_type: PLATFORM_TYPE,
-                    },
-                    orderBy: [{ uid: "asc" }],
-                    select: {
-                        uid: true,
-                        order_num: true,
-                        status: true,
-                        signdate: true,
-                        qty: true,
-                        price: true,
-                    },
-                }),
             ]);
+
+            const scopedOrderNums = orderInfos
+                .map((row: { order_num: string | null }) => String(row.order_num ?? ""))
+                .filter(Boolean);
+
+            const orderGoods =
+                scopedOrderNums.length > 0
+                    ? await app.prisma.mallRN_order_goods.findMany({
+                          where: {
+                              tenant_id: tenantId,
+                              platform_type: PLATFORM_TYPE,
+                              order_num: { in: scopedOrderNums },
+                          },
+                          orderBy: [{ uid: "asc" }],
+                          select: {
+                              uid: true,
+                              order_num: true,
+                              status: true,
+                              signdate: true,
+                              qty: true,
+                              price: true,
+                          },
+                      })
+                    : [];
+
+            const memberships = linkerScope
+                ? membershipsAll.filter((ms: { member_uid: number }) =>
+                      linkerScope.memberUidSet.has(Number(ms.member_uid))
+                  )
+                : membershipsAll;
 
             const memberUidSet = new Set(
                 memberships
@@ -479,8 +511,12 @@ export async function sellerDashboardRoutes(app: FastifyInstance) {
                 isSameDay(getMemberLastLoginAt(m))
             ).length;
 
-            const activeProducts = products.filter(isActiveProduct).length;
-            const soldOutProducts = products.filter(isSoldOutProduct).length;
+            const activeProducts = linkerScope
+                ? products.length
+                : products.filter(isActiveProduct).length;
+            const soldOutProducts = linkerScope
+                ? 0
+                : products.filter(isSoldOutProduct).length;
 
             const goodsMap = new Map<string, any[]>();
             for (const row of orderGoods) {
