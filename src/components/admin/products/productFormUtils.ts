@@ -37,6 +37,18 @@ function toProxyUploadPath(pathname: string) {
     return `/api/proxy/${clean}`;
 }
 
+const GOODS_IMAGE_BASE = (
+    process.env.NEXT_PUBLIC_ASSET_ORIGIN ||
+    process.env.NEXT_PUBLIC_GOODS_IMAGE_BASE_URL ||
+    "https://zpzp.kr"
+).replace(/\/+$/, "");
+
+/**
+ * 관리자 상품 이미지 미리보기 URL.
+ * 링커 상품 리스트(apps/api/.../admin/linker-products goodsImageUrl)와 동일 규칙:
+ * - DB image1 이 "/1/5/51517.jpg" 이면 → https://zpzp.kr/image/goods/img/1/5/51517.jpg
+ * - 신규 업로드 uploads/... 는 API 프록시
+ */
 export function toPreviewUrl(input: string) {
     const v = (input || "").trim();
     if (!v) return "";
@@ -48,6 +60,15 @@ export function toPreviewUrl(input: string) {
 
     if (normalized.startsWith("/uploads/")) {
         return toProxyUploadPath(normalized);
+    }
+
+    if (/^\/image\//i.test(normalized)) {
+        return `${GOODS_IMAGE_BASE}${normalized}`;
+    }
+
+    // 레거시 mallRN 경로: /1/5/51517.jpg
+    if (/^\/\d+\//.test(normalized)) {
+        return `${GOODS_IMAGE_BASE}/image/goods/img/${normalized.replace(/^\/+/, "")}`;
     }
 
     return normalized;

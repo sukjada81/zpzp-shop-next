@@ -13,7 +13,7 @@ const items = [
     // [숨김 2026-07-31] 지점 관리 — 줍줍은 링커 기반 운영이고 본사 관리자는 shop-php 가 담당.
     // { label: "지점 관리", href: "/admin/tenant", icon: "🏬" },
     { label: "상품", href: "/admin/products", icon: "🧾" },
-    { label: "링커 상품", href: "/admin/linker-products", icon: "🔗" },
+    { label: "링커 승인", href: "/admin/linker-products", icon: "🔗" },
     { label: "주문", href: "/admin/orders", icon: "📦" },
     // [숨김 2026-07-31] 포인트 — DAD 전용. 줍줍 라이브 dad_points_ledger 0행(미사용).
     // { label: "포인트", href: "/admin/points", icon: "🪙" },
@@ -61,16 +61,17 @@ export default function AdminSidebar() {
                                     onClick={closeSidebar}
                                     className={[
                                         "flex items-center justify-between rounded-2xl px-3 py-2 text-sm font-extrabold transition",
+                                        // 활성: 크림 배경 + 잉크 글자 (검정 배경+흰 글자는 .dad-admin color 상속으로 글자가 안 보임)
                                         active
-                                            ? "bg-[var(--dad-ink)] text-white"
-                                            : "text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]",
+                                            ? "bg-[var(--dad-cream)] text-[var(--dad-ink)] ring-1 ring-[var(--dad-border)]"
+                                            : "text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]/70",
                                     ].join(" ")}
                                 >
                   <span className="flex items-center gap-2">
                     <span>{it.icon}</span>
                       {it.label}
                   </span>
-                                    <span className={active ? "opacity-80" : "opacity-30"}>›</span>
+                                    <span className={active ? "opacity-60" : "opacity-30"}>›</span>
                                 </Link>
                             );
                         })}
