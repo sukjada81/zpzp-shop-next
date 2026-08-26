@@ -14,14 +14,22 @@ function statusColor(status: string) {
 }
 
 function categoryLabelFromRow(p: any) {
-    const cate = String(p?.cate ?? "").trim();
+    const direct = String(p?.categoryLabel ?? "").trim();
+    if (direct) return direct;
 
+    const cate = String(p?.cate ?? "").trim();
     if (cate === "100000") return "오늘의 공구";
     if (cate === "100001") return "바로 픽업 가능";
 
     const categoryKeys = Array.isArray(p?.categoryKeys) ? p.categoryKeys : [];
     if (categoryKeys.includes("daily-deal")) return "오늘의 공구";
     if (categoryKeys.includes("pickup-ready")) return "바로 픽업 가능";
+
+    const path = String(p?.categoryPath ?? "").trim();
+    if (path) {
+        const parts = path.split(">").map((x) => x.trim()).filter(Boolean);
+        return parts[parts.length - 1] || path;
+    }
 
     return "-";
 }
@@ -33,7 +41,10 @@ function categoryColor(label: string) {
     if (label === "바로 픽업 가능") {
         return "bg-sky-100 text-sky-700 border-sky-200";
     }
-    return "bg-gray-100 text-gray-500 border-gray-200";
+    if (label === "-") {
+        return "bg-gray-100 text-gray-500 border-gray-200";
+    }
+    return "bg-violet-50 text-violet-700 border-violet-100";
 }
 
 export default function ProductTable({ rows }: { rows: any[] }) {
@@ -124,6 +135,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                     const status = String(p?.status ?? "");
                     const price = Number(p?.price ?? p?.basePrice ?? 0);
                     const categoryLabel = categoryLabelFromRow(p);
+                    const categoryPath = String(p?.categoryPath ?? categoryLabel).trim();
                     const linkerCount = Number(p?.linkerCount ?? 0);
 
                     return (
@@ -172,7 +184,8 @@ export default function ProductTable({ rows }: { rows: any[] }) {
 
                             <td className="px-2 py-3 text-center align-middle">
                                     <span
-                                        className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold ${categoryColor(
+                                        title={categoryPath || categoryLabel}
+                                        className={`inline-flex max-w-[118px] truncate rounded-full border px-2.5 py-1 text-[11px] font-bold ${categoryColor(
                                             categoryLabel
                                         )}`}
                                     >

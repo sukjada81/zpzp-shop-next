@@ -191,6 +191,68 @@ function parseCategoryKeysFromIcon(icon: any): string[] {
         .filter(Boolean);
 }
 
+/** mallRN cate(18자리) → 경로/리프 이름. PHP getCateAllName 과 동일 규칙 */
+function normalizeMallCateCode(raw: unknown): string {
+    const s = String(raw ?? "").trim();
+    if (!s || s === "0") return "";
+    if (/^\d+$/.test(s)) return s.padStart(18, "0").slice(0, 18);
+    return s;
+}
+
+function uiCategoryLabel(cate: string, categoryKeys: string[]): string | null {
+    if (cate === "100000" || categoryKeys.includes("daily-deal")) return "오늘의 공구";
+    if (cate === "100001" || categoryKeys.includes("pickup-ready")) return "바로 픽업 가능";
+    return null;
+}
+
+async function resolveMallCateLabels(
+    app: FastifyInstance,
+    cateCodes: string[]
+): Promise<Map<string, { leaf: string; path: string }>> {
+    const unique = Array.from(
+        new Set(
+            cateCodes
+                .map((c) => normalizeMallCateCode(c))
+                .filter((c) => c && c !== "000000000000000000" && !["100000", "100001"].includes(c.replace(/^0+/, "") || c))
+        )
+    );
+    const out = new Map<string, { leaf: string; path: string }>();
+    if (!unique.length) return out;
+
+    const rows = await app.prisma.mallRN_cate.findMany({
+        select: { cate: true, cate_name: true, cate_dep: true },
+    });
+
+    const index = new Map<string, string>();
+    for (const row of rows) {
+        const cateStr = String(row.cate ?? "").padStart(18, "0").slice(0, 18);
+        const dep = Number(row.cate_dep ?? 0);
+        if (!dep || dep < 1 || dep > 6) continue;
+        const prefix = cateStr.slice(0, dep * 3);
+        index.set(`${dep}:${prefix}`, String(row.cate_name ?? "").trim());
+    }
+
+    for (const code of unique) {
+        const padded = normalizeMallCateCode(code);
+        const names: string[] = [];
+        for (let dep = 1; dep <= 6; dep++) {
+            const len = dep * 3;
+            if (len > padded.length) break;
+            const part = padded.slice(len - 3, len);
+            if (part === "000") break;
+            const name = index.get(`${dep}:${padded.slice(0, len)}`);
+            if (name) names.push(name);
+        }
+        if (!names.length) continue;
+        out.set(padded, { leaf: names[names.length - 1], path: names.join(" > ") });
+        // 원본 키도 같이 넣어 조회를 쉽게
+        out.set(code, out.get(padded)!);
+        out.set(String(BigInt(padded)), out.get(padded)!);
+    }
+
+    return out;
+}
+
 function mergeCategoryKeysIntoIcon(existingIcon: any, categoryKeys: any): string {
     const baseTokens = String(existingIcon ?? "")
         .split("|")
@@ -401,9 +463,21 @@ export async function adminProductsRoutes(app: FastifyInstance) {
             (rows as any[]).map((r) => Number(r.uid))
         );
 
+        const cateLabelMap = await resolveMallCateLabels(
+            app,
+            (rows as any[]).map((r) => String(r.cate ?? ""))
+        );
+
         const mapped = (rows as any[]).map((r) => {
             const isHq = String(r.tenant_id ?? "") === "0";
             const tenant = !isHq && r.tenant_id != null ? tenantMap.get(String(r.tenant_id)) ?? null : null;
+            const cate = r.cate == null ? "0" : String(r.cate);
+            const categoryKeys = parseCategoryKeysFromIcon(r.icon);
+            const uiLabel = uiCategoryLabel(cate, categoryKeys);
+            const mallLabel =
+                cateLabelMap.get(normalizeMallCateCode(cate)) ||
+                cateLabelMap.get(cate) ||
+                null;
 
             return {
                 id: String(r.uid),
@@ -421,8 +495,10 @@ export async function adminProductsRoutes(app: FastifyInstance) {
                 pickupOnly: Number(r.pickup_only ?? 0) === 1,
                 displayUse: Number(r.display_use ?? 0) === 1,
                 saleUse: Number(r.sale_use ?? 0) === 1,
-                cate: r.cate == null ? "0" : String(r.cate),
-                categoryKeys: parseCategoryKeysFromIcon(r.icon),
+                cate,
+                categoryKeys,
+                categoryLabel: uiLabel || mallLabel?.leaf || null,
+                categoryPath: uiLabel || mallLabel?.path || null,
 
                 image1: r.image1 || "",
                 image2: r.image2 || "",
