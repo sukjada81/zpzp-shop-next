@@ -92,9 +92,10 @@ const STATUS_OPTIONS = [
 function chipClass(active: boolean) {
     return [
         "rounded-full border px-3 py-2 text-xs font-extrabold",
+        // 활성: 크림+잉크 (검정+흰글자는 a{color:inherit} + .dad-admin 때문에 글자가 안 보임)
         active
-            ? "border-transparent bg-[var(--dad-ink)] text-white"
-            : "border-[var(--dad-border)] bg-white/70 text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]",
+            ? "border-[var(--dad-border)] bg-[var(--dad-cream)] text-[var(--dad-ink)]"
+            : "border-[var(--dad-border)] bg-white/70 text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]/70",
     ].join(" ");
 }
 
@@ -106,15 +107,18 @@ function formatDateText(value?: string | null) {
 }
 
 function normalizeTenantOptions(currentTenant: string) {
+    // DAD 하드코딩 "A 지점"(slug=a) 제거 — 실점포가 아님.
     const base = [
         { value: "all", label: "전체" },
         { value: "hq", label: "본사 상품" },
-        { value: "a", label: "A 지점" },
     ];
 
     if (!currentTenant || base.some((x) => x.value === currentTenant)) {
         return base;
     }
+
+    // URL에 남아 있는 기타 tenant 쿼리만 임시 표시 (a 하드코딩은 제외)
+    if (currentTenant === "a") return base;
 
     return [...base, { value: currentTenant, label: `${currentTenant.toUpperCase()} 지점` }];
 }
