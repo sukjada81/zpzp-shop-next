@@ -70,7 +70,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
     return (
         <div className="overflow-x-auto">
             {selected.length > 0 && (
-                <div className="sticky top-0 z-20 flex min-w-[1400px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
+                <div className="sticky top-0 z-20 flex min-w-[1100px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
                     <div className="text-sm font-bold">선택 {selected.length}개</div>
 
                     <button onClick={() => bulkStatus("active")} className="dad-btn dad-btn-primary h-8 px-3 text-xs">
@@ -87,8 +87,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                 </div>
             )}
 
-            {/* table-fixed 제거: 고정폭이면 카테고리 오른쪽이 잘림. 가로 스크롤로 전체 표시 */}
-            <table className="w-full min-w-[1400px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
                 <thead>
                 <tr className="border-b border-[var(--dad-border)] text-xs font-extrabold text-[var(--dad-muted)]">
                     <th className="w-9 px-2 py-3">
@@ -100,12 +99,11 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                     </th>
                     <th className="w-14 px-2 py-3 text-center">이미지</th>
                     <th className="w-24 px-2 py-3 text-center">지점</th>
-                    <th className="min-w-[220px] px-2 py-3 text-center">상품명</th>
-                    <th className="min-w-[220px] px-2 py-3 text-center">카테고리</th>
+                    <th className="min-w-[200px] px-2 py-3 text-center">상품명</th>
+                    <th className="min-w-[260px] px-2 py-3 text-center">카테고리</th>
                     <th className="w-24 px-2 py-3 text-center">상태</th>
                     <th className="w-28 px-2 py-3 text-center">가격</th>
                     <th className="w-20 px-2 py-3 text-center">링커</th>
-                    <th className="sticky right-0 z-10 w-24 bg-white px-2 py-3 text-center">관리</th>
                 </tr>
                 </thead>
 
@@ -203,25 +201,13 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                                     linkerCount={linkerCount}
                                 />
                             </td>
-
-                            <td className="sticky right-0 z-10 bg-white px-2 py-3 text-center align-middle">
-                                {/* [숨김] 상품 수정 — 본사 수정은 shop-php 담당. 필요 시 주석 해제
-                                <Link
-                                    href={`/admin/products/${id}`}
-                                    className="dad-btn dad-btn-ghost h-8 px-3 text-xs"
-                                >
-                                    수정
-                                </Link>
-                                */}
-                                <span className="text-xs font-bold text-[var(--dad-muted)]">조회만</span>
-                            </td>
                         </tr>
                     );
                 })}
 
                 {(rows || []).length === 0 && (
                     <tr>
-                        <td colSpan={9} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
+                        <td colSpan={8} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
                             상품 데이터가 없습니다.
                         </td>
                     </tr>
