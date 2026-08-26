@@ -70,7 +70,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
     return (
         <div className="overflow-x-auto">
             {selected.length > 0 && (
-                <div className="sticky top-0 z-20 flex min-w-[1240px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
+                <div className="sticky top-0 z-20 flex min-w-[1400px] items-center gap-2 border-b border-[var(--dad-border)] bg-white p-3">
                     <div className="text-sm font-bold">선택 {selected.length}개</div>
 
                     <button onClick={() => bulkStatus("active")} className="dad-btn dad-btn-primary h-8 px-3 text-xs">
@@ -87,36 +87,25 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                 </div>
             )}
 
-            <table className="w-full min-w-[1360px] table-fixed text-left text-sm">
-                <colgroup>
-                    <col className="w-[36px]" />
-                    <col className="w-[62px]" />
-                    <col className="w-[92px]" />
-                    <col className="w-auto" />
-                    <col className="w-[200px]" />
-                    <col className="w-[85px]" />
-                    <col className="w-[100px]" />
-                    <col className="w-[88px]" />
-                    <col className="w-[108px]" />
-                </colgroup>
-
+            {/* table-fixed 제거: 고정폭이면 카테고리 오른쪽이 잘림. 가로 스크롤로 전체 표시 */}
+            <table className="w-full min-w-[1400px] border-collapse text-left text-sm">
                 <thead>
                 <tr className="border-b border-[var(--dad-border)] text-xs font-extrabold text-[var(--dad-muted)]">
-                    <th className="px-2 py-3">
+                    <th className="w-9 px-2 py-3">
                         <input
                             type="checkbox"
                             checked={rows.length > 0 && selected.length === rows.length}
                             onChange={toggleAll}
                         />
                     </th>
-                    <th className="px-2 py-3 text-center">이미지</th>
-                    <th className="px-2 py-3 text-center">지점</th>
-                    <th className="px-2 py-3 text-center">상품명</th>
-                    <th className="px-2 py-3 text-center">카테고리</th>
-                    <th className="px-2 py-3 text-center">상태</th>
-                    <th className="px-2 py-3 text-center">가격</th>
-                    <th className="px-2 py-3 text-center">링커</th>
-                    <th className="sticky right-0 z-10 bg-white px-2 py-3 text-center">관리</th>
+                    <th className="w-14 px-2 py-3 text-center">이미지</th>
+                    <th className="w-24 px-2 py-3 text-center">지점</th>
+                    <th className="min-w-[220px] px-2 py-3 text-center">상품명</th>
+                    <th className="min-w-[220px] px-2 py-3 text-center">카테고리</th>
+                    <th className="w-24 px-2 py-3 text-center">상태</th>
+                    <th className="w-28 px-2 py-3 text-center">가격</th>
+                    <th className="w-20 px-2 py-3 text-center">링커</th>
+                    <th className="sticky right-0 z-10 w-24 bg-white px-2 py-3 text-center">관리</th>
                 </tr>
                 </thead>
 
@@ -182,15 +171,15 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                                 <div className="line-clamp-2 break-words leading-5">{title}</div>
                             </td>
 
-                            <td className="px-2 py-3 text-center align-middle">
-                                    <span
-                                        title={categoryPath || categoryLabel}
-                                        className={`inline-flex max-w-full rounded-xl border px-2.5 py-1 text-left text-[11px] font-bold leading-snug whitespace-normal break-keep ${categoryColor(
-                                            categoryLabel
-                                        )}`}
-                                    >
-                                        {categoryLabel}
-                                    </span>
+                            <td className="px-2 py-3 align-middle">
+                                <div
+                                    title={categoryPath || categoryLabel}
+                                    className={`rounded-xl border px-2.5 py-1.5 text-left text-[11px] font-bold leading-snug break-keep ${categoryColor(
+                                        categoryLabel
+                                    )}`}
+                                >
+                                    {categoryLabel}
+                                </div>
                             </td>
 
                             <td className="px-2 py-3 text-center align-middle">
