@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAdminUiStore } from "@/lib/admin/adminUiStore";
+import AdminLinkerScopeSelect from "./AdminLinkerScopeSelect";
 
 // DAD 잔재 메뉴는 삭제하지 않고 주석으로 보존한다(DAD 재사용 가능성).
 // 되살리려면 해당 줄의 주석만 해제하면 된다 — 라우트/페이지 파일은 그대로 남아 있다.
@@ -19,7 +20,7 @@ const items = [
     // { label: "포인트", href: "/admin/points", icon: "🪙" },
 ];
 
-export default function AdminSidebar() {
+export default function AdminSidebar({ initialLinker = "all" }: { initialLinker?: string }) {
     const pathname = usePathname();
     const open = useAdminUiStore((s) => s.sidebarOpen);
     const closeSidebar = useAdminUiStore((s) => s.closeSidebar);
@@ -42,13 +43,7 @@ export default function AdminSidebar() {
                 ].join(" ")}
             >
                 <div className="dad-card p-4">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <div className="text-xs font-semibold text-[var(--dad-muted)]">관리 범위</div>
-                            <div className="mt-1 text-sm font-extrabold text-[var(--dad-ink)]">전체 지점</div>
-                        </div>
-                        <span className="dad-chip">ALL</span>
-                    </div>
+                    <AdminLinkerScopeSelect initialLinker={initialLinker} />
 
                     <div className="mt-4 space-y-1">
                         {items.map((it) => {
@@ -67,10 +62,10 @@ export default function AdminSidebar() {
                                             : "text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]/70",
                                     ].join(" ")}
                                 >
-                  <span className="flex items-center gap-2">
-                    <span>{it.icon}</span>
-                      {it.label}
-                  </span>
+                                    <span className="flex items-center gap-2">
+                                        <span>{it.icon}</span>
+                                        {it.label}
+                                    </span>
                                     <span className={active ? "opacity-60" : "opacity-30"}>›</span>
                                 </Link>
                             );
@@ -86,10 +81,18 @@ export default function AdminSidebar() {
                                 지점
                             </Link>
                             */}
-                            <Link className="dad-btn dad-btn-ghost px-3 py-2 text-xs text-center" href="/admin/orders" onClick={closeSidebar}>
+                            <Link
+                                className="dad-btn dad-btn-ghost px-3 py-2 text-xs text-center"
+                                href="/admin/orders"
+                                onClick={closeSidebar}
+                            >
                                 주문
                             </Link>
-                            <Link className="dad-btn dad-btn-primary px-3 py-2 text-xs text-center" href="/admin/dashboard" onClick={closeSidebar}>
+                            <Link
+                                className="dad-btn dad-btn-primary px-3 py-2 text-xs text-center"
+                                href="/admin/dashboard"
+                                onClick={closeSidebar}
+                            >
                                 현황
                             </Link>
                         </div>

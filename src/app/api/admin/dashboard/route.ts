@@ -7,10 +7,10 @@ function baseApi() {
 
 export async function GET(req: Request) {
     const url = new URL(req.url);
-    const tenant = url.searchParams.get("tenant") || "all";
+    const linker = url.searchParams.get("linker") || url.searchParams.get("tenant") || "all";
 
     const upstream = new URL("/admin/dashboard", baseApi());
-    upstream.searchParams.set("tenant", tenant);
+    upstream.searchParams.set("linker", linker);
 
     const cookie = req.headers.get("cookie") || "";
 

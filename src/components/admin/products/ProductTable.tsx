@@ -2,7 +2,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { statusLabel } from "@/lib/admin/productStatus";
 import { toPreviewUrl } from "./productFormUtils";
 import ProductLinkerCountCell from "./ProductLinkerCountCell";
@@ -204,12 +203,15 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                             </td>
 
                             <td className="sticky right-0 z-10 bg-white px-2 py-3 text-center align-middle">
+                                {/* [숨김] 상품 수정 — 본사 수정은 shop-php 담당. 필요 시 주석 해제
                                 <Link
                                     href={`/admin/products/${id}`}
                                     className="dad-btn dad-btn-ghost h-8 px-3 text-xs"
                                 >
                                     수정
                                 </Link>
+                                */}
+                                <span className="text-xs font-bold text-[var(--dad-muted)]">조회만</span>
                             </td>
                         </tr>
                     );

@@ -1,5 +1,10 @@
 // apps/api/src/modules/admin/dashboard.routes.ts
 import type { FastifyInstance } from "fastify";
+import {
+    orderInfoWhereForAdminLinker,
+    productUidsForAdminLinker,
+    resolveAdminLinkerScope,
+} from "./linker-scope.js";
 
 function requireSuperAdmin(req: any, reply: any) {
     const admin = req.session?.admin;
@@ -10,69 +15,88 @@ function requireSuperAdmin(req: any, reply: any) {
     return null;
 }
 
+function unixToIso(v: unknown) {
+    const n = Number(v ?? 0);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return new Date(n * 1000).toISOString();
+}
+
 export async function adminDashboardRoutes(app: FastifyInstance) {
-    // GET /admin/dashboard?tenant=all|a|b
+    // GET /admin/dashboard?linker=all|{uid}
     app.get("/admin/dashboard", async (req: any, reply) => {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
 
-        const tenantSlug = String(req.query?.tenant ?? "all").trim();
-
-        // tenantIds 결정
-        let tenantIds: bigint[] | null = null;
-
-        if (tenantSlug !== "all") {
-            const t = await app.prisma.tenant.findUnique({
-                where: { slug: tenantSlug },
-                select: { id: true },
-            });
-            if (!t) return reply.code(400).send({ ok: false, message: "invalid tenant" });
-            tenantIds = [t.id];
+        const linkerParam = String(req.query?.linker ?? req.query?.tenant ?? "all").trim();
+        const resolved = await resolveAdminLinkerScope(app, linkerParam);
+        if (!resolved.ok) {
+            return reply.code(400).send({ ok: false, message: resolved.message });
         }
+        const scope = resolved.scope;
 
-        const orderWhere = tenantIds ? { tenantId: { in: tenantIds } } : {};
-        const pointsWhere = tenantIds ? { tenantId: { in: tenantIds } } : {};
-        const productWhere = tenantIds ? { tenantId: { in: tenantIds } } : {};
+        const orderWhere = orderInfoWhereForAdminLinker(
+            { platform_type: "DAD" },
+            scope
+        );
 
-        const [ordersCount, productsCount, salesAgg, pointsAgg, recentOrders] = await Promise.all([
-            app.prisma.order.count({ where: orderWhere }),
-            app.prisma.product.count({ where: productWhere }),
-            app.prisma.order.aggregate({
+        const productIds = await productUidsForAdminLinker(app, scope);
+        const productWhere =
+            productIds === null
+                ? { deleted_at: null }
+                : productIds.length
+                  ? { deleted_at: null, uid: { in: productIds } }
+                  : { deleted_at: null, uid: { in: [-1] } };
+
+        const [ordersCount, productsCount, salesAgg, recentOrders] = await Promise.all([
+            app.prisma.mallRN_order_info.count({ where: orderWhere }),
+            app.prisma.mallRN_goods.count({ where: productWhere }),
+            app.prisma.mallRN_order_info.aggregate({
                 where: orderWhere,
-                _sum: { totalAmount: true },
+                _sum: { pay_total: true },
             }),
-            app.prisma.pointsLedger.aggregate({
-                where: pointsWhere,
-                _sum: { amount: true },
-            }),
-            app.prisma.order.findMany({
+            app.prisma.mallRN_order_info.findMany({
                 where: orderWhere,
-                orderBy: { createdAt: "desc" },
+                orderBy: [{ signdate: "desc" }, { uid: "desc" }],
                 take: 20,
                 select: {
-                    id: true,
-                    orderNo: true,
-                    buyerName: true,
-                    buyerPhone: true,
-                    status: true,
-                    paymentStatus: true,
-                    totalAmount: true,
-                    createdAt: true,
-                    tenant: { select: { slug: true, name: true } },
+                    uid: true,
+                    order_num: true,
+                    name: true,
+                    cell: true,
+                    pay_total: true,
+                    pay_status: true,
+                    signdate: true,
+                    checkout_shop_slug: true,
                 },
             }),
         ]);
 
         return reply.send({
             ok: true,
-            tenant: tenantSlug,
+            linker: scope
+                ? { uid: scope.linkerUid, shopSlug: scope.shopSlug, shopName: scope.shopName }
+                : null,
+            tenant: linkerParam || "all",
             kpi: {
                 ordersCount,
                 productsCount,
-                totalSales: salesAgg._sum.totalAmount ?? 0,
-                pointsSum: pointsAgg._sum.amount ?? 0,
+                totalSales: Number(salesAgg._sum.pay_total ?? 0),
+                pointsSum: 0,
             },
-            recentOrders,
+            recentOrders: recentOrders.map((row) => ({
+                id: String(row.uid),
+                orderNo: String(row.order_num ?? ""),
+                buyerName: String(row.name ?? ""),
+                buyerPhone: String(row.cell ?? ""),
+                status: String(row.pay_status ?? ""),
+                paymentStatus: String(row.pay_status ?? ""),
+                totalAmount: Number(row.pay_total ?? 0),
+                createdAt: unixToIso(row.signdate) ?? "",
+                tenant: {
+                    slug: String(row.checkout_shop_slug || (scope?.shopSlug ?? "all")),
+                    name: scope?.shopName || String(row.checkout_shop_slug || "전체"),
+                },
+            })),
         });
     });
 }

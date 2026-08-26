@@ -74,11 +74,12 @@ export async function getAdminTenants(): Promise<AdminTenant[]> {
     return (json?.tenants ?? json?.rows ?? []) as AdminTenant[];
 }
 
-export async function getAdminDashboard(tenant: string): Promise<AdminDashboardDto> {
-    return fetchJson<AdminDashboardDto>("/api/admin/dashboard", { tenant: tenant || "all" });
+export async function getAdminDashboard(linker: string): Promise<AdminDashboardDto> {
+    return fetchJson<AdminDashboardDto>("/api/admin/dashboard", { linker: linker || "all" });
 }
 
 export async function getAdminProducts(params: {
+    linker?: string;
     tenant?: string;
     page?: string;
     pageSize?: string;
@@ -86,6 +87,7 @@ export async function getAdminProducts(params: {
     status?: string;
 }): Promise<AdminListResponse<AdminProductItem>> {
     return fetchJson<AdminListResponse<AdminProductItem>>("/api/admin/products", {
+        linker: params.linker ?? "all",
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
         pageSize: params.pageSize ?? "20",
@@ -95,6 +97,7 @@ export async function getAdminProducts(params: {
 }
 
 export async function getAdminOrders(params: {
+    linker?: string;
     tenant?: string;
     page?: string;
     pageSize?: string;
@@ -102,6 +105,7 @@ export async function getAdminOrders(params: {
     status?: string;
 }): Promise<AdminListResponse<AdminOrderItem>> {
     return fetchJson<AdminListResponse<AdminOrderItem>>("/api/admin/orders", {
+        linker: params.linker ?? "all",
         tenant: params.tenant ?? "all",
         page: params.page ?? "1",
         pageSize: params.pageSize ?? "20",

@@ -2,6 +2,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import OrderStatusSelect from "./ui/OrderStatusSelect";
+import { readAdminLinkerFromCookie } from "@/lib/admin/linkerScope";
 
 type OrderRow = {
     id: string;
@@ -89,38 +90,11 @@ const STATUS_OPTIONS = [
     { value: "9", label: "주문취소" },
 ];
 
-function chipClass(active: boolean) {
-    return [
-        "rounded-full border px-3 py-2 text-xs font-extrabold",
-        // 활성: 크림+잉크 (검정+흰글자는 a{color:inherit} + .dad-admin 때문에 글자가 안 보임)
-        active
-            ? "border-[var(--dad-border)] bg-[var(--dad-cream)] text-[var(--dad-ink)]"
-            : "border-[var(--dad-border)] bg-white/70 text-[var(--dad-ink)] hover:bg-[var(--dad-cream)]/70",
-    ].join(" ");
-}
-
 function formatDateText(value?: string | null) {
     if (!value) return "-";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
     return d.toLocaleString("ko-KR");
-}
-
-function normalizeTenantOptions(currentTenant: string) {
-    // DAD 하드코딩 "A 지점"(slug=a) 제거 — 실점포가 아님.
-    const base = [
-        { value: "all", label: "전체" },
-        { value: "hq", label: "본사 상품" },
-    ];
-
-    if (!currentTenant || base.some((x) => x.value === currentTenant)) {
-        return base;
-    }
-
-    // URL에 남아 있는 기타 tenant 쿼리만 임시 표시 (a 하드코딩은 제외)
-    if (currentTenant === "a") return base;
-
-    return [...base, { value: currentTenant, label: `${currentTenant.toUpperCase()} 지점` }];
 }
 
 function getPayStatusLabel(row: OrderRow) {
@@ -147,14 +121,15 @@ export default async function AdminOrdersPage({
     searchParams?: Promise<SP> | SP;
 }) {
     const sp = await resolveSearchParams(searchParams);
+    const h = await headers();
+    const linker = readAdminLinkerFromCookie(h.get("cookie"));
 
-    const tenant = typeof sp.tenant === "string" ? sp.tenant : "all";
     const status = typeof sp.status === "string" ? sp.status : "";
     const q = typeof sp.q === "string" ? sp.q : "";
     const page = typeof sp.page === "string" ? sp.page : "1";
 
     const qs = new URLSearchParams();
-    qs.set("tenant", tenant);
+    qs.set("linker", linker);
     if (status) qs.set("status", status);
     if (q) qs.set("q", q);
     qs.set("page", page);
@@ -164,7 +139,6 @@ export default async function AdminOrdersPage({
 
     const currentPage = Number(data.page || 1);
     const totalPages = Math.max(1, Math.ceil((data.total || 0) / (data.limit || 20)));
-    const tenantOptions = normalizeTenantOptions(tenant);
 
     return (
         <main className="mx-auto w-full max-w-[1600px] px-3 pb-10 pt-6 sm:px-4">
@@ -174,29 +148,13 @@ export default async function AdminOrdersPage({
                         <div>
                             <div className="text-lg font-extrabold text-[var(--dad-ink)]">주문 관리</div>
                             <div className="text-sm font-bold text-[var(--dad-muted)]">
-                                통합 관리자 / 전체 tenant 주문을 조회/처리합니다.
+                                통합 관리자 / 왼쪽 관리 범위(링커) 기준으로 주문을 조회합니다.
                             </div>
                         </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                        {tenantOptions.map((t) => (
-                            <a
-                                key={t.value}
-                                className={chipClass(tenant === t.value)}
-                                href={`/admin/orders?tenant=${encodeURIComponent(t.value)}&status=${encodeURIComponent(
-                                    status
-                                )}&q=${encodeURIComponent(q)}&page=1`}
-                            >
-                                {t.label}
-                            </a>
-                        ))}
-                    </div>
-
                     <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center">
                         <form className="flex w-full gap-2" action="/admin/orders" method="get">
-                            <input type="hidden" name="tenant" value={tenant} />
-
                             <select
                                 name="status"
                                 defaultValue={status}
@@ -216,7 +174,7 @@ export default async function AdminOrdersPage({
                                 className="h-11 w-full rounded-2xl border border-[var(--dad-border)] bg-white px-4 text-sm font-bold text-[var(--dad-ink)] outline-none focus:ring-2 focus:ring-[var(--dad-orange)]"
                             />
 
-                            <button className="h-11 shrink-0 rounded-2xl bg-[var(--dad-ink)] px-5 text-sm font-extrabold text-white">
+                            <button className="h-11 shrink-0 rounded-2xl bg-[var(--dad-orange)] px-5 text-sm font-extrabold text-white">
                                 검색
                             </button>
                         </form>
@@ -326,7 +284,7 @@ export default async function AdminOrdersPage({
                     <div className="mt-4 flex items-center justify-between">
                         <a
                             className="dad-btn dad-btn-ghost px-4 py-2 text-sm"
-                            href={`/admin/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                            href={`/admin/orders?status=${encodeURIComponent(
                                 status
                             )}&q=${encodeURIComponent(q)}&page=${Math.max(1, currentPage - 1)}`}
                         >
@@ -335,7 +293,7 @@ export default async function AdminOrdersPage({
 
                         <a
                             className="dad-btn dad-btn-ghost px-4 py-2 text-sm"
-                            href={`/admin/orders?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                            href={`/admin/orders?status=${encodeURIComponent(
                                 status
                             )}&q=${encodeURIComponent(q)}&page=${Math.min(totalPages, currentPage + 1)}`}
                         >
