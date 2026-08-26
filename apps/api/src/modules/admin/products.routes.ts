@@ -1,6 +1,10 @@
 // apps/api/src/modules/admin/products.routes.ts
 import type { FastifyInstance } from "fastify";
 import { countActiveLinkersByProductIds } from "./linker-products.routes.js";
+import {
+    productUidsForAdminLinker,
+    resolveAdminLinkerScope,
+} from "./linker-scope.js";
 
 type AdminSession = {
     admin?: {
@@ -284,6 +288,7 @@ export async function adminProductsRoutes(app: FastifyInstance) {
 
         const q = (req.query ?? {}) as any;
 
+        const linkerParam = String(q.linker ?? "all").trim() || "all";
         const tenantSlug = String(q.tenant ?? "all").trim() || "all";
         const keyword = q.q ? String(q.q).trim() : "";
         const status = q.status ? String(q.status).trim() : "";
@@ -292,9 +297,17 @@ export async function adminProductsRoutes(app: FastifyInstance) {
         const limit = Math.min(100, Math.max(1, Number(q.limit ?? q.pageSize ?? 20) || 20));
         const skip = (page - 1) * limit;
 
+        const linkerResolved = await resolveAdminLinkerScope(app, linkerParam);
+        if (!linkerResolved.ok) {
+            return reply.code(400).send({ ok: false, message: linkerResolved.message });
+        }
+
         const where: any = { deleted_at: null };
 
-        if (tenantSlug !== "all") {
+        const productIds = await productUidsForAdminLinker(app, linkerResolved.scope);
+        if (productIds !== null) {
+            where.uid = { in: productIds.length ? productIds : [-1] };
+        } else if (tenantSlug !== "all") {
             if (isHqTenantSlug(tenantSlug)) {
                 where.tenant_id = BigInt(0);
             } else {

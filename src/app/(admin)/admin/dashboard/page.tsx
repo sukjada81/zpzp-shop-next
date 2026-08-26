@@ -2,13 +2,15 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { redirect } from "next/navigation"; // ✅ 추가
+import { redirect } from "next/navigation";
+import { readAdminLinkerFromCookie } from "@/lib/admin/linkerScope";
 
 type Money = number | string;
 
 type Dash = {
     ok: boolean;
     tenant: string;
+    linker?: { uid: number; shopSlug: string; shopName: string } | null;
     kpi: {
         ordersCount: number;
         productsCount: number;
@@ -44,20 +46,19 @@ async function getOriginAndCookie() {
     return { origin, cookie };
 }
 
-async function getDash(tenant: string): Promise<Dash> {
+async function getDash(linker: string): Promise<Dash> {
     const { origin, cookie } = await getOriginAndCookie();
 
     const url = new URL(`/api/admin/dashboard`, origin);
-    url.searchParams.set("tenant", tenant || "all");
+    url.searchParams.set("linker", linker || "all");
 
     const res = await fetch(url.toString(), {
         cache: "no-store",
         headers: cookie ? { cookie } : undefined,
     });
 
-    // ✅ 401이면 에러 throw 대신 로그인으로 이동
     if (res.status === 401) {
-        redirect(`/login?returnTo=${encodeURIComponent("/dashboard?tenant=" + (tenant || "all"))}`);
+        redirect(`/admin/login?returnTo=${encodeURIComponent("/admin/dashboard")}`);
     }
 
     if (!res.ok) {
@@ -68,35 +69,21 @@ async function getDash(tenant: string): Promise<Dash> {
     return res.json();
 }
 
-export default async function AdminDashboardPage({
-                                                     searchParams,
-                                                 }: {
-    searchParams: Promise<{ tenant?: string }>;
-}) {
-    const params = await searchParams;
-    const tenant = params?.tenant || "all";
-
-    const data = await getDash(tenant);
+export default async function AdminDashboardPage() {
+    const h = await headers();
+    const linker = readAdminLinkerFromCookie(h.get("cookie"));
+    const data = await getDash(linker);
+    const scopeLabel = data.linker?.shopName || data.linker?.shopSlug || "전체 링커";
 
     return (
         <div className="space-y-4">
-            {/* 이하 기존 코드 그대로 */}
             <div className="dad-card p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="min-w-0">
                         <div className="text-lg font-extrabold text-[var(--dad-ink)]">대시보드</div>
                         <div className="text-sm font-bold text-[var(--dad-muted)]">
-                            통합 관리자 / tenant 기준으로 데이터가 분기됩니다.
+                            통합 관리자 / 링커 범위: {scopeLabel}
                         </div>
-                    </div>
-
-                    <div className="sm:ml-auto flex items-center gap-2">
-                        <FilterPill active={tenant === "all"} href="/dashboard?tenant=all" label="전체" />
-                        {/* [숨김 2026-07-31] DAD 하드코딩 지점 필터(A/B 지점) — 줍줍 실점포명과 무관하고
-                            slug 도 a/b 고정이라 항상 빈 결과. 지점 운영이 필요해지면 dad_tenants 기준 동적 생성으로 되살릴 것.
-                        <FilterPill active={tenant === "a"} href="/dashboard?tenant=a" label="A 지점" />
-                        <FilterPill active={tenant === "b"} href="/dashboard?tenant=b" label="B 지점" />
-                        */}
                     </div>
                 </div>
             </div>
@@ -105,10 +92,6 @@ export default async function AdminDashboardPage({
                 <Kpi title="주문 수" value={data?.kpi?.ordersCount ?? 0} />
                 <Kpi title="상품 수" value={data?.kpi?.productsCount ?? 0} />
                 <Kpi title="총 매출" value={Number(data?.kpi?.totalSales ?? 0).toLocaleString()} suffix="원" />
-                {/* [숨김 2026-07-31] 포인트 합계 — DAD 전용. 줍줍 dad_points_ledger 0행이라 항상 0P 로 표시됨.
-                    API(dashboard.routes.ts)는 그대로 두어 되살릴 때 프론트만 주석 해제하면 되도록 함.
-                <Kpi title="포인트 합계" value={Number(data?.kpi?.pointsSum ?? 0).toLocaleString()} suffix="P" />
-                */}
             </div>
 
             <div className="dad-card p-5">
@@ -118,7 +101,7 @@ export default async function AdminDashboardPage({
                         <div className="text-xs font-bold text-[var(--dad-muted)]">최근 20건</div>
                     </div>
                     <Link
-                        href="/orders"
+                        href="/admin/orders"
                         className="rounded-full border border-[var(--dad-border)] bg-white/70 px-4 py-2 text-sm font-extrabold text-[var(--dad-ink)]"
                     >
                         주문 전체보기 →
@@ -128,70 +111,49 @@ export default async function AdminDashboardPage({
                 <div className="mt-4 overflow-x-auto">
                     <table className="w-full min-w-[900px] text-left text-sm">
                         <thead>
-                        <tr className="border-b border-[var(--dad-border)] text-xs font-extrabold text-[var(--dad-muted)]">
-                            <th className="py-3 pr-3">지점</th>
-                            <th className="py-3 pr-3">주문번호</th>
-                            <th className="py-3 pr-3">구매자</th>
-                            <th className="py-3 pr-3">상태</th>
-                            <th className="py-3 pr-3">결제</th>
-                            <th className="py-3 pr-3 text-right">금액</th>
-                            <th className="py-3 pr-3">일시</th>
-                        </tr>
+                            <tr className="border-b border-[var(--dad-border)] text-xs font-extrabold text-[var(--dad-muted)]">
+                                <th className="py-3 pr-3">스토어</th>
+                                <th className="py-3 pr-3">주문번호</th>
+                                <th className="py-3 pr-3">구매자</th>
+                                <th className="py-3 pr-3">결제</th>
+                                <th className="py-3 pr-3 text-right">금액</th>
+                                <th className="py-3 pr-3">일시</th>
+                            </tr>
                         </thead>
                         <tbody>
-                        {(data?.recentOrders || []).map((o) => (
-                            <tr key={String(o.id)} className="border-b border-[var(--dad-border)]">
-                                <td className="py-3 pr-3 font-bold text-[var(--dad-ink)]">
-                                    {o.tenant?.name} ({o.tenant?.slug})
-                                </td>
-                                <td className="py-3 pr-3 font-extrabold text-[var(--dad-ink)]">{o.orderNo}</td>
-                                <td className="py-3 pr-3">
-                                    <div className="font-bold text-[var(--dad-ink)]">{o.buyerName}</div>
-                                    <div className="text-xs font-bold text-[var(--dad-muted)]">{o.buyerPhone}</div>
-                                </td>
-                                <td className="py-3 pr-3">
-                                    <Badge>{o.status}</Badge>
-                                </td>
-                                <td className="py-3 pr-3">
-                                    <Badge>{o.paymentStatus}</Badge>
-                                </td>
-                                <td className="py-3 pr-3 text-right font-extrabold text-[var(--dad-ink)]">
-                                    {Number(o.totalAmount ?? 0).toLocaleString()}원
-                                </td>
-                                <td className="py-3 pr-3 text-xs font-bold text-[var(--dad-muted)]">
-                                    {new Date(o.createdAt).toLocaleString("ko-KR")}
-                                </td>
-                            </tr>
-                        ))}
-
-                        {(data?.recentOrders || []).length === 0 && (
-                            <tr>
-                                <td colSpan={7} className="py-8 text-center text-sm font-bold text-[var(--dad-muted)]">
-                                    주문 데이터가 없습니다.
-                                </td>
-                            </tr>
-                        )}
+                            {(data.recentOrders || []).map((o) => (
+                                <tr key={String(o.id)} className="border-b border-[var(--dad-border)]">
+                                    <td className="py-3 pr-3 font-bold text-[var(--dad-ink)]">
+                                        {o.tenant?.name || "-"}
+                                    </td>
+                                    <td className="py-3 pr-3 font-extrabold text-[var(--dad-ink)]">{o.orderNo}</td>
+                                    <td className="py-3 pr-3">
+                                        <div className="font-bold text-[var(--dad-ink)]">{o.buyerName}</div>
+                                        <div className="text-xs font-bold text-[var(--dad-muted)]">{o.buyerPhone}</div>
+                                    </td>
+                                    <td className="py-3 pr-3">
+                                        <Badge>{o.paymentStatus || o.status || "-"}</Badge>
+                                    </td>
+                                    <td className="py-3 pr-3 text-right font-extrabold text-[var(--dad-ink)]">
+                                        {Number(o.totalAmount ?? 0).toLocaleString()}원
+                                    </td>
+                                    <td className="py-3 pr-3 text-xs font-bold text-[var(--dad-muted)]">
+                                        {o.createdAt ? new Date(o.createdAt).toLocaleString("ko-KR") : "-"}
+                                    </td>
+                                </tr>
+                            ))}
+                            {(data.recentOrders || []).length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="py-10 text-center text-sm font-bold text-[var(--dad-muted)]">
+                                        주문 데이터가 없습니다.
+                                    </td>
+                                </tr>
+                            ) : null}
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
-    );
-}
-
-function FilterPill({ href, label, active }: { href: string; label: string; active: boolean }) {
-    return (
-        <a
-            href={href}
-            className={[
-                "rounded-full px-4 py-2 text-sm font-extrabold",
-                active
-                    ? "bg-[var(--dad-orange)] text-white shadow-sm"
-                    : "border border-[var(--dad-border)] bg-white/70 text-[var(--dad-ink)]",
-            ].join(" ")}
-        >
-            {label}
-        </a>
     );
 }
 
@@ -210,7 +172,7 @@ function Kpi({ title, value, suffix }: { title: string; value: string | number; 
 function Badge({ children }: { children: ReactNode }) {
     return (
         <span className="inline-flex items-center rounded-full border border-[var(--dad-border)] bg-white/70 px-3 py-1 text-xs font-extrabold text-[var(--dad-ink)]">
-      {children}
-    </span>
+            {children}
+        </span>
     );
 }

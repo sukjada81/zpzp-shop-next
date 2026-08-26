@@ -4,13 +4,19 @@
 import AdminTopbar from "./AdminTopbar";
 import AdminSidebar from "./AdminSidebar";
 
-export default function AdminShell({ children }: { children: React.ReactNode }) {
+export default function AdminShell({
+    children,
+    initialLinker = "all",
+}: {
+    children: React.ReactNode;
+    initialLinker?: string;
+}) {
     return (
         <div className="min-h-dvh bg-[var(--dad-bg)]">
             <AdminTopbar />
 
             <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-4 px-3 pb-10 pt-4 sm:px-4 lg:grid-cols-[290px_1fr]">
-                <AdminSidebar />
+                <AdminSidebar initialLinker={initialLinker} />
                 <main className="min-w-0">{children}</main>
             </div>
         </div>

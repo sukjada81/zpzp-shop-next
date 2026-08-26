@@ -2,6 +2,10 @@
 import type { FastifyInstance } from "fastify";
 import { buildOrderTimeline } from "../../lib/order/order-timeline.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
+import {
+    orderInfoWhereForAdminLinker,
+    resolveAdminLinkerScope,
+} from "./linker-scope.js";
 
 type AdminSession = {
     admin?: {
@@ -116,6 +120,7 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
         const denied = requireSuperAdmin(req, reply);
         if (denied) return denied;
 
+        const linkerParam = String(req.query?.linker ?? "all").trim();
         const tenantSlug = String(req.query?.tenant ?? "all").trim();
         const statusRaw = String(req.query?.status ?? "").trim();
         const q = String(req.query?.q ?? "").trim();
@@ -123,29 +128,42 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
         const take = Math.min(100, Math.max(1, Number(req.query?.limit ?? req.query?.pageSize ?? 20) || 20));
         const skip = (pageNum - 1) * take;
 
-        const tenantId = await resolveTenantIdBySlug(app, tenantSlug);
+        const linkerResolved = await resolveAdminLinkerScope(app, linkerParam);
+        if (!linkerResolved.ok) {
+            return reply.code(400).send({ ok: false, message: linkerResolved.message });
+        }
+
+        // linker 스코프가 있으면 tenant 필터는 쓰지 않는다(지점→링커 전환).
+        const tenantId = linkerResolved.scope
+            ? null
+            : await resolveTenantIdBySlug(app, tenantSlug);
         if (tenantId === undefined) {
             return reply.code(400).send({ ok: false, message: "invalid tenant" });
         }
 
         const statusFilter = statusRaw === "" ? null : toInt(statusRaw, NaN);
 
-        const infoWhere: any = {
-            platform_type: "DAD",
-        };
+        let infoWhere: any = orderInfoWhereForAdminLinker(
+            { platform_type: "DAD" },
+            linkerResolved.scope
+        );
 
         if (tenantId !== null) {
-            infoWhere.tenant_id = tenantId;
+            infoWhere = { ...infoWhere, tenant_id: tenantId };
         }
 
         if (q) {
-            infoWhere.OR = [
+            const qOr = [
                 { order_num: { contains: q } },
                 { name: { contains: q } },
                 { cell: { contains: q } },
                 { name2: { contains: q } },
                 { cell2: { contains: q } },
             ];
+            infoWhere = infoWhere.OR
+                ? { ...infoWhere, AND: [{ OR: infoWhere.OR }, { OR: qOr }] }
+                : { ...infoWhere, OR: qOr };
+            if (infoWhere.AND) delete infoWhere.OR;
         }
 
         if (statusFilter !== null && Number.isFinite(statusFilter)) {
@@ -167,11 +185,18 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
                     total: 0,
                     page: pageNum,
                     limit: take,
+                    linker: linkerResolved.scope
+                        ? {
+                              uid: linkerResolved.scope.linkerUid,
+                              shopSlug: linkerResolved.scope.shopSlug,
+                              shopName: linkerResolved.scope.shopName,
+                          }
+                        : null,
                     rows: [],
                 });
             }
 
-            infoWhere.order_num = { in: orderNums };
+            infoWhere = { ...infoWhere, order_num: { in: orderNums } };
         }
 
         const [total, infoRows] = await Promise.all([

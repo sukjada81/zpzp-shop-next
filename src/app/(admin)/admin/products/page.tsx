@@ -1,6 +1,8 @@
-import { getAdminProducts, getAdminTenants } from "@/lib/admin/adminApi";
+import { headers } from "next/headers";
+import { getAdminProducts } from "@/lib/admin/adminApi";
 import ProductFilters from "@/components/admin/products/ProductFilters";
 import ProductTable from "@/components/admin/products/ProductTable";
+import { readAdminLinkerFromCookie } from "@/lib/admin/linkerScope";
 
 function normalizeList<T>(list: any): {
     items: T[];
@@ -29,22 +31,20 @@ export default async function AdminProductsPage({
     searchParams?: Promise<SP> | SP;
 }) {
     const sp = await resolveSearchParams(searchParams);
+    const h = await headers();
+    const linker = readAdminLinkerFromCookie(h.get("cookie"));
 
-    const tenant = typeof sp.tenant === "string" ? sp.tenant : "all";
     const status = typeof sp.status === "string" ? sp.status : "";
     const q = typeof sp.q === "string" ? sp.q : "";
     const page = typeof sp.page === "string" ? sp.page : "1";
 
-    const [tenants, rawList] = await Promise.all([
-        getAdminTenants(),
-        getAdminProducts({
-            tenant,
-            status: status || undefined,
-            q: q || undefined,
-            page,
-            pageSize: "20",
-        }),
-    ]);
+    const rawList = await getAdminProducts({
+        linker,
+        status: status || undefined,
+        q: q || undefined,
+        page,
+        pageSize: "20",
+    });
 
     const list = normalizeList<any>(rawList);
     const pageCount = Math.max(1, Math.ceil(list.total / list.pageSize));
@@ -58,18 +58,20 @@ export default async function AdminProductsPage({
                 <div>
                     <div className="text-xl font-extrabold text-[var(--dad-ink)]">상품 관리</div>
                     <div className="mt-1 text-sm text-[var(--dad-muted)]">
-                        지점별 상품을 조회/등록합니다. (통합 관리자)
+                        링커 범위 기준으로 상품을 조회합니다. (통합 관리자)
                     </div>
                 </div>
 
+                {/* [숨김] 상품 등록 — 본사 등록은 shop-php 담당. 필요 시 주석 해제
                 <a href="/admin/products/new" className="dad-btn dad-btn-primary h-10 px-4 text-sm">
                     + 상품 등록
                 </a>
+                */}
             </div>
 
             <div className="space-y-4">
                 <div className="dad-card p-4">
-                    <ProductFilters tenants={tenants} />
+                    <ProductFilters />
                 </div>
 
                 <div className="dad-card p-0">
@@ -88,7 +90,7 @@ export default async function AdminProductsPage({
                         <div className="flex gap-2">
                             <a
                                 className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
-                                href={`/admin/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                                href={`/admin/products?status=${encodeURIComponent(
                                     status
                                 )}&q=${encodeURIComponent(q)}&page=${prevPage}`}
                             >
@@ -96,7 +98,7 @@ export default async function AdminProductsPage({
                             </a>
                             <a
                                 className="dad-btn dad-btn-ghost h-9 px-3 text-sm"
-                                href={`/admin/products?tenant=${encodeURIComponent(tenant)}&status=${encodeURIComponent(
+                                href={`/admin/products?status=${encodeURIComponent(
                                     status
                                 )}&q=${encodeURIComponent(q)}&page=${nextPage}`}
                             >
