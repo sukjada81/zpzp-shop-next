@@ -87,13 +87,13 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                 </div>
             )}
 
-            <table className="w-full min-w-[1240px] table-fixed text-left text-sm">
+            <table className="w-full min-w-[1360px] table-fixed text-left text-sm">
                 <colgroup>
                     <col className="w-[36px]" />
                     <col className="w-[62px]" />
                     <col className="w-[92px]" />
                     <col className="w-auto" />
-                    <col className="w-[130px]" />
+                    <col className="w-[200px]" />
                     <col className="w-[85px]" />
                     <col className="w-[100px]" />
                     <col className="w-[88px]" />
@@ -185,7 +185,7 @@ export default function ProductTable({ rows }: { rows: any[] }) {
                             <td className="px-2 py-3 text-center align-middle">
                                     <span
                                         title={categoryPath || categoryLabel}
-                                        className={`inline-flex max-w-[118px] truncate rounded-full border px-2.5 py-1 text-[11px] font-bold ${categoryColor(
+                                        className={`inline-flex max-w-full rounded-xl border px-2.5 py-1 text-left text-[11px] font-bold leading-snug whitespace-normal break-keep ${categoryColor(
                                             categoryLabel
                                         )}`}
                                     >
