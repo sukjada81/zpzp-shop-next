@@ -27,7 +27,7 @@ export default function AdminTopbar() {
                             <div className="text-sm font-extrabold text-[var(--dad-ink)]">
                                 줍줍링크 <span className="text-[var(--dad-orange)]">Admin</span>
                             </div>
-                            <div className="text-xs text-[var(--dad-muted)]">통합 대시보드 / 전체 지점 관리</div>
+                            <div className="text-xs text-[var(--dad-muted)]">통합 대시보드 / 링커 범위 관리</div>
                         </div>
                     </div>
                 </div>
@@ -36,9 +36,11 @@ export default function AdminTopbar() {
                     <a href="/admin/dashboard" className="dad-chip">
                         Dashboard
                     </a>
+                    {/* [숨김] Tenants — /admin/tenants 는 의도적 404(지점 CRUD 미사용). 메뉴·링커 셀렉트로 대체.
                     <a href="/admin/tenants" className="dad-chip">
                         Tenants
                     </a>
+                    */}
                     <a href="/admin/login" className="dad-btn dad-btn-ghost px-3 py-2 text-sm">
                         로그아웃
                     </a>
