@@ -413,3 +413,101 @@ export function pickRepresentativeCoupon(rows: CouponRow[]): number {
     const normal = rows.find((r) => r.kind === "normal");
     return normal ? normal.couponUid : rows[0].couponUid;
 }
+
+export type UsedOrderCoupon = {
+    name: string;
+    kind: string;
+    amount: number;
+};
+
+/** 주문 상세 노출용 쿠폰명. 매니저명이 있으면 그대로, 없으면 종류 기본 라벨. */
+export function couponDisplayName(kind: string, managerName?: string | null): string {
+    const name = String(managerName ?? "").trim();
+    if (kind === "welcome") return name || "웰컴머니";
+    return name || "쿠폰";
+}
+
+/**
+ * 주문에 실제 사용된 쿠폰 목록.
+ * zpzp_order_coupon 이 단일 진실원. 레거시(PHP 구주문)는 order_info.use_coupon 폴백.
+ */
+export async function loadOrderUsedCoupons(
+    prisma: PrismaLike,
+    orderNum: string,
+    fallback?: { useCoupon?: number | null; couponUid?: number | null }
+): Promise<{ couponTotal: number; coupons: UsedOrderCoupon[] }> {
+    const on = String(orderNum ?? "").trim();
+    if (!on) return { couponTotal: 0, coupons: [] };
+
+    try {
+        const rows = await prisma.zpzp_order_coupon.findMany({
+            where: { order_num: on },
+            orderBy: [{ sort_order: "asc" }, { uid: "asc" }],
+            select: { c_uid: true, kind: true, amount: true },
+        });
+
+        if (rows.length) {
+            const cUids = [
+                ...new Set(rows.map((r) => toInt(r.c_uid, 0)).filter((n) => n > 0)),
+            ];
+            const defs = cUids.length
+                ? await prisma.mallRN_coupon_manager.findMany({
+                      where: { uid: { in: cUids } },
+                      select: { uid: true, name: true },
+                  })
+                : [];
+            const nameByUid = new Map(
+                defs.map((d) => [toInt(d.uid, 0), String(d.name ?? "").trim()])
+            );
+            const coupons: UsedOrderCoupon[] = [];
+            for (const r of rows) {
+                const amount = toInt(r.amount, 0);
+                if (amount <= 0) continue;
+                const kind = String(r.kind ?? "normal");
+                coupons.push({
+                    kind,
+                    name: couponDisplayName(kind, nameByUid.get(toInt(r.c_uid, 0)) ?? ""),
+                    amount,
+                });
+            }
+            return {
+                couponTotal: coupons.reduce((sum, c) => sum + c.amount, 0),
+                coupons,
+            };
+        }
+    } catch {
+        // zpzp_order_coupon 부재(부분배포)는 폴백
+    }
+
+    const useCoupon = toInt(fallback?.useCoupon, 0);
+    if (useCoupon <= 0) return { couponTotal: 0, coupons: [] };
+
+    const couponUid = toInt(fallback?.couponUid, 0);
+    let kind = "normal";
+    let managerName = "";
+    if (couponUid > 0) {
+        try {
+            const held = await prisma.mallRN_coupon.findUnique({
+                where: { uid: couponUid },
+                select: { c_uid: true },
+            });
+            const cUid = toInt(held?.c_uid, 0);
+            if (cUid > 0) {
+                const def = await prisma.mallRN_coupon_manager.findUnique({
+                    where: { uid: cUid },
+                    select: { name: true },
+                });
+                managerName = String(def?.name ?? "").trim();
+                const welcomeUid = await getWelcomeCouponDefUid(prisma);
+                if (welcomeUid > 0 && cUid === welcomeUid) kind = "welcome";
+            }
+        } catch {
+            // 폴백 조회 실패해도 금액은 노출
+        }
+    }
+
+    return {
+        couponTotal: useCoupon,
+        coupons: [{ kind, name: couponDisplayName(kind, managerName), amount: useCoupon }],
+    };
+}

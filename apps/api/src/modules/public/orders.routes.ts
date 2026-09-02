@@ -5,6 +5,7 @@ import { logOrderCreatedJourney } from "../attribution/journey-log.js";
 import { requireAdmin } from "../../common/guard.js";
 import {
     consumeCoupons,
+    loadOrderUsedCoupons,
     pickRepresentativeCoupon,
     resolveCouponSelection,
     resolveMemberLoginId,
@@ -57,6 +58,8 @@ const ORDER_INFO_PUBLIC_SELECT = {
     cancel_total: true,
     refund_total: true,
     delivery_total: true,
+    use_coupon: true,
+    coupon_uid: true,
     pay_type: true,
     pay_status: true,
     pay_info: true,
@@ -132,6 +135,8 @@ type OrderInfoRow = {
     cancel_total: number;
     refund_total: number;
     delivery_total: number;
+    use_coupon?: number | null;
+    coupon_uid?: number | null;
     pay_type: string;
     pay_status: string;
     pay_info: string;
@@ -1109,6 +1114,11 @@ async function serializeOrder(
 
     const cancelTotal = toInt(info.cancel_total, 0);
     const refundTotal = toInt(info.refund_total, 0);
+    const { couponTotal, coupons } = await loadOrderUsedCoupons(prisma, orderNum, {
+        useCoupon: toInt(info.use_coupon, 0),
+        couponUid: toInt(info.coupon_uid, 0),
+    });
+
     const remainingAmount = Math.max(0, totalAmount - cancelTotal - refundTotal);
     const allReturnCompleted =
         items.length > 0 && items.every((item) => item.status === 8 && item.status2 === 5);
@@ -1130,6 +1140,8 @@ async function serializeOrder(
         memo: toSafeString(info.memo, ""),
         totalAmount,
         goodsTotal,
+        couponTotal,
+        coupons,
         cancelTotal,
         refundTotal,
         deliveryTotal,

@@ -36,6 +36,9 @@ type OrderDetail = {
     message: string;
     memo: string;
     payTotal: number;
+    goodsTotal?: number;
+    couponTotal?: number;
+    coupons?: Array<{ name: string; kind: string; amount: number }>;
     cancelTotal: number;
     refundTotal: number;
     deliveryTotal: number;
@@ -170,6 +173,24 @@ export default async function AdminOrderDetailPage({
                         <InfoRow label="상태변경일시" value={formatDateText(order.statusDate)} />
                         <InfoRow label="픽업예정일시" value={formatDateText(order.pickupAt)} />
                         <InfoRow label="총 결제금액" value={`${Number(order.payTotal ?? 0).toLocaleString()}원`} />
+                        {(order.coupons ?? []).filter((c) => Number(c.amount ?? 0) > 0).length > 0
+                            ? (order.coupons ?? [])
+                                  .filter((c) => Number(c.amount ?? 0) > 0)
+                                  .map((c, i) => (
+                                      <InfoRow
+                                          key={`${c.kind}_${i}`}
+                                          label={`사용 쿠폰${(order.coupons ?? []).length > 1 ? ` ${i + 1}` : ""}`}
+                                          value={`${c.name} (−${Number(c.amount).toLocaleString()}원)`}
+                                      />
+                                  ))
+                            : Number(order.couponTotal ?? 0) > 0
+                              ? (
+                                    <InfoRow
+                                        label="사용 쿠폰"
+                                        value={`쿠폰 할인 (−${Number(order.couponTotal).toLocaleString()}원)`}
+                                    />
+                                )
+                              : null}
                     </div>
 
                     {order.message ? (
@@ -254,6 +275,70 @@ export default async function AdminOrderDetailPage({
                         </tbody>
                     </table>
                 </div>
+
+                {(() => {
+                    const goodsTotal = Number(
+                        order.goodsTotal ??
+                            order.items.reduce(
+                                (sum, item) =>
+                                    sum + Number(item.price ?? 0) * Number(item.qty ?? 0),
+                                0
+                            )
+                    );
+                    const couponRows = (order.coupons ?? []).filter(
+                        (c) => Number(c.amount ?? 0) > 0
+                    );
+                    const couponTotal = Number(order.couponTotal ?? 0);
+                    const deliveryTotal = Number(order.deliveryTotal ?? 0);
+                    if (couponRows.length === 0 && couponTotal <= 0) return null;
+
+                    return (
+                        <div className="mt-5 space-y-2 border-t border-[var(--dad-border)] pt-4 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="font-extrabold text-[var(--dad-muted)]">상품금액</span>
+                                <span className="font-bold text-[var(--dad-ink)]">
+                                    {goodsTotal.toLocaleString()}원
+                                </span>
+                            </div>
+                            {couponRows.length > 0
+                                ? couponRows.map((c, i) => (
+                                      <div
+                                          key={`pay_coupon_${i}`}
+                                          className="flex items-center justify-between gap-3"
+                                      >
+                                          <span className="font-extrabold text-rose-600">
+                                              {c.name || "쿠폰"}
+                                          </span>
+                                          <span className="font-bold text-rose-600">
+                                              −{Number(c.amount).toLocaleString()}원
+                                          </span>
+                                      </div>
+                                  ))
+                                : (
+                                      <div className="flex items-center justify-between gap-3">
+                                          <span className="font-extrabold text-rose-600">쿠폰 할인</span>
+                                          <span className="font-bold text-rose-600">
+                                              −{couponTotal.toLocaleString()}원
+                                          </span>
+                                      </div>
+                                  )}
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="font-extrabold text-[var(--dad-muted)]">배송비</span>
+                                <span className="font-bold text-[var(--dad-ink)]">
+                                    {deliveryTotal > 0
+                                        ? `${deliveryTotal.toLocaleString()}원`
+                                        : "무료"}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 border-t border-[var(--dad-border)] pt-3 text-base">
+                                <span className="font-extrabold text-[var(--dad-ink)]">총 결제금액</span>
+                                <span className="font-extrabold text-[var(--dad-ink)]">
+                                    {Number(order.payTotal ?? 0).toLocaleString()}원
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })()}
             </section>
 
             <section className="dad-card mt-4 p-5">
