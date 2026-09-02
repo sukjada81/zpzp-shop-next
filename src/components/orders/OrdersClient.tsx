@@ -14,6 +14,8 @@ type ApiOrderItem = {
     buyerPhone?: string;
     totalAmount: number;
     goodsTotal?: number;
+    couponTotal?: number;
+    coupons?: Array<{ name: string; kind: string; amount: number }>;
     deliveryTotal?: number;
     cancelTotal?: number;
     refundTotal?: number;
@@ -85,6 +87,8 @@ export type OrderSummary = {
     title: string;
     totalPrice: number;
     goodsTotal: number;
+    couponTotal: number;
+    coupons: Array<{ name: string; kind: string; amount: number }>;
     deliveryTotal: number;
     cancelTotal: number;
     refundTotal: number;
@@ -185,6 +189,16 @@ function mapApiOrderToSummary(order: ApiOrderItem, guestPhone?: string): OrderSu
             order.goodsTotal ??
                 Math.max(0, Number(order.totalAmount ?? 0) - Number(order.deliveryTotal ?? 0))
         ),
+        couponTotal: Number(order.couponTotal ?? 0),
+        coupons: Array.isArray(order.coupons)
+            ? order.coupons
+                  .map((c) => ({
+                      name: String(c?.name ?? "").trim() || "쿠폰",
+                      kind: String(c?.kind ?? "normal"),
+                      amount: Number(c?.amount ?? 0),
+                  }))
+                  .filter((c) => c.amount > 0)
+            : [],
         deliveryTotal: Number(order.deliveryTotal ?? 0),
         cancelTotal: Number(order.cancelTotal ?? 0),
         refundTotal: Number(order.refundTotal ?? 0),
@@ -565,6 +579,20 @@ export default function OrdersClient(props: {
                                 <div className="text-[16px] font-extrabold leading-[1.45] tracking-[-0.02em] text-[#182032]">
                                     {order.title}
                                 </div>
+                                {Number(order.couponTotal ?? 0) > 0 ? (
+                                    <div className="mt-2 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700">
+                                        {(order.coupons ?? []).filter((c) => Number(c.amount) > 0)
+                                            .length > 0
+                                            ? (order.coupons ?? [])
+                                                  .filter((c) => Number(c.amount) > 0)
+                                                  .map(
+                                                      (c) =>
+                                                          `${c.name} −${formatMoney(c.amount)}`
+                                                  )
+                                                  .join(" / ")
+                                            : `쿠폰 할인 −${formatMoney(order.couponTotal)}`}
+                                    </div>
+                                ) : null}
 
                                 {order.lines.length > 0 ? (
                                     <div className="mt-3 space-y-2">
@@ -629,10 +657,17 @@ export default function OrdersClient(props: {
                                     const allCanceled =
                                         Number(order.totalItemCount ?? 0) > 0 &&
                                         Number(order.activeItemCount ?? 0) === 0;
-                                    const gross =
+                                    const couponTotal = Number(order.couponTotal ?? 0);
+                                    const couponRows = (order.coupons ?? []).filter(
+                                        (c) => Number(c.amount ?? 0) > 0
+                                    );
+                                    const gross = Math.max(
+                                        0,
                                         Number(order.goodsTotal ?? 0) +
-                                        Number(order.deliveryTotal ?? 0);
-                                    // 전부 취소면 주문금액 0, 취소금액은 상품+배송(또는 DB 취소합) 중 큰 쪽
+                                            Number(order.deliveryTotal ?? 0) -
+                                            couponTotal
+                                    );
+                                    // 전부 취소면 주문금액 0, 취소금액은 실결제액(또는 DB 취소합) 중 큰 쪽
                                     const displayCancel = allCanceled
                                         ? Math.max(canceledSum, gross)
                                         : canceledSum;
@@ -654,6 +689,32 @@ export default function OrdersClient(props: {
                                                         {formatMoney(order.goodsTotal)}
                                                     </span>
                                                 </div>
+                                                {couponRows.length > 0
+                                                    ? couponRows.map((c, i) => (
+                                                          <div
+                                                              key={`${order.orderNo}_coupon_${i}`}
+                                                              className="flex items-center justify-between gap-3"
+                                                          >
+                                                              <span className="font-semibold text-rose-600">
+                                                                  {c.name || "쿠폰"}
+                                                              </span>
+                                                              <span className="shrink-0 font-bold text-rose-600">
+                                                                  -{formatMoney(c.amount)}
+                                                              </span>
+                                                          </div>
+                                                      ))
+                                                    : couponTotal > 0
+                                                      ? (
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <span className="font-semibold text-rose-600">
+                                                                    쿠폰 할인
+                                                                </span>
+                                                                <span className="font-bold text-rose-600">
+                                                                    -{formatMoney(couponTotal)}
+                                                                </span>
+                                                            </div>
+                                                        )
+                                                      : null}
                                                 <div className="flex items-center justify-between gap-3">
                                                     <span className="font-semibold text-[#7a8499]">
                                                         배송비

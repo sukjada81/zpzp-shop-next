@@ -4,6 +4,7 @@
 import { describe, it, expect } from "vitest";
 import {
     clampCouponRows,
+    couponDisplayName,
     evaluateCouponDiscount,
     pickRepresentativeCoupon,
     type CouponManagerRow,
@@ -142,5 +143,20 @@ describe("pickRepresentativeCoupon — order_info.coupon_uid 하위호환", () =
 
     it("쿠폰 미사용이면 0", () => {
         expect(pickRepresentativeCoupon([])).toBe(0);
+    });
+});
+
+describe("couponDisplayName — 주문 상세 노출명", () => {
+    it("웰컴은 매니저명이 있으면 그대로", () => {
+        expect(couponDisplayName("welcome", "가입 축하 웰컴머니")).toBe("가입 축하 웰컴머니");
+    });
+
+    it("웰컴은 이름이 없으면 웰컴머니", () => {
+        expect(couponDisplayName("welcome", "")).toBe("웰컴머니");
+    });
+
+    it("일반 쿠폰은 매니저명, 없으면 쿠폰", () => {
+        expect(couponDisplayName("normal", "10% 할인")).toBe("10% 할인");
+        expect(couponDisplayName("normal", "  ")).toBe("쿠폰");
     });
 });

@@ -56,6 +56,8 @@ type OrderDetailResponse = {
         memo?: string;
         totalAmount: number;
         goodsTotal?: number;
+        couponTotal?: number;
+        coupons?: Array<{ name: string; kind: string; amount: number }>;
         cancelTotal: number;
         refundTotal: number;
         deliveryTotal: number;
@@ -570,6 +572,18 @@ export default function OrderDetailPage() {
                     </span>
                 </div>
 
+                {Number(order.couponTotal ?? 0) > 0 ? (
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] font-bold text-rose-700">
+                        사용 쿠폰:{" "}
+                        {(order.coupons ?? []).filter((c) => Number(c.amount) > 0).length > 0
+                            ? (order.coupons ?? [])
+                                  .filter((c) => Number(c.amount) > 0)
+                                  .map((c) => `${c.name} (−${formatMoney(c.amount)})`)
+                                  .join(" / ")
+                            : `쿠폰 할인 (−${formatMoney(Number(order.couponTotal))})`}
+                    </div>
+                ) : null}
+
                 {order.badgeText ? (
                     <div className="mt-3 inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700">
                         {order.badgeText}
@@ -873,13 +887,18 @@ export default function OrderDetailPage() {
                             )
                     );
                     const deliveryAmount = Number(order.deliveryTotal ?? 0);
+                    const couponTotal = Number(order.couponTotal ?? 0);
+                    const couponRows = (order.coupons ?? []).filter(
+                        (c) => Number(c.amount ?? 0) > 0
+                    );
                     const canceledSum =
                         Number(order.cancelTotal ?? 0) + Number(order.refundTotal ?? 0);
                     const allCanceled =
                         Number(order.totalItemCount ?? 0) > 0 &&
                         Number(order.activeItemCount ?? 0) === 0;
+                    const gross = Math.max(0, goodsAmount + deliveryAmount - couponTotal);
                     const displayCancel = allCanceled
-                        ? Math.max(canceledSum, goodsAmount + deliveryAmount)
+                        ? Math.max(canceledSum, gross)
                         : canceledSum;
                     const displayPay = allCanceled
                         ? 0
@@ -893,6 +912,33 @@ export default function OrderDetailPage() {
                                     {formatMoney(goodsAmount)}
                                 </span>
                             </div>
+
+                            {couponRows.length > 0
+                                ? couponRows.map((c, i) => (
+                                      <div
+                                          key={`${c.kind}_${i}`}
+                                          className="mt-2 flex justify-between gap-3 text-sm"
+                                      >
+                                          <span className="font-semibold text-rose-600">
+                                              {c.name || "쿠폰"}
+                                          </span>
+                                          <span className="shrink-0 font-bold text-rose-600">
+                                              -{formatMoney(c.amount)}
+                                          </span>
+                                      </div>
+                                  ))
+                                : couponTotal > 0
+                                  ? (
+                                        <div className="mt-2 flex justify-between text-sm">
+                                            <span className="font-semibold text-rose-600">
+                                                쿠폰 할인
+                                            </span>
+                                            <span className="font-bold text-rose-600">
+                                                -{formatMoney(couponTotal)}
+                                            </span>
+                                        </div>
+                                    )
+                                  : null}
 
                             <div className="mt-2 flex justify-between text-sm">
                                 <span className="font-semibold text-slate-500">배송비</span>

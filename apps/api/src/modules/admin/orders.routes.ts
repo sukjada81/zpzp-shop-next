@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify";
 import { buildOrderTimeline } from "../../lib/order/order-timeline.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
+import { loadOrderUsedCoupons } from "../public/coupon.service.js";
 import {
     orderInfoWhereForAdminLinker,
     resolveAdminLinkerScope,
@@ -409,6 +410,8 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
                 cancel_total: true,
                 refund_total: true,
                 delivery_total: true,
+                use_coupon: true,
+                coupon_uid: true,
                 pay_type: true,
                 pay_status: true,
                 pay_info: true,
@@ -469,6 +472,14 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
         }
 
         const currentStatus = goods.length ? Number(goods[0].status ?? 0) : 0;
+        const goodsTotal = goods.reduce(
+            (sum, item) => sum + toInt(item.price, 0) * toInt(item.qty, 0),
+            0
+        );
+        const { couponTotal, coupons } = await loadOrderUsedCoupons(app.prisma, orderNum, {
+            useCoupon: toInt(info.use_coupon, 0),
+            couponUid: toInt(info.coupon_uid, 0),
+        });
 
         return reply.send(
             jsonSafe({
@@ -495,6 +506,9 @@ export async function adminOrdersRoutes(app: FastifyInstance) {
                     memo: info.memo ?? "",
 
                     payTotal: Number(info.pay_total ?? 0),
+                    goodsTotal,
+                    couponTotal,
+                    coupons,
                     cancelTotal: Number(info.cancel_total ?? 0),
                     refundTotal: Number(info.refund_total ?? 0),
                     deliveryTotal: Number(info.delivery_total ?? 0),
