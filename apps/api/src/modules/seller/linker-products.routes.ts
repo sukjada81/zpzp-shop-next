@@ -202,6 +202,10 @@ function productDto(product: GoodsListRow, selection?: LinkerSelectionRow, sales
         category: String(product.cate ?? ""),
         price: Number(product.price ?? 0),
         stock: Number(product.qty ?? 0),
+        // qty_type=1 은 "수량 제한 없음"이라 qty 를 쓰지 않는다(값은 0으로 남는다).
+        // 이 플래그가 없으면 화면에 "재고 0개"로 찍혀 품절처럼 보인다.
+        // 본사 관리자(goods_list.php)는 같은 경우를 "무제한"으로 표기한다.
+        stockUnlimited: Number(product.qty_type) === 1,
         image: imageUrl(product.image1),
         productStatus: selling ? (Number(product.qty_type) === 0 && Number(product.qty) <= 0 ? "품절" : "판매 중") : "판매 중지",
         slotCounted: selling,
