@@ -23,6 +23,8 @@ type ProductItem = {
     category: string;
     price: number;
     stock: number;
+    /** 수량 제한 없음(qty_type=1). true 면 stock 값은 의미가 없다 — 화면에 "제한없음"으로 쓴다. */
+    stockUnlimited?: boolean;
     image: string;
     productStatus: string;
     slotCounted: boolean;
@@ -90,6 +92,18 @@ const EMPTY_LIST: ProductList = {
 
 function money(value: number) {
     return `${Number(value || 0).toLocaleString("ko-KR")}원`;
+}
+
+/**
+ * 재고 표기. 수량 제한 없는 상품은 숫자 대신 "제한없음"으로 쓴다.
+ *
+ * 본사 상품은 대부분 qty_type=1(수량 제한 없음)이라 qty 가 0으로 남는다.
+ * 그대로 찍으면 "재고 0개"가 되어 품절처럼 보인다(2026-09-02 링커 콘솔 제보).
+ * 본사 관리자(goods_list.php)도 같은 경우를 "무제한"으로 표기한다.
+ */
+function stockLabel(item: { stock: number; stockUnlimited?: boolean }) {
+    if (item.stockUnlimited) return "제한없음";
+    return `${Number(item.stock || 0).toLocaleString("ko-KR")}개`;
 }
 
 function dateText(value: string | null) {
@@ -374,7 +388,7 @@ export default function SellerProductsClient({
                 item.name,
                 item.category,
                 item.price,
-                item.stock,
+                stockLabel(item),
                 item.canRegister ? "가능" : "불가",
             ]),
         ]);
@@ -639,7 +653,7 @@ export default function SellerProductsClient({
                                     <td className="p-3"><div className="flex items-center gap-3"><ProductImage item={item} /><div><div className="font-bold text-slate-900">{item.name}</div><div className="text-xs text-slate-400">#{item.id} · {item.category}</div></div></div></td>
                                     <td className="p-3">{item.productStatus}</td>
                                     <td className="p-3 font-semibold">{money(item.price)}</td>
-                                    <td className="p-3">{item.stock.toLocaleString("ko-KR")}개</td>
+                                    <td className="p-3">{stockLabel(item)}</td>
                                     <td className="p-3"><button type="button" disabled={busy || registrationBlocked} onClick={() => setConfirmDialog({ title: "상품 등록", description: `${item.name}\n상품을 등록하시겠습니까?`, confirmLabel: "등록", tone: "blue", action: () => mutate("select", "POST", { productIds: [item.id], scope: "single" }, "상품 등록 완료") })} className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">등록</button></td>
                                 </tr>
                             ))}
@@ -654,7 +668,7 @@ export default function SellerProductsClient({
                                 <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-bold text-slate-600">{(available.page - 1) * available.pageSize + index + 1}</span>
                                 <input type="checkbox" disabled={registrationBlocked} checked={!registrationBlocked && checkedAvailable.has(item.id)} onChange={() => toggle(setCheckedAvailable, item.id)} className="mt-1 h-5 w-5 shrink-0 disabled:cursor-not-allowed disabled:opacity-40" />
                                 <ProductImage item={item} size="large" />
-                                <div className="min-w-0 flex-1"><div className="line-clamp-2 font-bold text-slate-900">{item.name}</div><div className="mt-1 text-xs text-slate-400">#{item.id} · {item.category}</div><div className="mt-2 font-semibold">{money(item.price)}</div><div className="mt-1 text-xs text-slate-500">재고 {item.stock.toLocaleString("ko-KR")}개</div></div>
+                                <div className="min-w-0 flex-1"><div className="line-clamp-2 font-bold text-slate-900">{item.name}</div><div className="mt-1 text-xs text-slate-400">#{item.id} · {item.category}</div><div className="mt-2 font-semibold">{money(item.price)}</div><div className="mt-1 text-xs text-slate-500">재고 {stockLabel(item)}</div></div>
                             </div>
                             <button type="button" disabled={busy || registrationBlocked} onClick={() => setConfirmDialog({ title: "상품 등록", description: `${item.name}\n상품을 등록하시겠습니까?`, confirmLabel: "등록", tone: "blue", action: () => mutate("select", "POST", { productIds: [item.id], scope: "single" }, "상품 등록 완료") })} className="mt-4 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">등록</button>
                         </article>
