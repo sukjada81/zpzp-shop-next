@@ -123,6 +123,11 @@ export const endpoints = {
             `${tenant}/v1/orders/${encodeURIComponent(orderNum)}/items/${encodeURIComponent(String(orderGoodsUid))}/confirm`
         ),
 
+    previewClaimOrderItem: (tenant: string, orderNum: string, orderGoodsUid: string | number) =>
+        apiProxy(
+            `${tenant}/v1/orders/${encodeURIComponent(orderNum)}/items/${encodeURIComponent(String(orderGoodsUid))}/claim/preview`
+        ),
+
     claimOrderItem: (tenant: string, orderNum: string, orderGoodsUid: string | number) =>
         apiProxy(
             `${tenant}/v1/orders/${encodeURIComponent(orderNum)}/items/${encodeURIComponent(String(orderGoodsUid))}/claim`
