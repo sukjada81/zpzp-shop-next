@@ -278,3 +278,19 @@ export function refundAfterShipping(input: {
         depositDue: Math.max(0, -raw),
     };
 }
+
+/** 반품 완료 시 delivery2 가 delivery_total 에 합쳐진 경우를 초도/반품으로 나눈다. */
+export function splitChargedDelivery(deliveryTotal: number, returnCharge: number) {
+    const delivery = Math.max(0, toInt(deliveryTotal, 0));
+    const charged = Math.max(0, toInt(returnCharge, 0));
+    if (charged > 0 && charged <= delivery) {
+        return {
+            outboundDelivery: delivery - charged,
+            returnDelivery: charged,
+        };
+    }
+    return {
+        outboundDelivery: delivery,
+        returnDelivery: 0,
+    };
+}

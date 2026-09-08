@@ -79,6 +79,7 @@ export default function AppShellClient({
         if (p.startsWith("/groupbuys")) return "진행 중인 공구";
         if (p.startsWith("/goods")) return "상품";
         if (p.startsWith("/orders")) return "주문내역";
+        if (p.startsWith("/claims")) return "반품·교환 신청";
         if (p.startsWith("/order")) return "주문/결제";
         if (p.startsWith("/cart")) return "장바구니";
         return BRAND_NAME;

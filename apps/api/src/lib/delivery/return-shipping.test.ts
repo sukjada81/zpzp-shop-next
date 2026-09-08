@@ -6,6 +6,7 @@ import {
     formatClaimReason,
     parseClaimCause,
     refundAfterShipping,
+    splitChargedDelivery,
 } from "./return-shipping.js";
 
 const SHOP: HqShopDeliveryConfig = {
@@ -183,6 +184,17 @@ describe("computeReturnShipping — 순서도 케이스", () => {
                 delivery2: 6000,
             })
         ).toEqual({ netRefund: 0, depositDue: 1000 });
+    });
+
+    it("delivery_total 9000 은 초도 3000 + 반품왕복 6000", () => {
+        expect(splitChargedDelivery(9000, 6000)).toEqual({
+            outboundDelivery: 3000,
+            returnDelivery: 6000,
+        });
+        expect(splitChargedDelivery(3000, 0)).toEqual({
+            outboundDelivery: 3000,
+            returnDelivery: 0,
+        });
     });
 
     it("변심 교환 1회는 왕복 선결제", () => {

@@ -4,7 +4,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { endpoints, tenantHeader } from "@/lib/api/endpoints";
+import { endpoints, tenantHeader, claimPhotoSrc } from "@/lib/api/endpoints";
+import { compressImageForClaim } from "@/lib/images/compressClaimPhoto";
 import { loadGuestOrderRefs } from "@/lib/orders/guestOrderRefs";
 import { toneByOrderStatus } from "@/lib/orders/customerOrderDisplay";
 
@@ -30,6 +31,10 @@ type OrderDetailItem = {
     canReturn?: boolean;
     canExchange?: boolean;
     canWithdrawClaimRequest?: boolean;
+    claimUid?: number;
+    claimCause?: "change_of_mind" | "defect" | null;
+    claimReasonLabel?: string;
+    claimPhotos?: string[];
     cancelMode?: "immediate" | "request" | "none";
     canTrackDelivery?: boolean;
     deliveryCarrierName?: string;
@@ -61,6 +66,8 @@ type OrderDetailResponse = {
         cancelTotal: number;
         refundTotal: number;
         deliveryTotal: number;
+        outboundDelivery?: number;
+        returnDelivery?: number;
         remainingAmount?: number;
         allReturnCompleted?: boolean;
         shippingOnlyRemaining?: boolean;
@@ -89,6 +96,17 @@ type OrderDetailResponse = {
         createdAt?: string | null;
         statusDate?: string | null;
         items: OrderDetailItem[];
+        timeline?: Array<{
+            id: string;
+            source: string;
+            eventType: string;
+            label: string;
+            detail: string | null;
+            orderGoodsUid: number | null;
+            actor: string | null;
+            amount: number | null;
+            at: string;
+        }>;
     };
     message?: string;
 };
@@ -112,7 +130,77 @@ function formatMoney(value: number) {
     return `${Number(value ?? 0).toLocaleString()}원`;
 }
 
+function buildOrderPayExplain(input: {
+    goods: number;
+    outbound: number;
+    returnDelivery: number;
+    coupon: number;
+}) {
+    const goods = Math.max(0, Math.trunc(input.goods));
+    const outbound = Math.max(0, Math.trunc(input.outbound));
+    const returnDelivery = Math.max(0, Math.trunc(input.returnDelivery));
+    const coupon = Math.max(0, Math.trunc(input.coupon));
+    const total = Math.max(0, goods + outbound + returnDelivery - coupon);
+
+    const bits = [formatMoney(goods)];
+    if (coupon > 0) bits.push(`- ${formatMoney(coupon)}`);
+    if (outbound > 0) bits.push(`+ ${formatMoney(outbound)}`);
+    if (returnDelivery > 0) bits.push(`+ ${formatMoney(returnDelivery)}`);
+
+    let story = "";
+    if (returnDelivery > 0 && outbound > 0) {
+        story = coupon > 0
+            ? `상품 ${formatMoney(goods)}에서 쿠폰 ${formatMoney(coupon)}을 빼고, 처음 낸 배송비 ${formatMoney(outbound)}과 변심 반품 왕복 ${formatMoney(returnDelivery)}을 더해 ${formatMoney(total)}이 되었습니다.`
+            : `상품 ${formatMoney(goods)}에 처음 낸 배송비 ${formatMoney(outbound)}과 변심 반품 왕복 ${formatMoney(returnDelivery)}을 더해 ${formatMoney(total)}이 되었습니다.`;
+    } else if (returnDelivery > 0) {
+        story = coupon > 0
+            ? `상품 ${formatMoney(goods)}에서 쿠폰 ${formatMoney(coupon)}을 빼고, 변심 반품 배송비 ${formatMoney(returnDelivery)}을 더해 ${formatMoney(total)}이 되었습니다.`
+            : `상품 ${formatMoney(goods)}에 변심 반품 배송비 ${formatMoney(returnDelivery)}을 더해 ${formatMoney(total)}이 되었습니다.`;
+    } else if (coupon > 0 && outbound > 0) {
+        story = `상품 ${formatMoney(goods)}에서 쿠폰 ${formatMoney(coupon)}을 빼고, 배송비 ${formatMoney(outbound)}을 더해 ${formatMoney(total)}이 되었습니다.`;
+    } else if (coupon > 0) {
+        story = `상품 ${formatMoney(goods)}에서 쿠폰 ${formatMoney(coupon)}을 빼 ${formatMoney(total)}이 되었습니다. 배송비는 없습니다.`;
+    } else if (outbound > 0) {
+        story = `상품 ${formatMoney(goods)}에 배송비 ${formatMoney(outbound)}을 더해 ${formatMoney(total)}이 되었습니다.`;
+    } else {
+        story = `상품 ${formatMoney(goods)}만 결제했고 배송비는 없습니다.`;
+    }
+
+    return {
+        total,
+        formula: `${bits.join(" ")} = ${formatMoney(total)}`,
+        story,
+    };
+}
+
 type ClaimCause = "change_of_mind" | "defect";
+type ClaimReasonItem = { code: string; label: string; cause: ClaimCause };
+type ClaimPolicy = {
+    photoMin: number;
+    photoMax: number;
+    mindConfirmRequired: boolean;
+    mindNotice: string;
+    defectPhotoNotice: string;
+    reasons: { change_of_mind: ClaimReasonItem[]; defect: ClaimReasonItem[] };
+};
+
+const FALLBACK_REASONS: ClaimPolicy["reasons"] = {
+    change_of_mind: [
+        { code: "mind_simple", cause: "change_of_mind", label: "단순 변심 (필요 없어짐)" },
+        { code: "mind_wrong_order", cause: "change_of_mind", label: "다른 상품·옵션을 잘못 주문함" },
+        { code: "mind_size_color", cause: "change_of_mind", label: "사이즈·색상·디자인이 생각과 다름" },
+        { code: "mind_cheaper", cause: "change_of_mind", label: "다른 곳에서 더 저렴한 상품을 발견함" },
+        { code: "mind_delay", cause: "change_of_mind", label: "배송이 너무 늦어짐" },
+    ],
+    defect: [
+        { code: "defect_broken", cause: "defect", label: "상품 불량·고장" },
+        { code: "defect_damaged", cause: "defect", label: "배송 중 파손" },
+        { code: "defect_wrong_item", cause: "defect", label: "오배송 (다른 상품이 옴)" },
+        { code: "defect_missing", cause: "defect", label: "구성품·부품 누락" },
+        { code: "defect_mismatch", cause: "defect", label: "상세페이지 설명과 다름" },
+        { code: "defect_expired", cause: "defect", label: "유통기한 경과·임박" },
+    ],
+};
 
 type ClaimShippingQuote = {
     allowed: boolean;
@@ -177,10 +265,17 @@ export default function OrderDetailPage() {
         type: "return" | "exchange";
     } | null>(null);
     const [claimCause, setClaimCause] = useState<ClaimCause | "">("");
+    const [claimReasonCode, setClaimReasonCode] = useState("");
+    const [claimDetail, setClaimDetail] = useState("");
+    const [claimMindOk, setClaimMindOk] = useState(false);
+    const [claimPhotos, setClaimPhotos] = useState<string[]>([]);
+    const [claimPolicy, setClaimPolicy] = useState<ClaimPolicy | null>(null);
+    const [claimUploading, setClaimUploading] = useState(false);
     const [claimPreview, setClaimPreview] = useState<ClaimShippingQuote | null>(null);
     const [claimPreviewLoading, setClaimPreviewLoading] = useState(false);
     const [isGuestMode, setIsGuestMode] = useState(false);
     const [guestPhone, setGuestPhone] = useState("");
+    const [showTimeline, setShowTimeline] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -486,7 +581,26 @@ export default function OrderDetailPage() {
         if (!order?.orderNum || itemActionId) return;
         setClaimModal({ item, type });
         setClaimCause("");
+        setClaimReasonCode("");
+        setClaimDetail("");
+        setClaimMindOk(false);
+        setClaimPhotos([]);
         setClaimPreview(null);
+        void loadClaimPolicy();
+    }
+
+    async function loadClaimPolicy() {
+        try {
+            const res = await fetch(endpoints.claimPolicy(tenant), {
+                credentials: "include",
+                cache: "no-store",
+                headers: { Accept: "application/json", ...tenantHeader(tenant) },
+            });
+            const json = (await res.json().catch(() => null)) as { ok?: boolean; policy?: ClaimPolicy } | null;
+            if (json?.ok && json.policy) setClaimPolicy(json.policy);
+        } catch {
+            /* 기본 안내로 진행 */
+        }
     }
 
     async function loadClaimPreview(item: OrderDetailItem, type: "return" | "exchange", cause: ClaimCause) {
@@ -505,6 +619,9 @@ export default function OrderDetailPage() {
                 body: JSON.stringify({ type, cause }),
             });
             const json = (await res.json().catch(() => null)) as ClaimOrderResponse | null;
+            if (res.status === 404) {
+                throw new Error("반품·교환 배송비 계산 기능이 아직 서버에 없습니다. 잠시 후 다시 시도해 주세요.");
+            }
             if (!res.ok || !json?.ok || !json.shipping) {
                 throw new Error(json?.message || "배송비를 계산하지 못했습니다.");
             }
@@ -517,10 +634,62 @@ export default function OrderDetailPage() {
         }
     }
 
+    async function handleClaimPhotoUpload(fileList: FileList | null) {
+        if (!fileList?.length) return;
+        const max = claimPolicy?.photoMax ?? 5;
+        if (claimPhotos.length >= max) {
+            alert(`사진은 최대 ${max}장까지 올릴 수 있습니다.`);
+            return;
+        }
+        setClaimUploading(true);
+        try {
+            const next = [...claimPhotos];
+            for (const file of Array.from(fileList)) {
+                if (next.length >= max) break;
+                if (file.type && !file.type.startsWith("image/")) continue;
+                const packed = await compressImageForClaim(file);
+                const body = new FormData();
+                body.append("file", packed);
+                const res = await fetch(endpoints.claimPhotos(tenant), {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { ...tenantHeader(tenant) },
+                    body,
+                });
+                const json = (await res.json().catch(() => null)) as { ok?: boolean; url?: string; path?: string; message?: string } | null;
+                if (!res.ok || !json?.ok) {
+                    throw new Error(json?.message || "사진 업로드에 실패했습니다.");
+                }
+                next.push(json.url || `/${json.path || ""}`);
+            }
+            setClaimPhotos(next);
+        } catch (e: any) {
+            alert(e?.message || "사진 업로드 중 오류가 발생했습니다.");
+        } finally {
+            setClaimUploading(false);
+        }
+    }
+
+    function handleRemoveClaimPhoto(src: string) {
+        setClaimPhotos((prev) => prev.filter((item) => item !== src));
+    }
+
     async function handleItemClaim() {
         if (!order?.orderNum || !claimModal || !claimCause || itemActionId) return;
         const { item, type } = claimModal;
         const label = type === "return" ? "반품" : "교환";
+        if (!claimReasonCode) {
+            alert("상세 사유를 선택해 주세요.");
+            return;
+        }
+        if (claimCause === "change_of_mind" && (claimPolicy?.mindConfirmRequired ?? true) && !claimMindOk) {
+            alert("변심 반품·교환은 상품이 사용하지 않은 완전한 상태임을 확인해 주세요.");
+            return;
+        }
+        if (claimCause === "defect" && claimPhotos.length < (claimPolicy?.photoMin ?? 1)) {
+            alert(`하자 증빙 사진을 ${claimPolicy?.photoMin ?? 1}장 이상 올려 주세요.`);
+            return;
+        }
         if (claimPreview && !claimPreview.allowed) {
             alert(claimPreview.message || "지금은 요청할 수 없습니다.");
             return;
@@ -537,7 +706,14 @@ export default function OrderDetailPage() {
                     Accept: "application/json",
                     ...tenantHeader(tenant),
                 },
-                body: JSON.stringify({ type, cause: claimCause }),
+                body: JSON.stringify({
+                    type,
+                    cause: claimCause,
+                    reasonCode: claimReasonCode,
+                    reason: claimDetail,
+                    photos: claimPhotos,
+                    mindConfirmed: claimMindOk,
+                }),
             });
             const json = (await res.json().catch(() => null)) as ClaimOrderResponse | null;
             if (!res.ok || !json?.ok) {
@@ -559,6 +735,28 @@ export default function OrderDetailPage() {
     );
 
     const headerStatusText = order?.displayStatus || order?.statusLabel || "주문상세";
+    const claimPhotoMin = claimPolicy?.photoMin ?? 1;
+    const claimPhotoRequired = claimCause === "defect";
+    const claimMindRequired =
+        claimCause === "change_of_mind" && (claimPolicy?.mindConfirmRequired ?? true);
+    const claimSubmitReady =
+        Boolean(claimCause) &&
+        Boolean(claimReasonCode) &&
+        (!claimMindRequired || claimMindOk) &&
+        (!claimPhotoRequired || claimPhotos.length >= claimPhotoMin) &&
+        itemActionId === "" &&
+        !(claimPreview && !claimPreview.allowed);
+    const claimSubmitHint = !claimCause
+        ? "변심 또는 하자·오배송을 선택해 주세요."
+        : !claimReasonCode
+          ? "상세 사유를 선택해 주세요."
+          : claimMindRequired && !claimMindOk
+            ? "상품 상태 확인에 체크해 주세요."
+            : claimPhotoRequired && claimPhotos.length < claimPhotoMin
+              ? `증빙 사진을 ${claimPhotoMin}장 이상 올려 주세요.`
+              : claimPreview && !claimPreview.allowed
+                ? claimPreview.message || "지금은 요청할 수 없습니다."
+                : "";
 
     if (loading) {
         return (
@@ -933,6 +1131,15 @@ export default function OrderDetailPage() {
                                     {itemBusy ? "처리 중..." : "교환·반품 요청 철회"}
                                 </button>
                             ) : null}
+
+                            {item.claimUid ? (
+                                <Link
+                                    href={`/${tenant}/claims/${item.claimUid}`}
+                                    className="mt-2 flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 text-[13px] font-extrabold text-slate-600"
+                                >
+                                    신청 상세 보기
+                                </Link>
+                            ) : null}
                         </div>
                         );
                     })}
@@ -947,6 +1154,10 @@ export default function OrderDetailPage() {
                             )
                     );
                     const deliveryAmount = Number(order.deliveryTotal ?? 0);
+                    const returnDelivery = Number(order.returnDelivery ?? 0);
+                    const outboundDelivery = Number(
+                        order.outboundDelivery ?? Math.max(0, deliveryAmount - returnDelivery)
+                    );
                     const couponTotal = Number(order.couponTotal ?? 0);
                     const couponRows = (order.coupons ?? []).filter(
                         (c) => Number(c.amount ?? 0) > 0
@@ -963,6 +1174,25 @@ export default function OrderDetailPage() {
                     const displayPay = allCanceled
                         ? 0
                         : Math.max(0, Number(order.totalAmount ?? 0) - displayCancel);
+                    const payExplain = buildOrderPayExplain({
+                        goods: goodsAmount,
+                        outbound: outboundDelivery,
+                        returnDelivery,
+                        coupon: couponTotal,
+                    });
+                    const remainingAmount = Math.max(
+                        0,
+                        Number(order.remainingAmount ?? displayPay)
+                    );
+                    let extraStory = "";
+                    if (order.shippingOnlyRemaining) {
+                        extraStory =
+                            returnDelivery > 0
+                                ? `반품이 끝나 상품 ${formatMoney(goodsAmount)}은 환불됩니다. 처음 낸 배송비 ${formatMoney(outboundDelivery)}과 변심 반품 왕복 ${formatMoney(returnDelivery)}은 환불되지 않아, 남은 금액은 ${formatMoney(remainingAmount)}입니다.`
+                                : `반품이 끝나 상품 ${formatMoney(goodsAmount)}은 환불되고, 처음에 낸 배송비 ${formatMoney(deliveryAmount)}은 환불되지 않습니다. 그래서 남은 금액은 ${formatMoney(remainingAmount)}입니다.`;
+                    } else if (displayCancel > 0 && displayPay !== payExplain.total) {
+                        extraStory = `원래 ${formatMoney(payExplain.total)}에서 취소·환불 ${formatMoney(displayCancel)}을 빼면 지금 금액은 ${formatMoney(displayPay)}입니다.`;
+                    }
 
                     return (
                         <>
@@ -1000,14 +1230,37 @@ export default function OrderDetailPage() {
                                     )
                                   : null}
 
-                            <div className="mt-2 flex justify-between text-sm">
-                                <span className="font-semibold text-slate-500">배송비</span>
-                                <span className="font-bold text-slate-900">
-                                    {deliveryAmount > 0
-                                        ? formatMoney(deliveryAmount)
-                                        : "무료"}
-                                </span>
-                            </div>
+                            {returnDelivery > 0 ? (
+                                <>
+                                    <div className="mt-2 flex justify-between text-sm">
+                                        <span className="font-semibold text-slate-500">
+                                            처음 낸 배송비
+                                        </span>
+                                        <span className="font-bold text-slate-900">
+                                            {outboundDelivery > 0
+                                                ? formatMoney(outboundDelivery)
+                                                : "무료"}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 flex justify-between text-sm">
+                                        <span className="font-semibold text-slate-500">
+                                            반품 배송비(왕복)
+                                        </span>
+                                        <span className="font-bold text-slate-900">
+                                            {formatMoney(returnDelivery)}
+                                        </span>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="mt-2 flex justify-between text-sm">
+                                    <span className="font-semibold text-slate-500">배송비</span>
+                                    <span className="font-bold text-slate-900">
+                                        {deliveryAmount > 0
+                                            ? formatMoney(deliveryAmount)
+                                            : "무료"}
+                                    </span>
+                                </div>
+                            )}
 
                             {displayCancel > 0 ? (
                                 <div className="mt-2 flex justify-between text-sm">
@@ -1029,16 +1282,95 @@ export default function OrderDetailPage() {
                                 </span>
                             </div>
 
+                            <div className="mt-3 rounded-xl bg-slate-50 px-3 py-3">
+                                <div className="text-[13px] font-extrabold tracking-tight text-slate-900">
+                                    {payExplain.formula}
+                                </div>
+                                <p className="mt-1 text-[12px] font-semibold leading-5 text-slate-600">
+                                    {payExplain.story}
+                                </p>
+                                {extraStory ? (
+                                    <p className="mt-2 text-[12px] font-semibold leading-5 text-slate-600">
+                                        {extraStory}
+                                    </p>
+                                ) : null}
+                            </div>
+
                             {order.shippingOnlyRemaining ? (
                                 <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-[13px] font-bold leading-5 text-amber-950">
-                                    전체 반품이 완료되었으나 배송비{" "}
-                                    {formatMoney(deliveryAmount)}은 환불 처리되지 않았습니다.
+                                    {returnDelivery > 0
+                                        ? `전체 반품이 완료되어 상품은 환불됩니다. 처음 낸 배송비 ${formatMoney(outboundDelivery)}과 변심 반품 왕복 ${formatMoney(returnDelivery)}은 환불되지 않습니다.`
+                                        : `전체 반품이 완료되었으나 배송비 ${formatMoney(deliveryAmount)}은 환불 처리되지 않았습니다.`}{" "}
                                     환불이 필요하면 고객센터에 문의해 주세요.
                                 </div>
                             ) : null}
                         </>
                     );
                 })()}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <div className="text-[15px] font-extrabold text-slate-900">주문 처리 내역</div>
+                        <div className="mt-1 text-[12px] font-semibold text-slate-500">
+                            결제, 배송, 반품·교환 신청과 처리 결과를 주문 단위로 볼 수 있습니다.
+                        </div>
+                    </div>
+                    {(order.timeline ?? []).length > 0 ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowTimeline((open) => !open)}
+                            className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-[12px] font-extrabold text-slate-700"
+                        >
+                            {showTimeline ? "접기" : `더보기 (${(order.timeline ?? []).length}건)`}
+                        </button>
+                    ) : null}
+                </div>
+                {(order.timeline ?? []).length === 0 ? (
+                    <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-[13px] font-semibold text-slate-400">
+                        아직 기록된 처리 내역이 없습니다.
+                    </div>
+                ) : showTimeline ? (
+                    <ol className="mt-3 space-y-2">
+                        {(order.timeline ?? []).map((entry) => (
+                            <li
+                                key={entry.id}
+                                className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-[13px] font-extrabold text-slate-900">
+                                            {entry.label}
+                                        </div>
+                                        {entry.detail ? (
+                                            <div className="mt-1 text-[12px] font-semibold leading-5 text-slate-600">
+                                                {entry.detail}
+                                            </div>
+                                        ) : null}
+                                        {entry.actor ? (
+                                            <div className="mt-1 text-[11px] font-bold text-slate-400">
+                                                {entry.actor}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    <div className="shrink-0 text-right text-[11px] font-bold text-slate-400">
+                                        {formatDateTime(entry.at)}
+                                        {entry.amount != null && entry.amount > 0 ? (
+                                            <div className="mt-1 text-[12px] font-extrabold text-slate-700">
+                                                {formatMoney(entry.amount)}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            </li>
+                        ))}
+                    </ol>
+                ) : (
+                    <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-3 text-center text-[12px] font-semibold text-slate-400">
+                        처리 로그는 더보기를 누르면 나옵니다.
+                    </div>
+                )}
             </div>
 
             {!order.isOnlinePrepaid ? (
@@ -1051,18 +1383,23 @@ export default function OrderDetailPage() {
 
             {claimModal ? (
                 <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-                    <div className="w-full max-w-[440px] rounded-2xl bg-white p-4 shadow-xl">
+                    <div className="max-h-[90vh] w-full max-w-[440px] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl">
                         <div className="text-[16px] font-extrabold text-slate-900">
-                            {claimModal.type === "return" ? "반품 사유" : "교환 사유"}
+                            {claimModal.type === "return" ? "반품 신청" : "교환 신청"}
                         </div>
                         <p className="mt-1 text-[13px] font-semibold text-slate-500">
                             {claimModal.item.title} · 변심은 편도×2, 하자·오배송은 구매자 0원
                         </p>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="mt-3 text-[12px] font-extrabold text-slate-700">
+                            신청 사유 <span className="text-rose-600">필수</span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
                             <button
                                 type="button"
                                 onClick={() => {
                                     setClaimCause("change_of_mind");
+                                    setClaimReasonCode("");
+                                    setClaimMindOk(false);
                                     void loadClaimPreview(claimModal.item, claimModal.type, "change_of_mind");
                                 }}
                                 className={[
@@ -1072,12 +1409,13 @@ export default function OrderDetailPage() {
                                         : "border-slate-200 bg-white text-slate-700",
                                 ].join(" ")}
                             >
-                                변심
+                                단순 변심
                             </button>
                             <button
                                 type="button"
                                 onClick={() => {
                                     setClaimCause("defect");
+                                    setClaimReasonCode("");
                                     void loadClaimPreview(claimModal.item, claimModal.type, "defect");
                                 }}
                                 className={[
@@ -1090,6 +1428,112 @@ export default function OrderDetailPage() {
                                 하자·오배송
                             </button>
                         </div>
+                        {claimCause ? (
+                            <>
+                            <div className="mt-3 text-[12px] font-extrabold text-slate-700">
+                                상세 사유 <span className="text-rose-600">필수</span>
+                            </div>
+                            <select
+                                value={claimReasonCode}
+                                onChange={(e) => setClaimReasonCode(e.target.value)}
+                                className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-800"
+                            >
+                                <option value="">상세 사유 선택</option>
+                                {(claimPolicy?.reasons?.[claimCause] || FALLBACK_REASONS[claimCause]).map((row) => (
+                                    <option key={row.code} value={row.code}>
+                                        {row.label}
+                                    </option>
+                                ))}
+                            </select>
+                            </>
+                        ) : null}
+                        {claimCause === "change_of_mind" ? (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[12px] font-semibold leading-5 text-amber-950">
+                                {claimPolicy?.mindNotice ||
+                                    "변심 반품은 상품이 사용하지 않은 완전한 상태로 돌아와야 합니다. 택·구성품이 없고 사용 흔적이 있으면 거절될 수 있습니다."}
+                                <div className="mt-2 text-[12px] font-extrabold">
+                                    상품 상태 확인 <span className="text-rose-600">필수</span>
+                                </div>
+                                <label className="mt-1 flex items-start gap-2 text-[13px] font-extrabold">
+                                    <input
+                                        type="checkbox"
+                                        checked={claimMindOk}
+                                        onChange={(e) => setClaimMindOk(e.target.checked)}
+                                        className="mt-0.5"
+                                    />
+                                    상품이 사용하지 않은 완전한 상태로 반송됨을 확인합니다.
+                                </label>
+                            </div>
+                        ) : null}
+                        {claimCause ? (
+                            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[12px] font-semibold leading-5 text-emerald-950">
+                                <div className="text-[13px] font-extrabold">
+                                    증빙 사진{" "}
+                                    {claimPhotoRequired ? (
+                                        <span className="text-rose-600">필수 {claimPhotoMin}장</span>
+                                    ) : (
+                                        <span className="font-bold text-emerald-800">선택</span>
+                                    )}
+                                </div>
+                                <p className="mt-1">
+                                    {claimCause === "defect"
+                                        ? claimPolicy?.defectPhotoNotice ||
+                                          "하자·파손·오배송이 보이는 사진을 올려 주세요."
+                                        : "상품 상태를 확인할 수 있는 사진을 올리면 처리가 빨라집니다."}
+                                </p>
+                                <label className="mt-3 flex h-11 w-full cursor-pointer items-center justify-center rounded-xl bg-emerald-700 text-[13px] font-extrabold text-white">
+                                    {claimUploading ? "올리는 중..." : "사진 선택하기"}
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            void handleClaimPhotoUpload(e.target.files);
+                                            e.target.value = "";
+                                        }}
+                                    />
+                                </label>
+                                {claimPhotos.length ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {claimPhotos.map((src) => (
+                                            <div key={src} className="relative h-16 w-16">
+                                                <img
+                                                    src={claimPhotoSrc(src)}
+                                                    alt=""
+                                                    className="h-16 w-16 rounded-lg object-cover"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveClaimPhoto(src)}
+                                                    aria-label="사진 삭제"
+                                                    className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[13px] font-extrabold leading-none text-white shadow"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div
+                                        className={[
+                                            "mt-2 text-[12px] font-bold",
+                                            claimPhotoRequired ? "text-rose-600" : "text-emerald-800",
+                                        ].join(" ")}
+                                    >
+                                        {claimPhotoRequired
+                                            ? `아직 선택한 사진이 없습니다. ${claimPhotoMin}장 이상 올려야 요청할 수 있습니다.`
+                                            : "아직 선택한 사진이 없습니다. 없어도 요청할 수 있습니다."}
+                                    </div>
+                                )}
+                            </div>
+                        ) : null}
+                        <textarea
+                            value={claimDetail}
+                            onChange={(e) => setClaimDetail(e.target.value)}
+                            placeholder="기타사항 · 선택"
+                            className="mt-3 h-20 w-full rounded-xl border border-slate-200 px-3 py-2 text-[13px] font-semibold text-slate-800"
+                        />
                         <div className="mt-3 min-h-[72px] rounded-xl border border-slate-200 bg-slate-50 p-3 text-[13px] font-semibold text-slate-700">
                             {claimPreviewLoading
                                 ? "배송비를 계산하는 중..."
@@ -1125,12 +1569,17 @@ export default function OrderDetailPage() {
                             <button
                                 type="button"
                                 onClick={() => void handleItemClaim()}
-                                disabled={!claimCause || itemActionId !== "" || Boolean(claimPreview && !claimPreview.allowed)}
+                                disabled={!claimSubmitReady}
                                 className="h-11 flex-1 rounded-xl bg-slate-900 text-[13px] font-extrabold text-white disabled:opacity-40"
                             >
                                 {itemActionId ? "처리 중..." : "요청하기"}
                             </button>
                         </div>
+                        {!claimSubmitReady && claimSubmitHint ? (
+                            <div className="mt-2 text-center text-[12px] font-bold text-rose-600">
+                                {claimSubmitHint}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             ) : null}

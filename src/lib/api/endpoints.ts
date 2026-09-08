@@ -157,4 +157,20 @@ export const endpoints = {
 
     guestCancelOrder: (tenant: string, orderNum: string) =>
         apiProxy(`${tenant}/v1/orders/guest/${encodeURIComponent(orderNum)}/cancel`),
+
+    claimPolicy: (tenant: string) => apiProxy(`${tenant}/v1/claims/policy`),
+    claimPhotos: (tenant: string) => apiProxy(`${tenant}/v1/claims/photos`),
+    claimList: (tenant: string) => apiProxy(`${tenant}/v1/claims`),
+    claimDetail: (tenant: string, uid: string | number) =>
+        apiProxy(`${tenant}/v1/claims/${encodeURIComponent(String(uid))}`),
 };
+
+export function claimPhotoSrc(path: string) {
+    const p = String(path || "").trim();
+    if (!p) return "";
+    if (/^https?:\/\//i.test(p)) return p;
+    const normalized = p.startsWith("/") ? p : `/${p}`;
+    if (normalized.startsWith("/uploads/")) return `/api/proxy${normalized}`;
+    if (normalized.startsWith("/image/")) return normalized;
+    return `/api/proxy${normalized}`;
+}
