@@ -14,6 +14,7 @@ import {
     Store,
     Flame,
     X,
+    Undo2,
 } from "lucide-react";
 import { useCart } from "@/lib/cart/CartProvider";
 
@@ -112,6 +113,7 @@ export default function SideDrawer({
             { href: `/${tenant}/home`, label: "홈", Icon: Home },
             // { href: `/${tenant}/groupbuys`, label: "진행 중인 공구", Icon: Flame },
             { href: `/${tenant}/orders`, label: "주문내역", Icon: Receipt, requiresAuth: true },
+            { href: `/${tenant}/claims`, label: "반품·교환 신청", Icon: Undo2, requiresAuth: true },
             {
                 href: `/${tenant}/cart`,
                 label: "장바구니",

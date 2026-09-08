@@ -256,6 +256,8 @@ export type CustomerOrderItemInput = {
     orderItemCount: number;
     /** 주문 status_date (unix) — 당일 계좌이체 즉시취소 판별용 */
     orderStatusDate?: number;
+    claimCause?: "change_of_mind" | "defect" | "unknown";
+    withdrawUntil?: "request" | "before_pickup";
 };
 
 export type CustomerOrderItemActions = {
@@ -326,6 +328,20 @@ export function resolveCustomerOrderItemActions(
     }
 
     if (status2 === 1 && (status === 7 || status === 8)) {
+        return buildCustomerOrderItemActions({
+            status,
+            status2,
+            statusLabel,
+            withdrawClaim: true,
+        });
+    }
+
+    if (
+        status2 === 2 &&
+        (status === 7 || status === 8) &&
+        input.claimCause === "change_of_mind" &&
+        input.withdrawUntil !== "request"
+    ) {
         return buildCustomerOrderItemActions({
             status,
             status2,

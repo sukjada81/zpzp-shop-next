@@ -11,6 +11,7 @@ import { sessionPlugin } from "./plugins/session.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
 import { publicProductRoutes } from "./modules/public/products.routes.js";
 import { publicOrderRoutes } from "./modules/public/orders.routes.js";
+import { publicClaimRoutes } from "./modules/public/claims.routes.js";
 import { publicPaymentRoutes } from "./modules/public/payments.routes.js";
 import { publicDeliveryRoutes } from "./modules/public/delivery.routes.js";
 import { publicLinkerVisitRoutes } from "./modules/public/linker-visit.routes.js";
@@ -98,6 +99,7 @@ app.register(
         await publicDeliveryRoutes(tenantScoped); // 배송비 quote (주문서용)
         await publicPaymentRoutes(tenantScoped); // Toss PG (prepare/confirm/client-key)
         await publicOrderRoutes(tenantScoped);
+        await publicClaimRoutes(tenantScoped);
     },
     { prefix: "/:tenant" }
 );

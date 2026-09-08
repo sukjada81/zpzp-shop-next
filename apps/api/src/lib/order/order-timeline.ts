@@ -62,6 +62,8 @@ function auditEventLabel(eventType: string): string {
             return "교환·반품 요청";
         case "claim_withdraw":
             return "교환·반품 철회";
+        case "claim_complete":
+            return "반품·교환 완료";
         case "confirm":
             return "구매확정";
         case "status_change":
@@ -81,6 +83,41 @@ function parseMetaJson(raw: string | null | undefined): Record<string, unknown> 
     } catch {
         return null;
     }
+}
+
+function auditAmount(meta: Record<string, unknown> | null): number | null {
+    if (!meta) return null;
+    for (const key of ["cancelAmount", "tossCancel", "netRefund", "delivery2", "prepaid"]) {
+        const n = Number(meta[key]);
+        if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+    }
+    return null;
+}
+
+export function customerActorLabel(actor: string | null): string {
+    const raw = String(actor ?? "").trim();
+    if (!raw) return "시스템";
+    const [role, ...rest] = raw.split("/");
+    const name = rest.join("/").trim();
+    const roleLabel =
+        role === "member" || role === "guest"
+            ? "고객"
+            : role === "admin" || role === "hq"
+              ? "본사"
+              : role === "seller"
+                ? "판매자"
+                : role === "system"
+                  ? "시스템"
+                  : role;
+    return name ? `${roleLabel} · ${name}` : roleLabel;
+}
+
+export function toCustomerOrderTimeline(entries: OrderTimelineEntry[]): OrderTimelineEntry[] {
+    return entries.map((entry) => ({
+        ...entry,
+        actor: customerActorLabel(entry.actor),
+        meta: null,
+    }));
 }
 
 function isoFromUnix(sec: number | null | undefined): string | null {
@@ -229,8 +266,7 @@ export function buildOrderTimeline(input: {
 
     for (const row of input.auditRows) {
         const meta = parseMetaJson(row.meta_json);
-        const amount =
-            meta && typeof meta.cancelAmount === "number" ? meta.cancelAmount : null;
+        const amount = auditAmount(meta);
 
         entries.push({
             id: `audit-${row.uid}`,
@@ -239,10 +275,21 @@ export function buildOrderTimeline(input: {
             label: auditEventLabel(row.event_type),
             detail: [
                 row.before_status != null && row.after_status != null
-                    ? `${formatGoodsStatus(row.before_status, 0)} → ${formatGoodsStatus(row.after_status, 0)}`
+                    ? `${formatGoodsStatus(row.before_status, Number(meta?.beforeStatus2 ?? 0))} → ${formatGoodsStatus(row.after_status, Number(meta?.afterStatus2 ?? 0))}`
                     : "",
                 row.reason ?? "",
                 meta?.cancelType ? String(meta.cancelType) : "",
+                meta?.kind === "return" ? "반품" : meta?.kind === "exchange" ? "교환" : "",
+                meta?.cause === "change_of_mind" ? "변심" : meta?.cause === "defect" ? "하자" : "",
+                typeof meta?.delivery2 === "number" && meta.delivery2 > 0
+                    ? `차감 ${Number(meta.delivery2).toLocaleString()}원`
+                    : "",
+                typeof meta?.prepaid === "number" && meta.prepaid > 0
+                    ? `선결제 ${Number(meta.prepaid).toLocaleString()}원`
+                    : "",
+                typeof meta?.depositDue === "number" && meta.depositDue > 0
+                    ? `미수 ${Number(meta.depositDue).toLocaleString()}원`
+                    : "",
                 amount != null ? `${amount.toLocaleString()}원` : "",
             ]
                 .filter(Boolean)
@@ -257,4 +304,54 @@ export function buildOrderTimeline(input: {
 
     entries.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     return entries;
+}
+
+export async function loadOrderTimeline(
+    prisma: any,
+    orderNum: string
+): Promise<OrderTimelineEntry[]> {
+    const [auditRows, orderLogRows, tossPrepareRows] = await Promise.all([
+        prisma.dad_order_action_log.findMany({
+            where: { order_num: orderNum },
+            orderBy: { created_at: "desc" },
+            take: 200,
+        }),
+        prisma.mallRN_order_log.findMany({
+            where: { order_num: orderNum },
+            orderBy: { signdate: "desc" },
+            take: 200,
+        }),
+        prisma.mallRN_toss_prepare.findMany({
+            where: { order_num: orderNum },
+            orderBy: { uid: "desc" },
+            take: 20,
+        }),
+    ]);
+    let tossCancelRows: Array<{
+        uid: bigint | number;
+        order_goods_uid?: number | null;
+        cancel_type: string;
+        cancel_amount: number;
+        cancel_reason: string;
+        request_source: string;
+        requested_by: string;
+        result_status: string;
+        toss_payment_status: string;
+        refundable_amount: number;
+        error_message: string;
+        requested_at: Date;
+    }> = [];
+    try {
+        tossCancelRows = await prisma.$queryRaw`
+            SELECT uid, cancel_type, cancel_amount, cancel_reason, request_source, requested_by,
+                   result_status, toss_payment_status, refundable_amount, error_message, requested_at
+            FROM mallRN_toss_cancel_log
+            WHERE order_num = ${orderNum}
+            ORDER BY requested_at DESC
+            LIMIT 200
+        `;
+    } catch {
+        tossCancelRows = [];
+    }
+    return buildOrderTimeline({ auditRows, orderLogRows, tossCancelRows, tossPrepareRows });
 }

@@ -25,12 +25,27 @@ import { cancelCustomerPaidOrderItem } from "../../lib/order/customer-paid-item-
 import { CANCEL_PG_OK_DB_FAIL_MESSAGE } from "../../lib/order/cancel-messages.js";
 import { callPhpBridge } from "../../lib/php-bridge.js";
 import { writeOrderAuditLog } from "../../lib/order/order-audit-log.js";
+import { loadOrderTimeline, toCustomerOrderTimeline } from "../../lib/order/order-timeline.js";
 import { getCheckoutShopSlug } from "../../lib/store-slug.js";
 import { calcHqDeliveryBreakdown } from "../../lib/delivery/hq-delivery.js";
 import {
     loadDeliveryCarrierMap,
     resolveDeliveryTracking,
 } from "../../lib/delivery/delivery-tracking.js";
+import { normalizeClaimCause, parseClaimCause, splitChargedDelivery } from "../../lib/delivery/return-shipping.js";
+import {
+    isReturnShipQuoteError,
+    quoteOrderItemReturnShipping,
+    serializeReturnShipQuote,
+} from "../../lib/delivery/return-shipping-order.js";
+import {
+    encodeClaimMessage,
+    findClaimReason,
+    loadClaimPolicySettings,
+    parseClaimMessage,
+    sanitizeClaimPhotoPaths,
+    validateClaimApplication,
+} from "../../lib/order/claim-policy.js";
 
 const PLATFORM_TYPE = "DAD";
 const STATUS_ORDERED = 0;
@@ -812,10 +827,12 @@ async function writeClaimStatusChangeRecords(
         memberName: string;
         claimStatus: number;
         reason: string;
+        message?: string;
         now: number;
     }
 ) {
     const reason = toSafeString(input.reason, "고객 요청").slice(0, 100);
+    const message = toSafeString(input.message, "");
     const memberId = toSafeString(input.memberId, "").slice(0, 50) || "회원";
     const memberName = toSafeString(input.memberName, "회원").slice(0, 50);
 
@@ -840,6 +857,7 @@ async function writeClaimStatusChangeRecords(
                 og_uid: row.uid,
                 reason,
                 bank_info: "",
+                message,
                 status: input.claimStatus,
                 status2: STATUS2_REQUEST,
                 status_date: 0,
@@ -862,6 +880,65 @@ async function writeClaimStatusChangeRecords(
     }
 }
 
+type ClaimSubmitBody = {
+    type?: "return" | "exchange";
+    reason?: string;
+    cause?: string;
+    reasonCode?: string;
+    photos?: unknown;
+    mindConfirmed?: unknown;
+};
+
+async function resolveClaimSubmission(
+    prisma: FastifyInstance["prisma"],
+    body: ClaimSubmitBody
+): Promise<
+    | {
+          ok: true;
+          cause: "change_of_mind" | "defect";
+          reasonLabel: string;
+          detail: string;
+          photos: string[];
+          message: string;
+          extra: string;
+      }
+    | { ok: false; message: string }
+> {
+    const cause = normalizeClaimCause(body.cause);
+    if (!cause) {
+        return { ok: false, message: "반품·교환 사유를 변심 또는 하자로 선택해 주세요." };
+    }
+    const settings = await loadClaimPolicySettings(prisma);
+    const photos = sanitizeClaimPhotoPaths(body.photos, settings.photoMax);
+    const mindConfirmed =
+        body.mindConfirmed === true ||
+        body.mindConfirmed === 1 ||
+        String(body.mindConfirmed ?? "") === "1";
+    const checked = validateClaimApplication({
+        cause,
+        reasonCode: toSafeString(body.reasonCode, ""),
+        photos,
+        mindConfirmed,
+        settings,
+    });
+    if (!checked.ok) return checked;
+    const detail = toSafeString(body.reason, "");
+    const extra = [checked.reason.label, detail].filter(Boolean).join(" ");
+    return {
+        ok: true,
+        cause,
+        reasonLabel: checked.reason.label,
+        detail,
+        photos,
+        message: encodeClaimMessage({
+            code: checked.reason.code,
+            photos,
+            detail,
+        }),
+        extra,
+    };
+}
+
 function getObject(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== "object") return null;
     return value as Record<string, unknown>;
@@ -880,7 +957,7 @@ function readNestedValue(
     return current;
 }
 
-function extractAuthenticatedMemberUid(request: FastifyRequest): bigint | null {
+export function extractAuthenticatedMemberUid(request: FastifyRequest): bigint | null {
     const root = getObject(request);
     if (!root) return null;
 
@@ -961,10 +1038,33 @@ async function loadOrderGoods(
     const payInfo = orderMeta?.payInfo ?? "";
     const statusDate = orderMeta?.statusDate ?? 0;
     const carriers = await loadDeliveryCarrierMap(prisma);
+    const claimSettings = await loadClaimPolicySettings(prisma);
+    const changeRows = goods.length
+        ? await prisma.mallRN_order_status_change.findMany({
+              where: { order_num: orderNum, status: { in: [7, 8] } },
+              orderBy: { uid: "desc" },
+              select: {
+                  uid: true,
+                  og_uid: true,
+                  status: true,
+                  status2: true,
+                  reason: true,
+                  message: true,
+                  delivery2: true,
+              },
+          })
+        : [];
+    const latestClaim = new Map<number, (typeof changeRows)[number]>();
+    for (const row of changeRows) {
+        if (!latestClaim.has(row.og_uid)) latestClaim.set(row.og_uid, row);
+    }
 
     return goods.map((row: OrderGoodsRow) => {
         const status = toInt(row.status, 0);
         const status2 = toInt(row.status2, 0);
+        const claimRow = latestClaim.get(toInt(row.uid, 0));
+        const claimMeta = claimRow ? parseClaimMessage(claimRow.message) : { code: "", photos: [], detail: "" };
+        const claimCause = claimRow ? parseClaimCause(claimRow.reason) : undefined;
         const itemActions = orderMeta
             ? resolveCustomerOrderItemActions({
                   status,
@@ -974,6 +1074,8 @@ async function loadOrderGoods(
                   payInfo,
                   orderItemCount: aggregate.totalCount,
                   orderStatusDate: statusDate,
+                  claimCause,
+                  withdrawUntil: claimSettings.withdrawUntil,
               })
             : null;
 
@@ -1010,6 +1112,11 @@ async function loadOrderGoods(
             canExchange: itemActions?.canExchange ?? false,
             canWithdrawClaimRequest: itemActions?.canWithdrawClaimRequest ?? false,
             cancelMode: itemActions?.cancelMode ?? "none",
+            claimUid: claimRow?.uid ?? 0,
+            claimDelivery2: toInt(claimRow?.delivery2, 0),
+            claimCause: claimCause && claimCause !== "unknown" ? claimCause : null,
+            claimReasonLabel: findClaimReason(claimMeta.code)?.label || "",
+            claimPhotos: claimMeta.photos,
             canTrackDelivery: tracking.canTrack,
             deliveryCarrierName: tracking.carrierName,
             deliveryInvoiceNo: tracking.invoiceNo,
@@ -1050,6 +1157,8 @@ async function serializeOrder(
     const infoDeliveryTotal = toInt(info.delivery_total, 0);
     // order_info.delivery_total 우선, 없으면 품목 delivery_price 합(본사 마이페이지 표시 근거)
     const deliveryTotal = infoDeliveryTotal > 0 ? infoDeliveryTotal : lineDeliveryTotal;
+    const returnCharge = items.reduce((sum, item) => sum + Math.max(0, toInt(item.claimDelivery2, 0)), 0);
+    const { outboundDelivery, returnDelivery } = splitChargedDelivery(deliveryTotal, returnCharge);
     const totalAmount = toInt(info.pay_total, goodsTotal + deliveryTotal);
 
     let display = resolveCustomerOrderDisplay({
@@ -1145,6 +1254,8 @@ async function serializeOrder(
         cancelTotal,
         refundTotal,
         deliveryTotal,
+        outboundDelivery,
+        returnDelivery,
         remainingAmount,
         allReturnCompleted,
         shippingOnlyRemaining,
@@ -2153,9 +2264,13 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
+                const timeline = toCustomerOrderTimeline(
+                    await loadOrderTimeline(prisma, orderNum)
+                );
+
                 return reply.send({
                     ok: true,
-                    order,
+                    order: { ...order, timeline },
                 });
             } catch (error: unknown) {
                 const detail = getErrorMessage(error, "로그인 주문 상세 조회 중 오류가 발생했습니다.");
@@ -2172,7 +2287,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
     );
 
     fastify.post<{
-        Body: { type?: "return" | "exchange"; reason?: string };
+        Body: ClaimSubmitBody;
         Params: { tenant?: string; orderNum: string };
     }>("/v1/orders/:orderNum/claim", async (request, reply: FastifyReply) => {
         try {
@@ -2182,7 +2297,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
             const memberUid = extractAuthenticatedMemberUid(request);
             const orderNum = toSafeString(request.params?.orderNum, "");
             const claimType = toSafeString(request.body?.type, "");
-            const reason = toSafeString(request.body?.reason, "");
+            const submitted = await resolveClaimSubmission(prisma, request.body || {});
             const now = toUnixNow();
 
             if (!tenantId || !orderNum) {
@@ -2205,6 +2320,11 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     message: "요청 유형이 올바르지 않습니다.",
                 });
             }
+
+            if (!submitted.ok) {
+                return reply.code(400).send({ ok: false, message: submitted.message });
+            }
+            const cause = submitted.cause;
 
             const rawOrder = await findRawOrderByMember(prisma, tenantId, memberUid, orderNum);
             if (!rawOrder) {
@@ -2245,7 +2365,6 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 select: { name: true, id: true },
             });
             const actorNickname = toSafeString(memberRow?.name || rawOrder.name, "회원");
-            const claimReason = reason || (claimType === "return" ? "반품 요청" : "교환 요청");
 
             const claimGoodsRows = await prisma.mallRN_order_goods.findMany({
                 where: {
@@ -2261,6 +2380,26 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     status2: true,
                 },
             });
+
+            const firstUid = Number(claimGoodsRows[0]?.uid || 0);
+            const quote = await quoteOrderItemReturnShipping({
+                prisma,
+                tenantId,
+                orderNum,
+                orderGoodsUid: firstUid,
+                cause,
+                kind: claimType,
+                alsoReturningUids: claimGoodsRows.slice(1).map((row: { uid: number }) => Number(row.uid)),
+            });
+            if (isReturnShipQuoteError(quote)) {
+                return reply.code(400).send({ ok: false, message: quote.message });
+            }
+            if (!quote.allowed) {
+                return reply.code(400).send({ ok: false, message: quote.message });
+            }
+            const claimReason = submitted.extra
+                ? `${quote.reasonText} ${submitted.extra}`.slice(0, 100)
+                : quote.reasonText;
 
             await prisma.$transaction(async (tx: any) => {
                 await tx.mallRN_order_info.updateMany({
@@ -2299,21 +2438,31 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                         memberName: actorNickname,
                         claimStatus: nextStatus,
                         reason: claimReason,
+                        message: submitted.message,
                         now,
                     }
                 );
 
-                await writeOrderActionLog(tx, {
+                await writeOrderAuditLog(tx, {
                     tenantId,
-                    eventType: "cancel",
+                    eventType: "claim_request",
                     orderNum,
+                    orderGoodsUid: firstUid || null,
                     actorRole: "member",
                     actorMemberUid: memberUid,
                     actorNickname,
                     beforeStatus: display.effectiveGoodsStatus,
                     afterStatus: nextStatus,
+                    afterStatus2: STATUS2_REQUEST,
                     reason: claimReason,
-                    metaJson: JSON.stringify({ claimType }),
+                    metaJson: {
+                        claimType,
+                        kind: claimType,
+                        cause,
+                        delivery2: quote.delivery2,
+                        prepaid: quote.prepaid,
+                        buyerCharge: quote.buyerCharge,
+                    },
                 });
             });
 
@@ -2332,10 +2481,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 status: nextStatus,
                 status2: STATUS2_REQUEST,
                 statusLabel,
-                message:
-                    claimType === "return"
-                        ? "반품 요청이 접수되었습니다."
-                        : "교환 요청이 접수되었습니다.",
+                shipping: serializeReturnShipQuote(quote),
+                message: quote.message || (claimType === "return"
+                    ? "반품 요청이 접수되었습니다."
+                    : "교환 요청이 접수되었습니다."),
             });
         } catch (error: unknown) {
             const detail = getErrorMessage(error, "교환·반품 요청 중 오류가 발생했습니다.");
@@ -2954,7 +3103,75 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
 
     fastify.post<{
         Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
-        Body: { type?: "return" | "exchange"; reason?: string };
+        Body: { type?: "return" | "exchange"; cause?: string };
+    }>(
+        "/v1/orders/:orderNum/items/:orderGoodsUid/claim/preview",
+        async (request, reply: FastifyReply) => {
+            try {
+                const { tenantId } = getTenantContext(
+                    request as unknown as FastifyRequest<PublicOrderRoute>
+                );
+                const memberUid = extractAuthenticatedMemberUid(request);
+                const orderNum = toSafeString(request.params?.orderNum, "");
+                const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
+                const claimType = toSafeString(request.body?.type, "");
+                const cause = normalizeClaimCause(request.body?.cause);
+
+                if (!tenantId || !orderNum || orderGoodsUid <= 0) {
+                    return reply.code(400).send({ ok: false, message: "요청 정보가 올바르지 않습니다." });
+                }
+                if (!memberUid) {
+                    return reply.code(401).send({ ok: false, message: "로그인이 필요합니다." });
+                }
+                if (claimType !== "return" && claimType !== "exchange") {
+                    return reply.code(400).send({ ok: false, message: "요청 유형이 올바르지 않습니다." });
+                }
+                if (!cause) {
+                    return reply.code(400).send({
+                        ok: false,
+                        message: "반품·교환 사유를 변심 또는 하자로 선택해 주세요.",
+                    });
+                }
+
+                const ctx = await findOwnedOrderItemActions(
+                    prisma,
+                    tenantId,
+                    memberUid,
+                    orderNum,
+                    orderGoodsUid
+                );
+                if (!ctx) {
+                    return reply.code(404).send({ ok: false, message: "주문상품을 찾을 수 없습니다." });
+                }
+
+                const quote = await quoteOrderItemReturnShipping({
+                    prisma,
+                    tenantId,
+                    orderNum,
+                    orderGoodsUid,
+                    cause,
+                    kind: claimType,
+                });
+                if (isReturnShipQuoteError(quote)) {
+                    return reply.code(400).send({ ok: false, message: quote.message });
+                }
+
+                return reply.send({
+                    ok: true,
+                    shipping: serializeReturnShipQuote(quote),
+                    message: quote.message,
+                });
+            } catch (error: unknown) {
+                const detail = getErrorMessage(error, "배송비 미리보기에 실패했습니다.");
+                fastify.log.error(error, "ORDER_ITEM_CLAIM_PREVIEW_ERROR");
+                return reply.code(500).send({ ok: false, message: detail });
+            }
+        }
+    );
+
+    fastify.post<{
+        Params: { tenant?: string; orderNum: string; orderGoodsUid: string };
+        Body: ClaimSubmitBody;
     }>(
         "/v1/orders/:orderNum/items/:orderGoodsUid/claim",
         async (request, reply: FastifyReply) => {
@@ -2966,7 +3183,7 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 const orderNum = toSafeString(request.params?.orderNum, "");
                 const orderGoodsUid = toInt(request.params?.orderGoodsUid, 0);
                 const claimType = toSafeString(request.body?.type, "");
-                const reason = toSafeString(request.body?.reason, "");
+                const submitted = await resolveClaimSubmission(prisma, request.body || {});
                 const now = toUnixNow();
 
                 if (!tenantId || !orderNum || orderGoodsUid <= 0) {
@@ -2978,6 +3195,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                 if (claimType !== "return" && claimType !== "exchange") {
                     return reply.code(400).send({ ok: false, message: "요청 유형이 올바르지 않습니다." });
                 }
+                if (!submitted.ok) {
+                    return reply.code(400).send({ ok: false, message: submitted.message });
+                }
+                const cause = submitted.cause;
 
                 const ctx = await findOwnedOrderItemActions(
                     prisma,
@@ -2999,6 +3220,21 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     });
                 }
 
+                const quote = await quoteOrderItemReturnShipping({
+                    prisma,
+                    tenantId,
+                    orderNum,
+                    orderGoodsUid,
+                    cause,
+                    kind: claimType,
+                });
+                if (isReturnShipQuoteError(quote)) {
+                    return reply.code(400).send({ ok: false, message: quote.message });
+                }
+                if (!quote.allowed) {
+                    return reply.code(400).send({ ok: false, message: quote.message });
+                }
+
                 const nextStatus = claimType === "return" ? STATUS_RETURN : STATUS_EXCHANGE;
                 const memberRow = await prisma.mallRN_member.findFirst({
                     where: { uid: Number(memberUid) },
@@ -3009,7 +3245,9 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     "회원"
                 );
                 const memberId = toSafeString(memberRow?.id, "member");
-                const claimReason = reason || (claimType === "return" ? "반품 요청" : "교환 요청");
+                const claimReason = submitted.extra
+                    ? `${quote.reasonText} ${submitted.extra}`.slice(0, 100)
+                    : quote.reasonText;
 
                 const goodsRow = await prisma.mallRN_order_goods.findFirst({
                     where: {
@@ -3065,9 +3303,31 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                             memberName: actorNickname,
                             claimStatus: nextStatus,
                             reason: claimReason,
+                            message: submitted.message,
                             now,
                         }
                     );
+                    await writeOrderAuditLog(tx, {
+                        tenantId,
+                        eventType: "claim_request",
+                        orderNum,
+                        orderGoodsUid,
+                        actorRole: "member",
+                        actorMemberUid: memberUid,
+                        actorNickname,
+                        beforeStatus: toInt(goodsRow.status, 0),
+                        afterStatus: nextStatus,
+                        afterStatus2: STATUS2_REQUEST,
+                        reason: claimReason,
+                        metaJson: {
+                            claimType,
+                            kind: claimType,
+                            cause,
+                            delivery2: quote.delivery2,
+                            prepaid: quote.prepaid,
+                            buyerCharge: quote.buyerCharge,
+                        },
+                    });
                 });
 
                 await pauseConfirmTimersForClaim(fastify, {
@@ -3083,10 +3343,10 @@ export const publicOrderRoutes = async (fastify: FastifyInstance) => {
                     status: nextStatus,
                     status2: STATUS2_REQUEST,
                     statusLabel: buildGoodsStatusLabel(nextStatus, STATUS2_REQUEST),
-                    message:
-                        claimType === "return"
-                            ? "반품 요청이 접수되었습니다."
-                            : "교환 요청이 접수되었습니다.",
+                    shipping: serializeReturnShipQuote(quote),
+                    message: quote.message || (claimType === "return"
+                        ? "반품 요청이 접수되었습니다."
+                        : "교환 요청이 접수되었습니다."),
                 });
             } catch (error: unknown) {
                 const detail = getErrorMessage(error, "교환·반품 요청 중 오류가 발생했습니다.");
