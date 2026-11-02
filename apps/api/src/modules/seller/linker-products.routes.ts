@@ -4,6 +4,12 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { requireTenant } from "../../common/guard.js";
 import { getLinker, memberUidFromSession } from "./linker.js";
+import {
+    isSlotRegistrationBlocked,
+    isUnlimitedSlot,
+    slotExceededCount,
+    slotRegistrationBlockCode,
+} from "./slot-limit.js";
 
 const HQ_TENANT_ID = BigInt(0);
 const DEFAULT_SLOT_LIMIT = 20;
@@ -294,12 +300,15 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
                 gradeYearMonth: policy.gradeYearMonth,
                 commissionRate: policy.commissionRate,
                 slotLimit: policy.slotLimit,
+                slotUnlimited: isUnlimitedSlot(policy.slotLimit),
                 slotUsed: state.slotUsed,
-                slotRemaining: Math.max(0, policy.slotLimit - state.slotUsed),
-                slotExceeded: Math.max(0, state.slotUsed - policy.slotLimit),
+                slotRemaining: isUnlimitedSlot(policy.slotLimit)
+                    ? 0
+                    : Math.max(0, policy.slotLimit - state.slotUsed),
+                slotExceeded: slotExceededCount(policy.slotLimit, state.slotUsed),
                 selectedTotal: selectedItems.length,
                 stoppedTotal: selectedStopped,
-                registrationBlocked: state.slotUsed >= policy.slotLimit,
+                registrationBlocked: isSlotRegistrationBlocked(policy.slotLimit, state.slotUsed),
             },
             selected: {
                 items: selectedPageItems,
@@ -332,7 +341,9 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
         let productIds = [...new Set(body.productIds)];
         if (body.scope === "filtered_all") {
             const state = await getSelectedState(app, linker.uid);
-            const remaining = Math.max(0, policy.slotLimit - state.slotUsed);
+            const remaining = isUnlimitedSlot(policy.slotLimit)
+                ? Number.POSITIVE_INFINITY
+                : Math.max(0, policy.slotLimit - state.slotUsed);
             const where = availableGoodsWhere(
                 state.selections.map((row) => row.product_uid),
                 body.availableQ
@@ -373,12 +384,15 @@ export async function sellerLinkerProductsRoutes(app: FastifyInstance) {
                 });
                 const selectedProducts = selected.length ? await tx.mallRN_goods.findMany({ where: { uid: { in: selected.map((row) => row.product_uid) } } }) : [];
                 const usedBefore = selectedProducts.filter(isSelling).length;
-                if (usedBefore > policy.slotLimit) throw new Error("SLOT_EXCEEDED");
+                if (slotRegistrationBlockCode(policy.slotLimit, usedBefore, 0) === "SLOT_EXCEEDED") {
+                    throw new Error("SLOT_EXCEEDED");
+                }
                 const existingIds = new Set(selected.map((row) => row.product_uid));
                 const products = await tx.mallRN_goods.findMany({ where: { uid: { in: productIds }, tenant_id: HQ_TENANT_ID } });
                 const valid = products.filter((row) => isSelling(row) && !existingIds.has(row.uid));
                 if (valid.length !== productIds.length) throw new Error("INVALID_PRODUCT");
-                if (usedBefore + valid.length > policy.slotLimit) throw new Error("SLOT_SHORTAGE");
+                const slotBlock = slotRegistrationBlockCode(policy.slotLimit, usedBefore, valid.length);
+                if (slotBlock) throw new Error(slotBlock);
                 let nextOrder = selected.reduce((max, row) => Math.max(max, row.display_order), 0) + 1;
                 for (const product of valid) {
                     const previous = await tx.mallRN_linker_products.findUnique({

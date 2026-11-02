@@ -56,6 +56,7 @@ type ResponseData = {
         gradeYearMonth: string | null;
         commissionRate: number;
         slotLimit: number;
+        slotUnlimited?: boolean;
         slotUsed: number;
         slotRemaining: number;
         slotExceeded: number;
@@ -346,7 +347,8 @@ export default function SellerProductsClient({
     const selected = data?.selected ?? EMPTY_LIST;
     const available = data?.available ?? EMPTY_LIST;
     const summary = data?.summary;
-    const registrationBlocked = Boolean(summary?.registrationBlocked);
+    const slotUnlimited = Boolean(summary?.slotUnlimited) || Number(summary?.slotLimit) === 0;
+    const registrationBlocked = Boolean(summary?.registrationBlocked) && !slotUnlimited;
     const filteredAllTooLarge = available.total > MAX_FILTERED_ALL_RESULTS;
     const allSelectedOnPage =
         selected.items.length > 0 && selected.items.every((item) => checkedSelected.has(item.id));
@@ -400,9 +402,9 @@ export default function SellerProductsClient({
                 ? [
                     ["현재 등급", summary.gradeTitle || summary.grade, "text-violet-600"],
                     ["등급 기준", summary.gradeLookupType === 2 ? "기본 재산정" : "최근 등급 유지", "text-slate-900"],
-                    ["최대 슬롯", `${summary.slotLimit}개`, "text-slate-900"],
+                    ["최대 슬롯", summary.slotUnlimited || summary.slotLimit === 0 ? "무제한" : `${summary.slotLimit}개`, "text-slate-900"],
                     ["사용 슬롯", `${summary.slotUsed}개`, "text-blue-600"],
-                    ["남은 슬롯", `${summary.slotRemaining}개`, summary.slotRemaining > 0 ? "text-emerald-600" : "text-red-600"],
+                    ["남은 슬롯", summary.slotUnlimited || summary.slotLimit === 0 ? "무제한" : `${summary.slotRemaining}개`, summary.slotUnlimited || summary.slotLimit === 0 || summary.slotRemaining > 0 ? "text-emerald-600" : "text-red-600"],
                     ["판매 중지", `${summary.stoppedTotal}개`, "text-slate-500"],
                 ]
                 : [],
