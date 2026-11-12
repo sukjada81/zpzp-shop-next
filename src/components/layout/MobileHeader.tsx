@@ -52,7 +52,7 @@ export default function MobileHeader({
                     </div>
 
                     <div className="min-w-0 flex-1 px-2 text-center">
-                        <div className="truncate text-[18px] font-extrabold tracking-[-0.03em] text-slate-900">
+                        <div className="truncate font-extrabold leading-none tracking-[-0.04em] text-slate-900 text-[clamp(16px,4.5vw,18px)]">
                             {title}
                         </div>
                     </div>
