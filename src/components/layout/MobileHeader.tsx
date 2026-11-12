@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { Menu } from "lucide-react";
 
-import { BRAND_NAME, BRAND_LOGO_SRC, USE_TEXT_LOGO } from "@/lib/brand";
+import { BRAND_NAME } from "@/lib/brand";
 
 const LOGO_H = 32;
 const LOGO_W = Math.round(LOGO_H * 3.05);
@@ -52,9 +51,15 @@ export default function MobileHeader({
                     </div>
 
                     <div className="min-w-0 flex-1 px-2 text-center">
-                        <div className="truncate font-extrabold leading-none tracking-[-0.04em] text-slate-900 text-[clamp(16px,4.5vw,18px)]">
-                            {title}
-                        </div>
+                        <Link
+                            href={tenant ? `/${tenant}/home` : "/"}
+                            className="inline-flex max-w-full items-center justify-center"
+                            aria-label={BRAND_NAME}
+                        >
+                            <span className="truncate font-extrabold leading-none tracking-[-0.04em] text-slate-900 text-[clamp(16px,4.5vw,18px)]">
+                                {BRAND_NAME}
+                            </span>
+                        </Link>
                     </div>
 
                     <div
@@ -63,33 +68,18 @@ export default function MobileHeader({
                     >
                         {!isOrder ? (
                             <div className="flex flex-col items-end justify-center leading-none">
-                                <Link
-                                    href={`/${tenant}/home`}
-                                    className="inline-flex items-center"
-                                    aria-label={BRAND_NAME}
-                                >
-                                    {USE_TEXT_LOGO ? (
-                                        // 줍줍 로고 파일 수령 전 임시 워드마크 — lib/brand.ts USE_TEXT_LOGO
-                                        <span
-                                            className="inline-flex items-center text-[20px] font-extrabold tracking-[-0.03em] text-[color:var(--brand)]"
-                                            style={{ height: `${LOGO_H}px` }}
-                                        >
-                                            {BRAND_NAME}
-                                        </span>
-                                    ) : (
-                                        // 정사각 로고라 슬롯도 정사각(LOGO_H x LOGO_H)으로 잡는다
-                                        <Image
-                                            src={BRAND_LOGO_SRC}
-                                            alt={BRAND_NAME}
-                                            width={LOGO_H}
-                                            height={LOGO_H}
-                                            className="object-contain"
-                                            priority
-                                        />
-                                    )}
-                                </Link>
+                                {/* 로고 이미지 일시 비표시. 가운데는 글자 워드마크만 둔다.
+                                <Image
+                                    src={BRAND_LOGO_SRC}
+                                    alt={BRAND_NAME}
+                                    width={LOGO_H}
+                                    height={LOGO_H}
+                                    className="object-contain"
+                                    priority
+                                />
+                                */}
 
-                                <div className="mt-1 max-w-[108px] truncate text-[10px] font-medium tracking-[-0.01em] text-neutral-400">
+                                <div className="max-w-[108px] truncate text-[10px] font-medium tracking-[-0.01em] text-neutral-400">
                                     {storeName || ""}
                                 </div>
                             </div>
